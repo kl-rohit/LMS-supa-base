@@ -10,6 +10,14 @@ functions/*/dist/
 # Keep catalyst-config.example.json in git with placeholder values instead.
 functions/*/catalyst-config.json
 
+# Student PII — names, mobile numbers, parent names. Never commit.
+veena-students-import.json
+*-import.json
+
+# Claude Code per-user settings (local, not portable)
+.claude/settings.local.json
+.claude/launch.json
+
 # SQLite database
 server/data/*.db
 server/data/*.db-wal

@@ -1,0 +1,569 @@
+import { useState, useEffect, useMemo } from 'react';
+import {
+  MessageSquare,
+  AlertTriangle,
+  IndianRupee,
+  PenLine,
+  Copy,
+  CopyCheck,
+  CheckCircle,
+  Filter,
+  Send,
+  RefreshCw,
+  Phone,
+  User,
+  Trash2,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../utils/api';
+import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone';
+import Loader from '../components/Loader';
+import EmptyState from '../components/EmptyState';
+
+export default function Messages() {
+  const [messages, setMessages] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [generating, setGenerating] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+
+  // Month/year picker for the "Generate Fee Reminders" action.
+  // Defaults to current month.
+  const _now = new Date();
+  const [reminderMonth, setReminderMonth] = useState(_now.getMonth() + 1);
+  const [reminderYear, setReminderYear] = useState(_now.getFullYear());
+
+  // Compose form
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeForm, setComposeForm] = useState({
+    student_id: '',
+    message_type: 'custom',
+    message_text: '',
+  });
+  const [sending, setSending] = useState(false);
+
+  // Message templates
+  const getTemplate = (type, studentName, parentName) => {
+    const sName = studentName || '[Student Name]';
+    const pName = parentName || '[Parent Name]';
+    switch (type) {
+      case 'absence_alert':
+        return `Dear ${pName},\n\nThis is to inform you that ${sName} has been absent for the last 3 consecutive classes. Kindly ensure regular attendance for better progress.\n\nPlease reach out if there are any concerns.\n\nRegards,\nVeena Dhwani Academy`;
+      case 'fee_reminder':
+        // Manual-compose version. Teacher fills in ____ amounts before sending.
+        // Matches the auto-generated reminder's structure so both look the same.
+        return `Dear ${pName},\n\nThis is a gentle reminder regarding the [month] [year] fee payment for ${sName}.\n\nFees for ${sName} — [month] [year]: ₹____\n  • Class fees: ₹____\n  • Additional: ₹____\n\nKindly do the needful. Thank you.\n\nVeena Dhwani Academy`;
+      case 'class_update':
+        return `Dear ${pName},\n\nThis is to inform you about an update regarding ${sName}'s music class schedule. Please check with us for the revised timings.\n\nRegards,\nVeena Dhwani Academy`;
+      case 'thank_you':
+        return `Dear ${pName},\n\nThank you for your continued support and for ensuring ${sName}'s regular attendance at Veena Dhwani Academy. We truly appreciate it.\n\nRegards,\nVeena Dhwani Academy`;
+      case 'holiday_notice':
+        return `Dear ${pName},\n\nThis is to inform you that Veena Dhwani Academy will remain closed on account of the upcoming holiday. ${sName}'s classes will resume as per the regular schedule after the break.\n\nRegards,\nVeena Dhwani Academy`;
+      default:
+        return '';
+    }
+  };
+
+  // Quick template chips configuration
+  const quickTemplates = [
+    { key: 'absence_alert', label: 'Absence Alert' },
+    { key: 'fee_reminder', label: 'Fee Reminder' },
+    { key: 'class_update', label: 'Class Update' },
+    { key: 'thank_you', label: 'Thank You' },
+    { key: 'holiday_notice', label: 'Holiday Notice' },
+  ];
+
+  const handleTypeChange = (type) => {
+    const student = students.find((s) => String(s.id) === String(composeForm.student_id));
+    const template = getTemplate(type, student?.name, student?.parent_name);
+    setComposeForm({
+      ...composeForm,
+      message_type: type,
+      message_text: type !== 'custom' ? template : composeForm.message_text,
+    });
+  };
+
+  const handleStudentChange = (studentId) => {
+    const student = students.find((s) => String(s.id) === String(studentId));
+    const template = composeForm.message_type !== 'custom'
+      ? getTemplate(composeForm.message_type, student?.name, student?.parent_name)
+      : composeForm.message_text;
+    setComposeForm({
+      ...composeForm,
+      student_id: studentId,
+      message_text: template,
+    });
+  };
+
+  const applyQuickTemplate = (templateKey) => {
+    const student = students.find((s) => String(s.id) === String(composeForm.student_id));
+    const template = getTemplate(templateKey, student?.name, student?.parent_name);
+    setComposeForm({
+      ...composeForm,
+      message_type: templateKey,
+      message_text: template,
+    });
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [messagesData, studentsData] = await Promise.all([
+        api.get('/messages'),
+        api.get('/students'),
+      ]);
+      setMessages(messagesData.messages || []);
+      setStudents((studentsData.students || []).filter((s) => s.status === 'active'));
+    } catch (err) {
+      toast.error('Failed to load data: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateAbsenceAlerts = async () => {
+    try {
+      setGenerating(true);
+      const result = await api.post('/messages/generate-absence-alert');
+      const count = result.alerts?.length || 0;
+      if (count > 0) {
+        toast.success(`Generated ${count} absence alert(s)`);
+      } else {
+        toast.success('No students with 3+ consecutive absences');
+      }
+      fetchData();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generateFeeReminders = async () => {
+    try {
+      setGenerating(true);
+      const result = await api.post('/messages/generate-fee-reminder', {
+        year: reminderYear,
+        month: reminderMonth,
+      });
+      const count = result.created ?? result.reminders?.length ?? 0;
+      if (count > 0) {
+        toast.success(`Generated ${count} fee reminder(s) for ${result.month_name || reminderMonth}/${reminderYear}`);
+      } else {
+        toast.success(`No pending fees for ${result.month_name || reminderMonth}/${reminderYear}`);
+      }
+      fetchData();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCompose = async (e) => {
+    e.preventDefault();
+    if (!composeForm.student_id || !composeForm.message_text.trim()) {
+      toast.error('Student and message are required');
+      return;
+    }
+    try {
+      setSending(true);
+      await api.post('/messages', {
+        student_id: String(composeForm.student_id),
+        message_type: composeForm.message_type,
+        message: composeForm.message_text,
+      });
+      toast.success('Message created');
+      setComposeOpen(false);
+      setComposeForm({ student_id: '', message_type: 'custom', message_text: '' });
+      fetchData();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Copy the raw message text directly (already formatted by backend)
+  const copyMessage = async (message) => {
+    const text = message.message || '';
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(message.id);
+      toast.success('Copied to clipboard');
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      toast.error('Failed to copy');
+    }
+  };
+
+  const copyAllMessages = async () => {
+    const allText = filteredMessages
+      .map((m) => m.message || '')
+      .join('\n---\n\n');
+    try {
+      await navigator.clipboard.writeText(allText);
+      toast.success(`Copied ${filteredMessages.length} messages`);
+    } catch {
+      toast.error('Failed to copy');
+    }
+  };
+
+  // Fixed: send { is_sent: true } instead of { status: 'sent' }
+  const markAsSent = async (messageId) => {
+    try {
+      await api.put(`/messages/${messageId}`, { is_sent: true });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, is_sent: 1 } : m))
+      );
+      toast.success('Marked as sent');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  // Delete a single message
+  const deleteMessage = async (messageId) => {
+    if (!window.confirm('Are you sure you want to delete this message?')) return;
+    try {
+      await api.delete(`/messages/${messageId}`);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      toast.success('Message deleted');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  // Delete all currently filtered messages
+  const deleteAllFiltered = async () => {
+    const count = filteredMessages.length;
+    if (count === 0) return;
+    const label = filter === 'all' ? 'all' : filter.replace('_', ' ');
+    if (!window.confirm(`Are you sure you want to delete ${count} ${label} message(s)? This cannot be undone.`)) return;
+    try {
+      await Promise.all(filteredMessages.map((m) => api.delete(`/messages/${m.id}`)));
+      const deletedIds = new Set(filteredMessages.map((m) => m.id));
+      setMessages((prev) => prev.filter((m) => !deletedIds.has(m.id)));
+      toast.success(`Deleted ${count} message(s)`);
+    } catch (err) {
+      toast.error('Failed to delete some messages: ' + err.message);
+      fetchData();
+    }
+  };
+
+  const filteredMessages = useMemo(() => {
+    if (filter === 'all') return messages;
+    return messages.filter((m) => m.message_type === filter);
+  }, [messages, filter]);
+
+  const messageTypeColors = {
+    absence_alert: 'border-l-red-500 bg-red-50',
+    fee_reminder: 'border-l-amber-500 bg-amber-50',
+    class_update: 'border-l-blue-500 bg-blue-50',
+    custom: 'border-l-indigo-500 bg-indigo-50',
+  };
+
+  const messageTypeIcons = {
+    absence_alert: AlertTriangle,
+    fee_reminder: IndianRupee,
+    class_update: RefreshCw,
+    custom: PenLine,
+  };
+
+  const messageTypeBadge = {
+    absence_alert: 'bg-red-100 text-red-700',
+    fee_reminder: 'bg-amber-100 text-amber-700',
+    class_update: 'bg-blue-100 text-blue-700',
+    custom: 'bg-indigo-100 text-indigo-700',
+  };
+
+  if (loading) return <Loader text="Loading messages..." />;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h2 className="page-header mb-0">Messages</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={generateAbsenceAlerts}
+            disabled={generating}
+            className="btn-danger btn-sm"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            {generating ? 'Generating...' : 'Absence Alerts'}
+          </button>
+          <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+            <IndianRupee className="w-4 h-4 text-amber-700" />
+            <select
+              value={reminderMonth}
+              onChange={(e) => setReminderMonth(Number(e.target.value))}
+              className="bg-transparent text-sm text-amber-900 font-medium border-0 focus:outline-none focus:ring-0 pr-1"
+              title="Month for fee reminders"
+            >
+              {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <select
+              value={reminderYear}
+              onChange={(e) => setReminderYear(Number(e.target.value))}
+              className="bg-transparent text-sm text-amber-900 font-medium border-0 focus:outline-none focus:ring-0"
+              title="Year for fee reminders"
+            >
+              {[_now.getFullYear() - 1, _now.getFullYear(), _now.getFullYear() + 1].map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={generateFeeReminders}
+            disabled={generating}
+            className="btn-secondary btn-sm border-amber-300 text-amber-700 hover:bg-amber-50"
+          >
+            <IndianRupee className="w-4 h-4" />
+            Fee Reminders
+          </button>
+          <button
+            onClick={() => setComposeOpen(!composeOpen)}
+            className="btn-primary btn-sm"
+          >
+            <PenLine className="w-4 h-4" /> Compose
+          </button>
+        </div>
+      </div>
+
+      {/* Compose Section */}
+      {composeOpen && (
+        <div className="card border-indigo-200">
+          <h3 className="font-semibold text-gray-900 mb-3">Compose Message</h3>
+          <form onSubmit={handleCompose} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Student *</label>
+                <select
+                  value={composeForm.student_id}
+                  onChange={(e) => handleStudentChange(e.target.value)}
+                  className="select-field"
+                  required
+                >
+                  <option value="">Select student...</option>
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <select
+                  value={composeForm.message_type}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  className="select-field"
+                >
+                  <option value="custom">Custom</option>
+                  <option value="absence_alert">Absence Alert</option>
+                  <option value="fee_reminder">Fee Reminder</option>
+                  <option value="class_update">Class Update</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>
+              <textarea
+                value={composeForm.message_text}
+                onChange={(e) => setComposeForm({ ...composeForm, message_text: e.target.value })}
+                className="input-field"
+                rows={6}
+                placeholder="Type your message or select a template below..."
+                required
+              />
+              {/* Quick template chips */}
+              <div className="flex flex-wrap gap-2 mt-2">
+                {quickTemplates.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => applyQuickTemplate(t.key)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      composeForm.message_type === t.key
+                        ? 'bg-indigo-100 text-indigo-700 border-indigo-300'
+                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setComposeOpen(false)} className="btn-secondary btn-sm">
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary btn-sm" disabled={sending}>
+                <Send className="w-4 h-4" /> {sending ? 'Creating...' : 'Create Message'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Filters & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
+          <Filter className="w-4 h-4 text-gray-400 ml-2" />
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'absence_alert', label: 'Absence' },
+            { value: 'fee_reminder', label: 'Fees' },
+            { value: 'class_update', label: 'Updates' },
+            { value: 'custom', label: 'Custom' },
+          ].map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                filter === f.value
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {filteredMessages.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">{filteredMessages.length} messages</span>
+            <button onClick={copyAllMessages} className="btn-secondary btn-sm">
+              <Copy className="w-4 h-4" /> Copy All
+            </button>
+            <button onClick={deleteAllFiltered} className="btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors rounded-lg flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium">
+              <Trash2 className="w-4 h-4" /> Clear All
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Messages List */}
+      {filteredMessages.length === 0 ? (
+        <EmptyState
+          icon={MessageSquare}
+          title="No messages"
+          message={filter !== 'all' ? 'No messages of this type found.' : 'Generate alerts or compose a message to get started.'}
+        />
+      ) : (
+        <div className="space-y-3">
+          {filteredMessages.map((message) => {
+            const TypeIcon = messageTypeIcons[message.message_type] || PenLine;
+            const isSent = message.is_sent === 1 || message.is_sent === true;
+            return (
+              <div
+                key={message.id}
+                className={`border-l-4 rounded-xl p-4 ${messageTypeColors[message.message_type] || 'bg-gray-50 border-l-gray-300'}`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`badge text-xs ${messageTypeBadge[message.message_type] || 'bg-gray-100 text-gray-600'}`}>
+                        <TypeIcon className="w-3 h-3 mr-1" />
+                        {message.message_type?.replace(/_/g, ' ')}
+                      </span>
+                      {isSent && (
+                        <span className="badge bg-green-100 text-green-700">
+                          <CheckCircle className="w-3 h-3 mr-1" /> Sent
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-4 text-sm flex-wrap">
+                      <span className="flex items-center gap-1 text-gray-700 font-medium">
+                        <User className="w-3.5 h-3.5 text-gray-400" />
+                        {message.student_name || 'Student'}
+                      </span>
+                      {message.parent_name && (
+                        <span className="text-gray-500">Parent: {message.parent_name}</span>
+                      )}
+                      {message.mobile_number && (
+                        <span className="flex items-center gap-1 text-gray-500">
+                          <Phone className="w-3.5 h-3.5" />
+                          {formatMobileDisplay(message.mobile_number)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Message preview - show raw message directly */}
+                    <div className="mt-3 bg-white rounded-lg p-3 border border-gray-200 shadow-sm max-w-lg">
+                      <p className="text-sm text-gray-800 whitespace-pre-line">
+                        {message.message || ''}
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-gray-400 mt-2">
+                      {message.created_at
+                        ? new Date(message.created_at).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : ''}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => copyMessage(message)}
+                      className={`btn-sm rounded-lg transition-colors ${
+                        copiedId === message.id
+                          ? 'bg-green-100 text-green-700 border border-green-300'
+                          : 'btn-secondary'
+                      }`}
+                    >
+                      {copiedId === message.id ? (
+                        <><CopyCheck className="w-4 h-4" /> Copied</>
+                      ) : (
+                        <><Copy className="w-4 h-4" /> Copy</>
+                      )}
+                    </button>
+                    {normalizeMobileForWhatsApp(message.mobile_number) && (
+                      <a
+                        href={`https://wa.me/${normalizeMobileForWhatsApp(message.mobile_number)}?text=${encodeURIComponent(message.message)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => { if (!isSent) markAsSent(message.id); }}
+                        className="btn-sm rounded-lg bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium"
+                        title="Open WhatsApp with this message pre-filled"
+                      >
+                        <Send className="w-4 h-4" /> WhatsApp
+                      </a>
+                    )}
+                    {!isSent && (
+                      <button
+                        onClick={() => markAsSent(message.id)}
+                        className="btn-success btn-sm"
+                      >
+                        <CheckCircle className="w-4 h-4" /> Sent
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteMessage(message.id)}
+                      className="btn-sm rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

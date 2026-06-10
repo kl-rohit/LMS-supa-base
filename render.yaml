@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: veena-music-academy
+    runtime: node
+    plan: free
+    buildCommand: npm install && cd client && npm install && npm run build && cd ../server && npm install
+    startCommand: NODE_ENV=production node server/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: veena-data
+      mountPath: /opt/render/project/src/server/data
+      sizeGB: 1

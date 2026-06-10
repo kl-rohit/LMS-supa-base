@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+client/dist/
+functions/*/dist/
+
+# Catalyst secrets — must NEVER be committed (env vars, ZAID, etc).
+# Keep catalyst-config.example.json in git with placeholder values instead.
+functions/*/catalyst-config.json
+
+# SQLite database
+server/data/*.db
+server/data/*.db-wal
+server/data/*.db-shm
+
+# Environment
+.env
+.env.local
+.env.production
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,11 @@
+{
+  "name": "veena-students-fn",
+  "version": "1.0.0",
+  "description": "Catalyst AdvancedIO function: Students CRUD on Data Store",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.21.1",
+    "cors": "^2.8.5",
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
+}

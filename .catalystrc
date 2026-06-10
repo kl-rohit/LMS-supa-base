@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "34954000000015001",
+      "name": "Veena-Attendance",
+      "domain": {
+        "id": "50041683587",
+        "name": "veena-attendance-60070745325.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60070745325",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}

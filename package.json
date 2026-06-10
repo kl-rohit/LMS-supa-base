@@ -1,0 +1,19 @@
+{
+  "name": "veena-web-app",
+  "version": "1.0.0",
+  "description": "Student Attendance Tracking Application",
+  "scripts": {
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && node index.js",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build": "cd client && npm run build",
+    "start": "NODE_ENV=production node server/index.js",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

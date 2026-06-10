@@ -1,0 +1,213 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Users,
+  Calendar,
+  ClipboardCheck,
+  IndianRupee,
+  AlertTriangle,
+  Clock,
+  ChevronRight,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../utils/api';
+import StatsCard from '../components/StatsCard';
+import Loader from '../components/Loader';
+
+export default function Dashboard() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const fetchDashboard = async () => {
+    try {
+      setLoading(true);
+      const result = await api.get('/dashboard');
+      setData(result);
+    } catch (err) {
+      toast.error('Failed to load dashboard: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <Loader text="Loading dashboard..." />;
+  if (!data) return <div className="text-center py-12 text-gray-500">Failed to load dashboard data.</div>;
+
+  const totalStudents = data.stats?.total_active_students || 0;
+  const classesToday = data.upcoming_classes_today || [];
+  const attendanceRateThisMonth = data.stats?.attendance_rate_this_month || 0;
+  const feesCollectedThisMonth = data.stats?.total_fee_this_month || 0;
+  const recentAttendance = data.recent_attendance || [];
+  const absenceAlerts = data.absent_alerts || [];
+
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '';
+    const [h, m] = timeStr.split(':');
+    const hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${m} ${ampm}`;
+  };
+
+  const classTypeColors = {
+    online: 'border-l-blue-500 bg-blue-50',
+    offline: 'border-l-emerald-500 bg-emerald-50',
+    offline_group: 'border-l-purple-500 bg-purple-50',
+    online_group: 'border-l-cyan-500 bg-cyan-50',
+  };
+
+  const classTypeBadge = {
+    online: 'badge-online',
+    offline: 'badge-offline',
+    offline_group: 'badge-offline-group',
+    online_group: 'badge-online',
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard
+          icon={Users}
+          title="Total Students"
+          value={totalStudents}
+          color="indigo"
+        />
+        <StatsCard
+          icon={Calendar}
+          title="Classes Today"
+          value={classesToday.length}
+          color="blue"
+        />
+        <StatsCard
+          icon={ClipboardCheck}
+          title="Attendance Rate"
+          value={`${Math.round(attendanceRateThisMonth)}%`}
+          color="emerald"
+          subtitle="This month"
+        />
+        <StatsCard
+          icon={IndianRupee}
+          title="Fees Collected"
+          value={`\u20B9${Number(feesCollectedThisMonth).toLocaleString('en-IN')}`}
+          color="amber"
+          subtitle="This month"
+        />
+      </div>
+
+      {/* Absence Alerts */}
+      {absenceAlerts.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <h3 className="font-semibold text-red-800">Absence Alerts</h3>
+            <span className="badge bg-red-100 text-red-700 ml-auto">{absenceAlerts.length} students</span>
+          </div>
+          <div className="space-y-2">
+            {absenceAlerts.map((alert, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-red-100">
+                <div>
+                  <span className="font-medium text-gray-900">{alert.student_name || alert.name}</span>
+                  <span className="text-red-600 text-sm ml-2">
+                    Absent {alert.consecutive_absences || alert.absent_count} consecutive classes
+                  </span>
+                </div>
+                <button
+                  onClick={() => navigate('/messages')}
+                  className="text-sm text-red-600 hover:text-red-700 font-medium"
+                >
+                  Send Alert
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Today's Classes */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900">Today's Classes</h3>
+            <button
+              onClick={() => navigate('/attendance')}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+            >
+              Mark Attendance <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          {classesToday.length === 0 ? (
+            <p className="text-gray-400 text-sm py-4 text-center">No classes scheduled today.</p>
+          ) : (
+            <div className="space-y-3">
+              {classesToday.map((cls) => (
+                <div
+                  key={cls.id}
+                  className={`border-l-4 rounded-lg p-3 ${classTypeColors[cls.class_type] || 'bg-gray-50 border-l-gray-300'}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium text-gray-900">{cls.name}</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-sm text-gray-500">
+                          {formatTime(cls.start_time)} - {formatTime(cls.end_time)}
+                        </span>
+                      </div>
+                    </div>
+                    <span className={classTypeBadge[cls.class_type] || 'badge'}>
+                      {cls.class_type?.replace('_', ' ')}
+                    </span>
+                  </div>
+                  {(cls.student_name || cls.group_name) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {cls.group_name ? `Group: ${cls.group_name}` : `Student: ${cls.student_name}`}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Attendance */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900">Recent Attendance</h3>
+            <button
+              onClick={() => navigate('/attendance')}
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+            >
+              View All <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          {recentAttendance.length === 0 ? (
+            <p className="text-gray-400 text-sm py-4 text-center">No recent attendance records.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentAttendance.slice(0, 8).map((record, idx) => (
+                <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">{record.student_name}</span>
+                    <span className="text-xs text-gray-400 ml-2">{record.class_name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${record.status === 'present' ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-xs text-gray-500">
+                      {new Date(record.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,20 @@
+{
+  "project": {
+    "project_name": "veena",
+    "id": "34954000000015001",
+    "project_domain": "https://api.catalyst.zoho.in",
+    "console_domain": "https://console.catalyst.zoho.in"
+  },
+  "envCwd": ".",
+  "functions": {
+    "targets": [
+      "api"
+    ],
+    "ignore": [],
+    "source": "functions"
+  },
+  "client": {
+    "name": "veena-client",
+    "source": "client/dist"
+  }
+}

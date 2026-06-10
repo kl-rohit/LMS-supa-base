@@ -1,0 +1,43 @@
+{
+  "name": "veena-client",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Veena student tracker client (webpack + React + Tailwind)",
+  "scripts": {
+    "start": "webpack serve --mode development",
+    "build": "webpack --mode production && cp public/client-package.json dist/",
+    "build:catalyst": "PUBLIC_URL=/app/ API_BASE=/server/api/api webpack --mode production && cp public/client-package.json dist/ && cp dist/index.html dist/404.html",
+    "build:catalyst-students-only": "PUBLIC_URL=/app/ API_BASE=/server/students/api webpack --mode production && cp public/client-package.json dist/ && cp dist/index.html dist/404.html",
+    "analyze": "ANALYZE=true webpack --mode production"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "react-hot-toast": "^2.4.1",
+    "lucide-react": "^0.460.0",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/preset-react": "^7.24.7",
+    "@svgr/webpack": "^8.1.0",
+    "autoprefixer": "^10.4.19",
+    "babel-loader": "^9.1.3",
+    "css-loader": "^7.1.2",
+    "css-minimizer-webpack-plugin": "^7.0.0",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.6.0",
+    "postcss": "^8.4.49",
+    "postcss-loader": "^8.1.1",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^3.4.16",
+    "terser-webpack-plugin": "^5.3.10",
+    "url-loader": "^4.1.1",
+    "webpack": "^5.93.0",
+    "webpack-bundle-analyzer": "^4.10.2",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.1.0"
+  }
+}

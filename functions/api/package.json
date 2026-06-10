@@ -1,0 +1,11 @@
+{
+  "name": "veena-api",
+  "version": "1.0.0",
+  "description": "Veena monolith API on Catalyst AdvancedIO + Data Store",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.21.1",
+    "cors": "^2.8.5",
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
+}

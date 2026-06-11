@@ -11,12 +11,15 @@
     "analyze": "ANALYZE=true webpack --mode production"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "lucide-react": "^0.460.0",
+    "papaparse": "^5.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
     "react-hot-toast": "^2.4.1",
-    "lucide-react": "^0.460.0",
-    "papaparse": "^5.4.1"
+    "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

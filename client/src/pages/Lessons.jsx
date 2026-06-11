@@ -18,6 +18,9 @@ import {
   Youtube,
   PlayCircle,
   CheckCircle2,
+  Scissors,
+  FolderTree,
+  GripVertical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -25,10 +28,93 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import { useConfirm } from '../contexts/ConfirmContext';
-import { extractYouTubeId, ytThumbnail, formatDuration } from '../utils/youtube';
+import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters } from '../utils/youtube';
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Sortable lesson row — wraps the lesson card in @dnd-kit's useSortable.
+// The drag handle (grip icon) is the only element that initiates drag;
+// the rest of the row stays clickable.
+function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: lesson.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+  const ytId = extractYouTubeId(lesson.video_url);
+  const hasSegment = (lesson.start_seconds || 0) > 0 || (lesson.end_seconds || 0) > 0;
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className="flex items-center gap-2 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 bg-white"
+    >
+      <button
+        {...listeners}
+        className="p-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing touch-none flex-shrink-0"
+        title="Drag to reorder"
+        aria-label="Drag to reorder"
+        type="button"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="text-sm font-semibold text-gray-400 w-6">{displayIdx + 1}.</div>
+      {ytId && (
+        <img src={ytThumbnail(ytId)} alt="" className="w-24 h-14 rounded object-cover flex-shrink-0" loading="lazy" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-gray-900 truncate">{lesson.title}</p>
+        <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+          {hasSegment && (
+            <span className="font-mono text-indigo-600">
+              {formatDuration(lesson.start_seconds || 0)}–{lesson.end_seconds ? formatDuration(lesson.end_seconds) : 'end'}
+            </span>
+          )}
+          {!hasSegment && lesson.duration_seconds > 0 && <span>{formatDuration(lesson.duration_seconds)}</span>}
+          <a href={lesson.video_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-red-600 hover:text-red-700">
+            <Youtube className="w-3 h-3" /> Open
+          </a>
+        </p>
+      </div>
+      <button onClick={() => onEdit(lesson)} className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title="Edit" type="button">
+        <Edit2 className="w-4 h-4" />
+      </button>
+      <button onClick={() => onDelete(lesson)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" title="Delete" type="button">
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
 
 const blankCourse = { name: '', description: '', thumbnail_url: '' };
-const blankLesson = { title: '', description: '', video_url: '', duration_seconds: 0 };
+const blankLesson = {
+  title: '',
+  description: '',
+  video_url: '',
+  duration_seconds: 0,
+  section_name: '',
+  start_seconds_str: '',
+  end_seconds_str: '',
+};
 
 export default function Lessons() {
   const confirm = useConfirm();
@@ -51,6 +137,63 @@ export default function Lessons() {
 
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [enrollSelection, setEnrollSelection] = useState([]); // array of student_ids
+
+  // Split-video-into-chapter-lessons modal state
+  const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [splitForm, setSplitForm] = useState({
+    section_name: '',
+    video_url: '',
+    chapters_text: '',
+  });
+
+  // Drag-and-drop sensors. PointerSensor (8px drag distance threshold) for
+  // mouse; TouchSensor (250ms long-press) for mobile; Keyboard for a11y.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // On drag end: reorder local list, infer new section_name from neighbors,
+  // push the new order to the backend.
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = lessons.findIndex((l) => String(l.id) === String(active.id));
+    const newIdx = lessons.findIndex((l) => String(l.id) === String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+
+    const moved = arrayMove(lessons, oldIdx, newIdx);
+
+    // Infer section_name for the moved lesson based on its new neighbors.
+    const movedIdx = moved.findIndex((l) => String(l.id) === String(active.id));
+    const prev = moved[movedIdx - 1];
+    const next = moved[movedIdx + 1];
+    let newSection = moved[movedIdx].section_name || '';
+    if (prev && next && (prev.section_name || '') === (next.section_name || '')) {
+      newSection = prev.section_name || '';
+    } else if (prev) {
+      newSection = prev.section_name || '';
+    } else if (next) {
+      newSection = next.section_name || '';
+    }
+    moved[movedIdx] = { ...moved[movedIdx], section_name: newSection };
+
+    // Optimistic UI update
+    setLessons(moved);
+
+    // Send the new order to backend (one update per lesson — small N)
+    const updates = moved.map((l, i) => ({
+      id: l.id,
+      order_index: i + 1,
+      section_name: String(l.id) === String(active.id) ? newSection : (l.section_name || ''),
+    }));
+    api.post('/lessons/reorder', { updates }).catch((err) => {
+      toast.error('Reorder failed: ' + err.message);
+      // Revert by refetching
+      fetchCourseDetail(selectedCourse.id);
+    });
+  };
 
   const fetchCourses = async () => {
     try {
@@ -146,6 +289,9 @@ export default function Lessons() {
       description: l.description || '',
       video_url: l.video_url || '',
       duration_seconds: l.duration_seconds || 0,
+      section_name: l.section_name || '',
+      start_seconds_str: l.start_seconds ? formatDuration(l.start_seconds) : '',
+      end_seconds_str: l.end_seconds ? formatDuration(l.end_seconds) : '',
     });
     setLessonModalOpen(true);
   };
@@ -158,12 +304,27 @@ export default function Lessons() {
       toast.error("Doesn't look like a valid YouTube URL");
       return;
     }
+    const start = parseTimeString(lessonForm.start_seconds_str);
+    const end   = parseTimeString(lessonForm.end_seconds_str);
+    if (end > 0 && start >= end) {
+      toast.error('End time must be after start time');
+      return;
+    }
+    const payload = {
+      title: lessonForm.title,
+      description: lessonForm.description,
+      video_url: lessonForm.video_url,
+      duration_seconds: Number(lessonForm.duration_seconds) || 0,
+      section_name: lessonForm.section_name.trim(),
+      start_seconds: start,
+      end_seconds: end,
+    };
     try {
       if (editingLesson) {
-        await api.put(`/lessons/${editingLesson.id}`, lessonForm);
+        await api.put(`/lessons/${editingLesson.id}`, payload);
         toast.success('Lesson updated');
       } else {
-        await api.post('/lessons', { ...lessonForm, course_id: String(selectedCourse.id) });
+        await api.post('/lessons', { ...payload, course_id: String(selectedCourse.id) });
         toast.success('Lesson added');
       }
       setLessonModalOpen(false);
@@ -172,6 +333,50 @@ export default function Lessons() {
       toast.error('Failed: ' + err.message);
     }
   };
+  // Parse the pasted chapter text and build a Lesson per chapter, all sharing
+  // the same video URL. The chapter's start = its timestamp, end = the next
+  // chapter's timestamp (or 0 for the last one = until end of video).
+  const splitPreview = () => {
+    const chapters = parseChapters(splitForm.chapters_text);
+    return chapters.map((c, i) => {
+      const next = chapters[i + 1];
+      return {
+        title: c.title,
+        start_seconds: c.start,
+        end_seconds: next ? next.start : 0, // 0 = play to end
+      };
+    });
+  };
+
+  const handleSplit = async () => {
+    if (!splitForm.video_url.trim()) { toast.error('Video URL is required'); return; }
+    if (!extractYouTubeId(splitForm.video_url)) { toast.error('Invalid YouTube URL'); return; }
+    const preview = splitPreview();
+    if (preview.length === 0) {
+      toast.error('No chapters detected. Paste lines like "0:00 Introduction"');
+      return;
+    }
+    const lessons = preview.map((p) => ({
+      title: p.title,
+      video_url: splitForm.video_url.trim(),
+      section_name: splitForm.section_name.trim(),
+      start_seconds: p.start_seconds,
+      end_seconds: p.end_seconds,
+    }));
+    try {
+      const resp = await api.post('/lessons/bulk', {
+        course_id: String(selectedCourse.id),
+        lessons,
+      });
+      toast.success(`Created ${resp.count} lesson(s)`);
+      setSplitModalOpen(false);
+      setSplitForm({ section_name: '', video_url: '', chapters_text: '' });
+      fetchCourseDetail(selectedCourse.id);
+    } catch (err) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
+
   const deleteLesson = async (l) => {
     const ok = await confirm({
       title: 'Delete this lesson?',
@@ -276,47 +481,67 @@ export default function Lessons() {
 
         {tab === 'lessons' && (
           <div className="card">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h3 className="font-semibold text-gray-900">Lessons</h3>
-              <button onClick={openCreateLesson} className="btn-primary btn-sm">
-                <Plus className="w-4 h-4" /> Add lesson
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSplitModalOpen(true)}
+                  className="btn-secondary btn-sm"
+                  title="Split one video into multiple chapter-lessons"
+                >
+                  <Scissors className="w-4 h-4" /> Split video
+                </button>
+                <button onClick={openCreateLesson} className="btn-primary btn-sm">
+                  <Plus className="w-4 h-4" /> Add lesson
+                </button>
+              </div>
             </div>
             {lessons.length === 0 ? (
               <EmptyState
                 icon={Video}
                 title="No lessons yet"
-                message="Add your first lesson — paste a YouTube unlisted URL."
+                message="Add your first lesson — paste a YouTube unlisted URL. Or use 'Split video' if you have one video to break into chapters."
               />
             ) : (
-              <div className="space-y-2">
-                {lessons.map((l, idx) => {
-                  const ytId = extractYouTubeId(l.video_url);
-                  return (
-                    <div key={l.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50">
-                      <div className="text-sm font-semibold text-gray-400 w-6">{idx + 1}.</div>
-                      {ytId && (
-                        <img src={ytThumbnail(ytId)} alt="" className="w-24 h-14 rounded object-cover flex-shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 truncate">{l.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
-                          {l.duration_seconds > 0 && <span>{formatDuration(l.duration_seconds)}</span>}
-                          <a href={l.video_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-red-600 hover:text-red-700">
-                            <Youtube className="w-3 h-3" /> Open
-                          </a>
-                        </p>
-                      </div>
-                      <button onClick={() => openEditLesson(l)} className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title="Edit">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => deleteLesson(l)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" title="Delete">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+              <>
+                <p className="text-xs text-gray-400 mb-3 px-1">
+                  Drag the <GripVertical className="inline w-3.5 h-3.5 -mt-0.5" /> handle to reorder. Cross-section drag updates the section automatically.
+                </p>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={lessons.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-2">
+                      {lessons.map((l, idx) => {
+                        // Show section header at the start of each new section
+                        const prevSection = idx > 0 ? (lessons[idx - 1].section_name || '') : null;
+                        const thisSection = l.section_name || '';
+                        const showHeader = thisSection && thisSection !== prevSection;
+                        // Section-local index = position within its section (1-based)
+                        let sectionLocalIdx = idx;
+                        for (let i = idx - 1; i >= 0; i--) {
+                          if ((lessons[i].section_name || '') !== thisSection) { sectionLocalIdx = idx - i - 1; break; }
+                          if (i === 0) { sectionLocalIdx = idx; break; }
+                        }
+                        return (
+                          <div key={l.id}>
+                            {showHeader && (
+                              <div className="flex items-center gap-2 mt-4 mb-2 pl-1">
+                                <FolderTree className="w-4 h-4 text-indigo-500" />
+                                <span className="text-sm font-semibold text-gray-700">{thisSection}</span>
+                              </div>
+                            )}
+                            <SortableLessonRow
+                              lesson={l}
+                              displayIdx={sectionLocalIdx}
+                              onEdit={openEditLesson}
+                              onDelete={deleteLesson}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
+                  </SortableContext>
+                </DndContext>
+              </>
             )}
           </div>
         )}
@@ -407,6 +632,51 @@ export default function Lessons() {
               <p className="text-xs text-gray-400 mt-1">Paste an unlisted YouTube link. Public links work too.</p>
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section (optional)</label>
+              <input
+                type="text"
+                value={lessonForm.section_name}
+                onChange={(e) => setLessonForm({ ...lessonForm, section_name: e.target.value })}
+                className="input-field"
+                placeholder="e.g. Introduction, Practice, Advanced"
+                list="section-suggestions"
+              />
+              {/* Suggest existing section names from current course lessons */}
+              <datalist id="section-suggestions">
+                {[...new Set(lessons.map((l) => l.section_name).filter(Boolean))].map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+              <p className="text-xs text-gray-400 mt-1">Lessons with the same section group together in the parent's sidebar.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start time</label>
+                <input
+                  type="text"
+                  value={lessonForm.start_seconds_str}
+                  onChange={(e) => setLessonForm({ ...lessonForm, start_seconds_str: e.target.value })}
+                  className="input-field font-mono"
+                  placeholder="0:00 or 150"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End time</label>
+                <input
+                  type="text"
+                  value={lessonForm.end_seconds_str}
+                  onChange={(e) => setLessonForm({ ...lessonForm, end_seconds_str: e.target.value })}
+                  className="input-field font-mono"
+                  placeholder="(end of video)"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 -mt-2">
+              For a chapter-as-lesson, set start/end to slice a shared video. Leave both blank to use the full video.
+            </p>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Duration (seconds, optional)</label>
               <input
                 type="number"
@@ -491,6 +761,85 @@ export default function Lessons() {
           onSave={saveCourse}
           isEdit={!!editingCourse}
         />
+
+        {/* Split video into chapter-lessons */}
+        <Modal
+          isOpen={splitModalOpen}
+          onClose={() => setSplitModalOpen(false)}
+          title="Split one video into chapter-lessons"
+          size="lg"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Paste a YouTube URL once. List the chapters below (timestamp + title). Each chapter
+              becomes its own Lesson, all sharing the same video URL, in the same Section.
+            </p>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section name</label>
+              <input
+                type="text"
+                value={splitForm.section_name}
+                onChange={(e) => setSplitForm({ ...splitForm, section_name: e.target.value })}
+                className="input-field"
+                placeholder="e.g. Section 1 — Foundations"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">YouTube URL *</label>
+              <input
+                type="url"
+                value={splitForm.video_url}
+                onChange={(e) => setSplitForm({ ...splitForm, video_url: e.target.value })}
+                className="input-field"
+                placeholder="https://youtu.be/..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Chapters *</label>
+              <textarea
+                value={splitForm.chapters_text}
+                onChange={(e) => setSplitForm({ ...splitForm, chapters_text: e.target.value })}
+                className="input-field font-mono text-sm resize-none"
+                rows={8}
+                placeholder={'0:00 Introduction\n2:30 Vocal warm-up\n5:45 Raag Yaman alaap\n10:00 Practice exercises'}
+              />
+              <p className="text-xs text-gray-400 mt-1">One line per chapter. Format: <span className="font-mono">timestamp title</span></p>
+            </div>
+
+            {/* Preview */}
+            {(() => {
+              const preview = splitPreview();
+              if (preview.length === 0) return null;
+              return (
+                <div className="border border-indigo-100 bg-indigo-50/50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-indigo-700 mb-2">
+                    Preview — will create {preview.length} lesson(s):
+                  </p>
+                  <div className="space-y-1">
+                    {preview.map((p, i) => (
+                      <div key={i} className="text-xs text-gray-700 flex items-center gap-2">
+                        <span className="font-mono text-indigo-600 w-24">
+                          {formatDuration(p.start_seconds)}–{p.end_seconds ? formatDuration(p.end_seconds) : 'end'}
+                        </span>
+                        <span className="font-medium">{p.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button onClick={() => setSplitModalOpen(false)} className="btn-secondary btn-sm">Cancel</button>
+              <button onClick={handleSplit} className="btn-primary btn-sm">
+                <Scissors className="w-4 h-4" /> Create lessons
+              </button>
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   }

@@ -106,7 +106,8 @@ router.get('/activity', async (req, res) => {
 // POST /api/lessons
 router.post('/', async (req, res) => {
   try {
-    const { course_id, title, description, video_url, duration_seconds, order_index } = req.body;
+    const { course_id, title, description, video_url, duration_seconds, order_index,
+            section_name, start_seconds, end_seconds } = req.body;
     if (!course_id || !title || !video_url) {
       return res.status(400).json({ error: 'course_id, title, video_url are required' });
     }
@@ -126,10 +127,80 @@ router.post('/', async (req, res) => {
       video_url,
       duration_seconds: Number(duration_seconds) || 0,
       order_index: nextOrder,
+      section_name: section_name || '',
+      start_seconds: Number(start_seconds) || 0,
+      end_seconds: Number(end_seconds) || 0,
     });
     res.status(201).json({ lesson: normalize(row) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create lesson', detail: e.message });
+  }
+});
+
+// POST /api/lessons/bulk — create multiple lessons in one call
+// Body: { course_id, lessons: [{title, video_url, ...}] }
+// Used by the "Split video into chapter-lessons" admin action.
+router.post('/bulk', async (req, res) => {
+  try {
+    const { course_id, lessons } = req.body;
+    if (!course_id || !Array.isArray(lessons) || lessons.length === 0) {
+      return res.status(400).json({ error: 'course_id and lessons[] are required' });
+    }
+    // Determine starting order_index = current max + 1
+    let startOrder = 1;
+    try {
+      const rows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${safeId(course_id)}`);
+      const existing = unwrap(rows, 'Lessons');
+      startOrder = existing.reduce((m, l) => Math.max(m, Number(l.order_index) || 0), 0) + 1;
+    } catch {}
+    const created = [];
+    for (let i = 0; i < lessons.length; i++) {
+      const l = lessons[i];
+      if (!l.title || !l.video_url) continue;
+      try {
+        const row = await insert(req, 'Lessons', {
+          course_id: String(course_id),
+          title: l.title,
+          description: l.description || '',
+          video_url: l.video_url,
+          duration_seconds: Number(l.duration_seconds) || 0,
+          order_index: startOrder + i,
+          section_name: l.section_name || '',
+          start_seconds: Number(l.start_seconds) || 0,
+          end_seconds: Number(l.end_seconds) || 0,
+        });
+        created.push(normalize(row));
+      } catch (err) { console.error('bulk lesson insert failed', err.message); }
+    }
+    res.status(201).json({ lessons: created, count: created.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to bulk-create lessons', detail: e.message });
+  }
+});
+
+// POST /api/lessons/reorder — bulk-update order_index + section_name on multiple lessons
+// Body: { updates: [{ id, order_index, section_name? }] }
+// Used by the admin's drag-reorder UI.
+router.post('/reorder', async (req, res) => {
+  try {
+    const { updates } = req.body;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ error: 'updates[] required' });
+    }
+    let updated = 0;
+    for (const u of updates) {
+      if (!u?.id) continue;
+      const patch = {};
+      if (u.order_index !== undefined) patch.order_index = Number(u.order_index) || 0;
+      if (u.section_name !== undefined) patch.section_name = u.section_name || '';
+      try {
+        await update(req, 'Lessons', u.id, patch);
+        updated++;
+      } catch (err) { console.error('reorder failed for', u.id, err.message); }
+    }
+    res.json({ updated });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to reorder', detail: e.message });
   }
 });
 
@@ -138,13 +209,17 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Lessons', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Lesson not found' });
-    const { title, description, video_url, duration_seconds, order_index } = req.body;
+    const { title, description, video_url, duration_seconds, order_index,
+            section_name, start_seconds, end_seconds } = req.body;
     const patch = {};
     if (title !== undefined)            patch.title = title;
     if (description !== undefined)      patch.description = description;
     if (video_url !== undefined)        patch.video_url = video_url;
     if (duration_seconds !== undefined) patch.duration_seconds = Number(duration_seconds) || 0;
     if (order_index !== undefined)      patch.order_index = Number(order_index) || 0;
+    if (section_name !== undefined)     patch.section_name = section_name;
+    if (start_seconds !== undefined)    patch.start_seconds = Number(start_seconds) || 0;
+    if (end_seconds !== undefined)      patch.end_seconds = Number(end_seconds) || 0;
     const updated = await update(req, 'Lessons', req.params.id, patch);
     res.json({ lesson: normalize(updated) });
   } catch (e) {

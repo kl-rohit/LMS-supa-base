@@ -18,7 +18,7 @@ import {
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import EmptyState from '../../components/EmptyState';
-import { extractYouTubeId, formatDuration, parseChapters, currentChapterIndex } from '../../utils/youtube';
+import { extractYouTubeId, ytThumbnail, formatDuration, parseChapters, currentChapterIndex } from '../../utils/youtube';
 
 const UI_TICK_MS = 500;
 let YT_SCRIPT_LOADED = false;
@@ -68,6 +68,10 @@ export default function CoursePlayer() {
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Playback speed (YouTube IFrame API supports 0.25 / 0.5 / 0.75 / 1 / 1.25 / 1.5 / 1.75 / 2)
+  // Music-relevant choices: 0.5x for slow-along practice, 1.25/1.5x for review.
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   // Udemy-style "Next lesson" overlay — shown after the video ends or when a
   // completed lesson is paused.
   const [showNextOverlay, setShowNextOverlay] = useState(false);
@@ -76,6 +80,9 @@ export default function CoursePlayer() {
   const uiTickRef = useRef(null);
   const playerWrapperRef = useRef(null);
   const containerId = 'yt-player-container';
+  // Guards the brief window after Replay so the next UI tick doesn't see
+  // t >= chapEnd (player hasn't finished the seek yet) and re-show overlay.
+  const replayGuardUntilRef = useRef(0);
 
   // Keep the latest lesson id in a ref so the beforeunload handler always has it.
   const currentLessonIdRef = useRef(null);
@@ -112,20 +119,41 @@ export default function CoursePlayer() {
   };
 
   // ----- UI tick: keep seek bar in sync while playing -----
+  // Overlay appears ONLY at 100% completion:
+  //   • Full-video lessons → the YouTube ENDED state fires naturally (handled
+  //     in onStateChange). No pre-empt; the video plays through.
+  //   • Chapter-lessons (end_seconds > 0) → the underlying video keeps going
+  //     past the chapter end, so we DO have to pause here when t reaches
+  //     end_seconds. But no early pre-empt — pause exactly at the chapter end.
   useEffect(() => {
     clearInterval(uiTickRef.current);
     if (isPlaying) {
       uiTickRef.current = setInterval(() => {
         if (!playerRef.current) return;
         try {
-          setCurrentTime(playerRef.current.getCurrentTime?.() || 0);
+          const t = playerRef.current.getCurrentTime?.() || 0;
           const dur = playerRef.current.getDuration?.() || 0;
+          setCurrentTime(t);
           if (dur > 0) setDuration(dur);
+
+          // Only intervene for chapter-lessons. Full-video lessons play to
+          // the natural ENDED state — no pause from us.
+          const lesson = lessons.find((l) => l.id === currentLessonId);
+          const chapEnd = Number(lesson?.end_seconds) || 0;
+          if (chapEnd > 0 && t >= chapEnd) {
+            // Skip the trigger briefly after a Replay — the player's reported
+            // time can lag the seek by a few hundred ms, causing the overlay
+            // to immediately re-appear right after dismissing it.
+            if (Date.now() < replayGuardUntilRef.current) return;
+            try { playerRef.current.pauseVideo(); } catch {}
+            setShowNextOverlay(true);
+          }
         } catch {}
       }, UI_TICK_MS);
     }
     return () => clearInterval(uiTickRef.current);
-  }, [isPlaying]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, currentLessonId]);
 
   // ----- Mount player on lesson change -----
   useEffect(() => {
@@ -136,7 +164,14 @@ export default function CoursePlayer() {
     if (!ytId) return;
 
     let mounted = true;
-    const startAt = Number(lesson.progress?.watched_seconds) || 0;
+    // For chapter-as-lesson (start_seconds > 0), resume from the saved
+    // position if it's inside the segment; otherwise start at the segment's
+    // start. This way a fresh lesson starts at start_seconds, not 0.
+    const lessonStart = Number(lesson.start_seconds) || 0;
+    const lessonEnd   = Number(lesson.end_seconds) || 0;
+    const savedPos    = Number(lesson.progress?.watched_seconds) || 0;
+    const inSegment   = savedPos > lessonStart && (lessonEnd === 0 || savedPos < lessonEnd);
+    const startAt     = inSegment ? savedPos : lessonStart;
     setIsPlaying(false);
     setCurrentTime(startAt);
     setDuration(Number(lesson.duration_seconds) || 0);
@@ -168,6 +203,8 @@ export default function CoursePlayer() {
             if (startAt > 0) {
               try { event.target.seekTo(startAt, true); } catch {}
             }
+            // Preserve playback speed across lessons
+            try { event.target.setPlaybackRate(playbackRate); } catch {}
             try { setDuration(event.target.getDuration?.() || 0); } catch {}
           },
           onStateChange: async (event) => {
@@ -325,6 +362,15 @@ export default function CoursePlayer() {
     } catch {}
   };
 
+  const changeSpeed = (rate) => {
+    if (!playerRef.current) return;
+    try {
+      playerRef.current.setPlaybackRate(rate);
+      setPlaybackRate(rate);
+    } catch {}
+    setSpeedMenuOpen(false);
+  };
+
   // ----- Render -----
   if (loading) return <Loader />;
   if (!course) {
@@ -380,11 +426,22 @@ export default function CoursePlayer() {
         <div className="lg:col-span-3 space-y-3">
           <div
             ref={playerWrapperRef}
-            className="card p-0 overflow-hidden bg-black relative group select-none"
+            className={`card p-0 overflow-hidden bg-black relative group select-none ${
+              isFullscreen ? 'flex items-center justify-center !rounded-none border-none' : ''
+            }`}
             onContextMenu={(e) => e.preventDefault()}
           >
             {currentYtId ? (
-              <div className="aspect-video w-full relative">
+              <div
+                className="aspect-video w-full relative"
+                style={isFullscreen ? {
+                  // Fill whichever dimension hits first while preserving 16:9.
+                  width: 'min(100vw, 177.78vh)',
+                  height: 'min(100vh, 56.25vw)',
+                  maxWidth: '100vw',
+                  maxHeight: '100vh',
+                } : undefined}
+              >
                 <div id={containerId} className="w-full h-full pointer-events-none" />
 
                 {/* Click anywhere on the video → play/pause */}
@@ -426,7 +483,17 @@ export default function CoursePlayer() {
                           <p className="text-base font-medium text-gray-800 mt-1 mb-4">{nextLesson.title}</p>
                           <div className="flex flex-col sm:flex-row gap-2">
                             <button
-                              onClick={() => { setShowNextOverlay(false); seekTo(0); try { playerRef.current?.playVideo?.(); } catch {} }}
+                              onClick={() => {
+                                // Replay = seek to the lesson's start (not 0
+                                // — chapter-lessons start mid-video). Guard
+                                // the UI tick so it doesn't re-fire the
+                                // overlay before the seek registers.
+                                replayGuardUntilRef.current = Date.now() + 1500;
+                                setShowNextOverlay(false);
+                                const startAt = Number(currentLesson?.start_seconds) || 0;
+                                seekTo(startAt);
+                                try { playerRef.current?.playVideo?.(); } catch {}
+                              }}
                               className="btn-secondary btn-sm flex-1 justify-center"
                             >
                               Replay
@@ -502,6 +569,36 @@ export default function CoursePlayer() {
                       {formatDuration(currentTime)} / {formatDuration(duration)}
                     </span>
                     <div className="flex-1" />
+                    {/* Playback speed picker */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setSpeedMenuOpen((v) => !v); }}
+                        className="px-2 py-1.5 rounded hover:bg-white/10 text-xs font-medium tabular-nums"
+                        title="Playback speed"
+                      >
+                        {playbackRate}x
+                      </button>
+                      {speedMenuOpen && (
+                        <div
+                          className="absolute bottom-full right-0 mb-1 bg-black/90 rounded-lg shadow-lg py-1 min-w-[80px] z-50"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => changeSpeed(r)}
+                              className={`block w-full text-left px-3 py-1.5 text-xs hover:bg-white/10 tabular-nums ${
+                                playbackRate === r ? 'text-indigo-400 font-semibold' : 'text-white'
+                              }`}
+                            >
+                              {r}x
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
@@ -607,43 +704,93 @@ export default function CoursePlayer() {
               Lessons <span className="text-xs text-gray-400 font-normal">({lessons.length})</span>
             </h3>
           </div>
-          <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
-            {lessons.map((l, idx) => {
-              const lpct = l.progress?.percent_complete || 0;
-              const done = l.progress?.completed;
-              const active = l.id === currentLessonId;
-              return (
-                <button
-                  key={l.id}
-                  onClick={() => setCurrentLessonId(l.id)}
-                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${active ? 'bg-indigo-50' : ''}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-0.5">
-                      {done ? (
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <PlayCircle className={`w-5 h-5 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
-                      )}
+          <div className="max-h-[600px] overflow-y-auto">
+            {(() => {
+              if (lessons.length === 0) {
+                return (
+                  <p className="text-center text-sm text-gray-400 py-8 px-4">
+                    No lessons in this course yet.
+                  </p>
+                );
+              }
+              // Group by section_name preserving order
+              const groups = [];
+              const groupIndex = new Map();
+              lessons.forEach((l) => {
+                const key = l.section_name || '';
+                if (!groupIndex.has(key)) {
+                  groupIndex.set(key, groups.length);
+                  groups.push({ name: key, lessons: [] });
+                }
+                groups[groupIndex.get(key)].lessons.push(l);
+              });
+              return groups.map((g, gIdx) => (
+                <div key={gIdx}>
+                  {g.name && (
+                    <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center justify-between">
+                      <span>{g.name}</span>
+                      <span className="text-gray-400 normal-case font-medium">
+                        {g.lessons.filter((l) => l.progress?.completed).length}/{g.lessons.length}
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-medium ${active ? 'text-indigo-700' : 'text-gray-800'} truncate`}>
-                        {idx + 1}. {l.title}
-                      </p>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
-                        {l.duration_seconds > 0 && <span>{formatDuration(l.duration_seconds)}</span>}
-                        {lpct > 0 && !done && <span>· {lpct}% watched</span>}
-                      </div>
-                    </div>
+                  )}
+                  <div className="divide-y divide-gray-100">
+                    {g.lessons.map((l, idx) => {
+                      const lpct = l.progress?.percent_complete || 0;
+                      const done = l.progress?.completed;
+                      const active = l.id === currentLessonId;
+                      // Display lesson duration: if it's a chapter, use segment length
+                      let displayDur = Number(l.duration_seconds) || 0;
+                      const segStart = Number(l.start_seconds) || 0;
+                      const segEnd   = Number(l.end_seconds) || 0;
+                      if (segEnd > 0) displayDur = segEnd - segStart;
+                      const ytId = extractYouTubeId(l.video_url);
+                      return (
+                        <button
+                          key={l.id}
+                          onClick={() => setCurrentLessonId(l.id)}
+                          className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${active ? 'bg-indigo-50' : ''}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Thumbnail with status icon overlay */}
+                            <div className="flex-shrink-0 relative">
+                              {ytId ? (
+                                <img
+                                  src={ytThumbnail(ytId, 'default')}
+                                  alt=""
+                                  className={`w-16 h-9 rounded object-cover ${active ? 'ring-2 ring-indigo-500' : ''}`}
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="w-16 h-9 rounded bg-gray-100 flex items-center justify-center">
+                                  <PlayCircle className="w-4 h-4 text-gray-300" />
+                                </div>
+                              )}
+                              <div className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
+                                {done ? (
+                                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                ) : (
+                                  <PlayCircle className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
+                                )}
+                              </div>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-medium ${active ? 'text-indigo-700' : 'text-gray-800'} truncate`}>
+                                {idx + 1}. {l.title}
+                              </p>
+                              <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+                                {displayDur > 0 && <span>{formatDuration(displayDur)}</span>}
+                                {lpct > 0 && !done && <span>· {lpct}% watched</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                </button>
-              );
-            })}
-            {lessons.length === 0 && (
-              <p className="text-center text-sm text-gray-400 py-8 px-4">
-                No lessons in this course yet.
-              </p>
-            )}
+                </div>
+              ));
+            })()}
           </div>
         </div>
       </div>

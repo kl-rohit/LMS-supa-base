@@ -1,9 +1,11 @@
 // Parent dashboard — high-level summary for the linked student.
 
 import { useEffect, useState } from 'react';
-import { Calendar, Check, IndianRupee } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Calendar, Check, IndianRupee, PlayCircle, ChevronRight } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
+import { extractYouTubeId, ytThumbnail, formatDuration } from '../../utils/youtube';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -12,6 +14,7 @@ export default function PortalDashboard() {
   const [student, setStudent] = useState(null);
   const [fees, setFees] = useState(null);
   const [recentClasses, setRecentClasses] = useState([]);
+  const [continueWatching, setContinueWatching] = useState(null);
 
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -20,16 +23,18 @@ export default function PortalDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const [me, monthFees, att] = await Promise.all([
+        const [me, monthFees, att, cw] = await Promise.all([
           api.get('/portal/me'),
           api.get(`/portal/fees?month=${ym}`),
           api.get('/portal/attendance'),
+          api.get('/portal/continue-watching').catch(() => ({ course: null })),
         ]);
         if (cancelled) return;
         setStudent(me.student);
         setFees(monthFees);
         const attendance = att.attendance || [];
         setRecentClasses(attendance.slice(0, 5));
+        setContinueWatching(cw?.course ? cw : null);
       } catch (e) {
         // /portal/me will fail if no StudentLogins row exists — show a friendly message
       } finally {
@@ -94,6 +99,58 @@ export default function PortalDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Continue watching — most recently touched lesson */}
+      {continueWatching?.course && continueWatching?.lesson && (() => {
+        const lesson = continueWatching.lesson;
+        const course = continueWatching.course;
+        const ytId = extractYouTubeId(lesson.video_url);
+        const pct = lesson.progress?.percent_complete || 0;
+        const watched = lesson.progress?.watched_seconds || 0;
+        return (
+          <Link
+            to={`/portal/lessons/${course.id}`}
+            className="card flex items-center gap-4 hover:border-indigo-300 hover:shadow-md transition-all group"
+          >
+            <div className="relative flex-shrink-0">
+              {ytId ? (
+                <img
+                  src={ytThumbnail(ytId, 'mqdefault')}
+                  alt=""
+                  className="w-32 h-18 rounded-lg object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-32 h-18 rounded-lg bg-gray-100 flex items-center justify-center">
+                  <PlayCircle className="w-8 h-8 text-gray-300" />
+                </div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center group-hover:bg-indigo-600 transition-colors">
+                  <PlayCircle className="w-6 h-6 text-white" fill="white" />
+                </div>
+              </div>
+              {/* Progress bar overlay */}
+              {pct > 0 && (
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40 rounded-b-lg overflow-hidden">
+                  <div className="h-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-wide text-indigo-600 font-semibold">Continue watching</p>
+              <p className="text-base font-semibold text-gray-900 truncate mt-0.5">{lesson.title}</p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{course.name}</p>
+              {watched > 0 && (
+                <p className="text-xs text-gray-400 mt-1">
+                  At {formatDuration(watched)} · {pct}% watched
+                </p>
+              )}
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-indigo-500 flex-shrink-0" />
+          </Link>
+        );
+      })()}
 
       <div className="card">
         <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">

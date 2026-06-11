@@ -38,6 +38,9 @@ const NUMERIC_FIELDS = [
   'duration_hours', 'fee_charged', 'fee_online', 'fee_offline', 'fee_offline_group',
   'amount', 'month', 'year', 'fee_month', 'fee_year',
   'min_classes_per_month',
+  // Lessons module
+  'duration_seconds', 'order_index', 'start_seconds', 'end_seconds',
+  'watched_seconds', 'percent_complete', 'points',
 ];
 
 function normalize(row) {

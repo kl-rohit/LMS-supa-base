@@ -78,6 +78,40 @@ export function currentChapterIndex(chapters, timeSeconds) {
   return idx;
 }
 
+// Parse a time string in the admin lesson editor.
+// Accepts:
+//   "150"       → 150 (raw seconds)
+//   "2:30"      → 150
+//   "0:02:30"   → 150
+//   "1:05:20"   → 3920
+// Returns 0 for blank/null/invalid input.
+export function parseTimeString(input) {
+  if (input === null || input === undefined || input === '') return 0;
+  const s = String(input).trim();
+  if (s === '') return 0;
+  // Pure number = seconds
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.floor(Number(s));
+  // Colon-separated parts
+  const m = s.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (!m) return 0;
+  const h   = m[1] ? parseInt(m[1], 10) : 0;
+  const min = parseInt(m[2], 10);
+  const sec = parseInt(m[3], 10);
+  if (min >= 60 || sec >= 60) return 0;
+  return h * 3600 + min * 60 + sec;
+}
+
+// Friendly long duration: "2h 35m" / "45m" / "30s"
+export function formatDurationLong(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (s === 0) return '';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
 // Format seconds as "m:ss" or "h:mm:ss"
 export function formatDuration(seconds) {
   const s = Math.max(0, Math.floor(Number(seconds) || 0));

@@ -93,6 +93,41 @@ router.get('/fees', async (req, res) => {
 // All endpoints below verify that req.studentId is enrolled before returning
 // any data. No cross-student access possible.
 
+// GET /api/portal/continue-watching — the lesson the student last touched
+// Returns { course, lesson } or { course: null } if nothing watched yet.
+router.get('/continue-watching', async (req, res) => {
+  try {
+    const sid = safeId(req.studentId);
+    if (!sid) return res.json({ course: null });
+
+    // Find this student's most recently updated progress row that's NOT completed.
+    // We sort by MODIFIEDTIME (auto-managed by Catalyst on every update).
+    const progressRows = await zcql(req,
+      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} ORDER BY LessonProgress.MODIFIEDTIME DESC`
+    );
+    const all = unwrap(progressRows, 'LessonProgress');
+    // Prefer the most recent IN-PROGRESS row; fall back to most recent completed.
+    const inProgress = all.find((p) => !p.completed) || all[0];
+    if (!inProgress) return res.json({ course: null });
+
+    let lesson = null, course = null;
+    try { lesson = await getById(req, 'Lessons', inProgress.lesson_id); } catch {}
+    if (!lesson) return res.json({ course: null });
+    try { course = await getById(req, 'Courses', lesson.course_id); } catch {}
+    if (!course) return res.json({ course: null });
+
+    res.json({
+      course: normalize(course),
+      lesson: {
+        ...normalize(lesson),
+        progress: normalize(inProgress),
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch continue-watching', detail: e.message });
+  }
+});
+
 // GET /api/portal/courses — courses the linked student is enrolled in
 router.get('/courses', async (req, res) => {
   try {
@@ -129,12 +164,23 @@ router.get('/courses', async (req, res) => {
         }
       } catch {}
 
+      // Compute total course duration. For chapter-lessons (start/end set),
+      // sum (end - start). For full-video lessons, use duration_seconds.
+      let totalSeconds = 0;
+      for (const l of lessons) {
+        const sec = (Number(l.end_seconds) || 0) > 0
+          ? (Number(l.end_seconds) - (Number(l.start_seconds) || 0))
+          : (Number(l.duration_seconds) || 0);
+        totalSeconds += Math.max(0, sec);
+      }
+
       return {
         ...normalize(course),
         enrollment_id: en.id,
         lessons_total: lessons.length,
         lessons_completed: completed,
         progress_percent: lessons.length > 0 ? Math.round((completed / lessons.length) * 100) : 0,
+        total_duration_seconds: totalSeconds,
       };
     }));
     res.json({ courses: results.filter(Boolean) });
@@ -206,6 +252,14 @@ router.post('/lessons/:id/progress', async (req, res) => {
     const watched = Math.max(0, Number(req.body.watched_seconds) || 0);
     const duration = Math.max(0, Number(req.body.duration_seconds) || Number(lesson.duration_seconds) || 0);
 
+    // Section / chapter-as-lesson support: if the lesson is a slice of a
+    // longer video (start_seconds > 0 or end_seconds > 0), percent_complete
+    // is computed relative to [start, end], not the full video.
+    const startSec = Number(lesson.start_seconds) || 0;
+    const endSec   = Number(lesson.end_seconds) || 0;
+    const effectiveEnd = endSec > 0 ? endSec : duration;
+    const segmentLen   = Math.max(0, effectiveEnd - startSec);
+
     // Upsert: find existing progress row
     const existingRows = await zcql(req,
       `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.lesson_id = ${lid}`
@@ -213,10 +267,14 @@ router.post('/lessons/:id/progress', async (req, res) => {
     const existing = unwrap(existingRows, 'LessonProgress')[0];
 
     // Progress only moves forward: keep the highest watched_seconds ever recorded.
-    // percent_complete + completed are derived from that max, so re-watching
-    // an earlier segment can't undo prior progress.
+    // watched_seconds is the ABSOLUTE video position (so resume works correctly).
+    // percent_complete is RELATIVE to the segment [start, end].
     const maxWatched = Math.max(watched, Number(existing?.watched_seconds) || 0);
-    const percent = duration > 0 ? Math.min(100, Math.round((maxWatched / duration) * 100)) : 0;
+    // Clip to the segment for percent calc: how far into [start, end] are we?
+    const watchedInSegment = Math.max(0, Math.min(maxWatched, effectiveEnd) - startSec);
+    const percent = segmentLen > 0
+      ? Math.min(100, Math.round((watchedInSegment / segmentLen) * 100))
+      : 0;
     const completed = percent >= 90; // 90%+ counts as complete
 
     const payload = {

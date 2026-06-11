@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Video, PlayCircle, CheckCircle2 } from 'lucide-react';
+import { Video, PlayCircle, CheckCircle2, Clock } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import EmptyState from '../../components/EmptyState';
+import { formatDurationLong } from '../../utils/youtube';
 
 export default function PortalCourses() {
   const [loading, setLoading] = useState(true);
@@ -51,6 +52,15 @@ export default function PortalCourses() {
             {c.description && (
               <p className="text-xs text-gray-500 line-clamp-2 mb-3">{c.description}</p>
             )}
+            <div className="flex items-center gap-3 mb-3 text-xs text-gray-500">
+              <span>{c.lessons_total} lesson{c.lessons_total === 1 ? '' : 's'}</span>
+              {c.total_duration_seconds > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatDurationLong(c.total_duration_seconds)}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
                 <div

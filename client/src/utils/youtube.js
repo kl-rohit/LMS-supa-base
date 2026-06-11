@@ -78,6 +78,40 @@ export function currentChapterIndex(chapters, timeSeconds) {
   return idx;
 }
 
+// Extract a Google Drive file ID from any common URL format:
+//   https://drive.google.com/file/d/FILEID/view?usp=sharing
+//   https://drive.google.com/file/d/FILEID/preview
+//   https://drive.google.com/open?id=FILEID
+//   https://docs.google.com/document/d/FILEID/edit  ← Google Docs / Sheets / Slides
+// Returns null if not recognizable.
+export function extractDriveId(url) {
+  if (!url || typeof url !== 'string') return null;
+  const s = url.trim();
+  // /file/d/FILEID/ or /document/d/FILEID/
+  let m = s.match(/(?:drive|docs)\.google\.com\/[^/]+\/d\/([a-zA-Z0-9_-]{10,})/);
+  if (m) return m[1];
+  // ?id=FILEID
+  m = s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (m) return m[1];
+  return null;
+}
+
+// Build an embed URL for a Google Drive file. Works for PDFs, images, docs,
+// sheets, slides — all return a previewable iframe page.
+export function driveEmbedUrl(url) {
+  const id = extractDriveId(url);
+  if (!id) return null;
+  // For Docs/Sheets/Slides the path uses /document, /spreadsheets, etc.
+  // Drive's universal preview at file/d works for any file type uploaded
+  // directly to Drive. For Google-native docs, use the original /preview.
+  const s = url.trim();
+  if (/docs\.google\.com\/(document|spreadsheets|presentation)/.test(s)) {
+    // Strip /edit / /view, append /preview
+    return s.replace(/\/(edit|view|comment)[^/?]*\/?.*$/, '/preview').replace(/\/$/, '/preview');
+  }
+  return `https://drive.google.com/file/d/${id}/preview`;
+}
+
 // Parse a time string in the admin lesson editor.
 // Accepts:
 //   "150"       → 150 (raw seconds)

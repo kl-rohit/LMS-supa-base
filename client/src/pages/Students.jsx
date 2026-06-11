@@ -36,6 +36,7 @@ const emptyForm = {
   fee_offline: '',
   fee_offline_group: '',
   min_classes_per_month: '',
+  date_of_birth: '',
   notes: '',
 };
 
@@ -103,6 +104,8 @@ export default function Students() {
         fee_offline: form.fee_offline ? Number(form.fee_offline) : 0,
         fee_offline_group: form.fee_offline_group ? Number(form.fee_offline_group) : 0,
         min_classes_per_month: form.min_classes_per_month ? Number(form.min_classes_per_month) : 0,
+        // Trim empty DOB so backend doesn't reject empty string on Date column
+        date_of_birth: form.date_of_birth || null,
       };
       if (editingStudent) {
         await api.put(`/students/${editingStudent.id}`, payload);
@@ -132,6 +135,8 @@ export default function Students() {
       fee_offline: student.fee_offline || '',
       fee_offline_group: student.fee_offline_group || '',
       min_classes_per_month: student.min_classes_per_month || '',
+      // Catalyst Date columns come back as ISO timestamp; slice to YYYY-MM-DD
+      date_of_birth: student.date_of_birth ? String(student.date_of_birth).slice(0, 10) : '',
       notes: student.notes || '',
     });
     setModalOpen(true);
@@ -650,6 +655,19 @@ export default function Students() {
                 />
               </div>
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
+            <input
+              type="date"
+              value={form.date_of_birth}
+              onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
+              className="input-field"
+              max={new Date().toISOString().slice(0, 10)}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Shown in the Upcoming Birthdays card on the Dashboard. Optional.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Minimum classes per month</label>

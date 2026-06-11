@@ -251,14 +251,10 @@ router.post('/lessons/:id/progress', async (req, res) => {
 
     const watched = Math.max(0, Number(req.body.watched_seconds) || 0);
     const duration = Math.max(0, Number(req.body.duration_seconds) || Number(lesson.duration_seconds) || 0);
-
-    // Section / chapter-as-lesson support: if the lesson is a slice of a
-    // longer video (start_seconds > 0 or end_seconds > 0), percent_complete
-    // is computed relative to [start, end], not the full video.
-    const startSec = Number(lesson.start_seconds) || 0;
-    const endSec   = Number(lesson.end_seconds) || 0;
-    const effectiveEnd = endSec > 0 ? endSec : duration;
-    const segmentLen   = Math.max(0, effectiveEnd - startSec);
+    // For document-type lessons, the body sends { completed: true } when
+    // the parent clicks "Mark as completed". Track via explicit flag.
+    const explicitCompleted = req.body.completed === true || req.body.completed === 'true';
+    const isDocument = (lesson.content_type || 'video') === 'document';
 
     // Upsert: find existing progress row
     const existingRows = await zcql(req,
@@ -266,25 +262,43 @@ router.post('/lessons/:id/progress', async (req, res) => {
     );
     const existing = unwrap(existingRows, 'LessonProgress')[0];
 
-    // Progress only moves forward: keep the highest watched_seconds ever recorded.
-    // watched_seconds is the ABSOLUTE video position (so resume works correctly).
-    // percent_complete is RELATIVE to the segment [start, end].
-    const maxWatched = Math.max(watched, Number(existing?.watched_seconds) || 0);
-    // Clip to the segment for percent calc: how far into [start, end] are we?
-    const watchedInSegment = Math.max(0, Math.min(maxWatched, effectiveEnd) - startSec);
-    const percent = segmentLen > 0
-      ? Math.min(100, Math.round((watchedInSegment / segmentLen) * 100))
-      : 0;
-    const completed = percent >= 90; // 90%+ counts as complete
-
-    const payload = {
-      student_id: String(sid),
-      lesson_id: String(lid),
-      watched_seconds: maxWatched,
-      duration_seconds: duration,
-      percent_complete: percent,
-      completed,
-    };
+    let payload;
+    if (isDocument) {
+      // Document lesson: progress is binary. Opened = 50%, Marked = 100%.
+      // Never regress: max(existing percent, current).
+      const wasCompleted = existing?.completed === true || existing?.completed === 1;
+      const wasOpened    = (Number(existing?.percent_complete) || 0) > 0 || wasCompleted;
+      const completed    = explicitCompleted || wasCompleted;
+      const percent      = completed ? 100 : (wasOpened || explicitCompleted ? 50 : 50);
+      payload = {
+        student_id: String(sid),
+        lesson_id: String(lid),
+        watched_seconds: completed ? 100 : 50, // dummy values to satisfy not-null
+        duration_seconds: 100,
+        percent_complete: percent,
+        completed,
+      };
+    } else {
+      // Video lesson: same as before — chapter-aware segment percent.
+      const startSec = Number(lesson.start_seconds) || 0;
+      const endSec   = Number(lesson.end_seconds) || 0;
+      const effectiveEnd = endSec > 0 ? endSec : duration;
+      const segmentLen   = Math.max(0, effectiveEnd - startSec);
+      const maxWatched = Math.max(watched, Number(existing?.watched_seconds) || 0);
+      const watchedInSegment = Math.max(0, Math.min(maxWatched, effectiveEnd) - startSec);
+      const percent = segmentLen > 0
+        ? Math.min(100, Math.round((watchedInSegment / segmentLen) * 100))
+        : 0;
+      const completed = percent >= 90;
+      payload = {
+        student_id: String(sid),
+        lesson_id: String(lid),
+        watched_seconds: maxWatched,
+        duration_seconds: duration,
+        percent_complete: percent,
+        completed,
+      };
+    }
 
     let row;
     if (existing) {

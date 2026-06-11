@@ -107,9 +107,14 @@ router.get('/activity', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { course_id, title, description, video_url, duration_seconds, order_index,
-            section_name, start_seconds, end_seconds } = req.body;
-    if (!course_id || !title || !video_url) {
-      return res.status(400).json({ error: 'course_id, title, video_url are required' });
+            section_name, start_seconds, end_seconds,
+            content_type, content_url } = req.body;
+    // For video lessons, video_url is the primary URL; for document
+    // lessons, content_url is. Require at least one based on type.
+    const type = content_type || 'video';
+    const url = type === 'document' ? content_url : video_url;
+    if (!course_id || !title || !url) {
+      return res.status(400).json({ error: 'course_id, title, and URL are required' });
     }
     // Default order_index = (max for this course) + 1
     let nextOrder = Number(order_index);
@@ -124,7 +129,9 @@ router.post('/', async (req, res) => {
       course_id: String(course_id),
       title,
       description: description || '',
-      video_url,
+      video_url: type === 'video' ? url : '',
+      content_url: type === 'document' ? url : '',
+      content_type: type,
       duration_seconds: Number(duration_seconds) || 0,
       order_index: nextOrder,
       section_name: section_name || '',
@@ -210,7 +217,8 @@ router.put('/:id', async (req, res) => {
     const existing = await getById(req, 'Lessons', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Lesson not found' });
     const { title, description, video_url, duration_seconds, order_index,
-            section_name, start_seconds, end_seconds } = req.body;
+            section_name, start_seconds, end_seconds,
+            content_type, content_url } = req.body;
     const patch = {};
     if (title !== undefined)            patch.title = title;
     if (description !== undefined)      patch.description = description;
@@ -220,6 +228,8 @@ router.put('/:id', async (req, res) => {
     if (section_name !== undefined)     patch.section_name = section_name;
     if (start_seconds !== undefined)    patch.start_seconds = Number(start_seconds) || 0;
     if (end_seconds !== undefined)      patch.end_seconds = Number(end_seconds) || 0;
+    if (content_type !== undefined)     patch.content_type = content_type;
+    if (content_url !== undefined)      patch.content_url = content_url;
     const updated = await update(req, 'Lessons', req.params.id, patch);
     res.json({ lesson: normalize(updated) });
   } catch (e) {

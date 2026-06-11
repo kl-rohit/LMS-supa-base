@@ -10,17 +10,21 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Cake,
+  MessageSquare,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import StatsCard from '../components/StatsCard';
 import Loader from '../components/Loader';
 import { useRevealTimer } from '../hooks/useRevealTimer';
+import { normalizeMobileForWhatsApp } from '../utils/phone';
 
 export default function Dashboard() {
   // Bank-style mask for the financial stat. Auto-hides 20s after toggle.
   const amountReveal = useRevealTimer(20000);
   const [data, setData] = useState(null);
+  const [birthdays, setBirthdays] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -31,8 +35,12 @@ export default function Dashboard() {
   const fetchDashboard = async () => {
     try {
       setLoading(true);
-      const result = await api.get('/dashboard');
+      const [result, bday] = await Promise.all([
+        api.get('/dashboard'),
+        api.get('/dashboard/birthdays?days=30').catch(() => ({ birthdays: [] })),
+      ]);
       setData(result);
+      setBirthdays(bday.birthdays || []);
     } catch (err) {
       toast.error('Failed to load dashboard: ' + err.message);
     } finally {
@@ -118,6 +126,60 @@ export default function Dashboard() {
           subtitle="This month"
         />
       </div>
+
+      {/* Upcoming Birthdays — next 30 days */}
+      {birthdays.length > 0 && (
+        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Cake className="w-5 h-5 text-pink-600" />
+            <h3 className="font-semibold text-pink-800">Upcoming Birthdays</h3>
+            <span className="badge bg-pink-100 text-pink-700 ml-auto">{birthdays.length} in next 30 days</span>
+          </div>
+          <div className="space-y-2">
+            {birthdays.map((b) => {
+              const isToday = b.days_until === 0;
+              const isTomorrow = b.days_until === 1;
+              const dobDate = new Date(b.next_birthday + 'T00:00:00');
+              const phone = normalizeMobileForWhatsApp(b.mobile_number);
+              const message = `🎂 Happy birthday ${b.name}! Wishing you a wonderful year ahead.\n\n— Veena Dhwani Academy`;
+              const waLink = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}` : null;
+              return (
+                <div key={b.student_id} className="flex items-center gap-3 bg-white border border-pink-100 rounded-lg px-3 py-2">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${isToday ? 'bg-pink-500 text-white' : 'bg-pink-100 text-pink-700'}`}>
+                    {b.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {b.name}
+                      {b.turning_age && (
+                        <span className="text-xs font-normal text-gray-400 ml-2">turning {b.turning_age}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {dobDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', weekday: 'short' })}
+                      {' · '}
+                      {isToday ? <span className="font-semibold text-pink-600">TODAY 🎉</span>
+                        : isTomorrow ? <span className="font-medium text-pink-600">Tomorrow</span>
+                        : <>in {b.days_until} days</>}
+                    </p>
+                  </div>
+                  {waLink && (
+                    <a
+                      href={waLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-md text-green-600 hover:bg-green-50"
+                      title={`Send birthday wishes to ${b.name} on WhatsApp`}
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Absence Alerts */}
       {absenceAlerts.length > 0 && (

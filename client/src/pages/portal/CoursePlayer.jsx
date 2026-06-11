@@ -13,12 +13,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CheckCircle2, PlayCircle, Lock, Play, Pause, Maximize2, Minimize2,
   Volume2, VolumeX, List, ChevronRight, ChevronLeft,
-  PanelRightClose, PanelRightOpen, SkipForward,
+  PanelRightClose, PanelRightOpen, SkipForward, FileText,
 } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import EmptyState from '../../components/EmptyState';
-import { extractYouTubeId, ytThumbnail, formatDuration, parseChapters, currentChapterIndex } from '../../utils/youtube';
+import { extractYouTubeId, ytThumbnail, formatDuration, parseChapters, currentChapterIndex, driveEmbedUrl } from '../../utils/youtube';
 
 const UI_TICK_MS = 500;
 let YT_SCRIPT_LOADED = false;
@@ -79,7 +79,12 @@ export default function CoursePlayer() {
   const playerRef = useRef(null);
   const uiTickRef = useRef(null);
   const playerWrapperRef = useRef(null);
-  const containerId = 'yt-player-container';
+  // Stable React-managed wrapper for the YT iframe. We programmatically
+  // append a fresh child div inside it before each YT.Player mount, so
+  // YT's "replace the element with an iframe" behavior never touches a
+  // node that React is tracking — preventing removeChild conflicts on
+  // unmount / lesson-type switch.
+  const ytContainerRef = useRef(null);
   // Guards the brief window after Replay so the next UI tick doesn't see
   // t >= chapEnd (player hasn't finished the seek yet) and re-show overlay.
   const replayGuardUntilRef = useRef(0);
@@ -160,6 +165,11 @@ export default function CoursePlayer() {
     if (!currentLessonId) return;
     const lesson = lessons.find((l) => l.id === currentLessonId);
     if (!lesson) return;
+    // Document lessons don't use the YT player at all
+    if (lesson.content_type === 'document') {
+      setShowNextOverlay(false);
+      return;
+    }
     const ytId = extractYouTubeId(lesson.video_url);
     if (!ytId) return;
 
@@ -184,7 +194,23 @@ export default function CoursePlayer() {
       try { playerRef.current?.destroy?.(); } catch {}
       playerRef.current = null;
 
-      playerRef.current = new window.YT.Player(containerId, {
+      // Wait for the wrapper to be mounted in DOM
+      if (!ytContainerRef.current) return;
+
+      // YT.Player REPLACES the target element with an iframe. We can't let it
+      // replace a React-managed node. So create a throwaway child div inside
+      // our wrapper, and pass that to YT. After destroy() the throwaway is
+      // gone; React's wrapper stays intact for the next mount.
+      // Clear any leftover children from a previous mount first.
+      while (ytContainerRef.current.firstChild) {
+        ytContainerRef.current.removeChild(ytContainerRef.current.firstChild);
+      }
+      const target = document.createElement('div');
+      target.style.width = '100%';
+      target.style.height = '100%';
+      ytContainerRef.current.appendChild(target);
+
+      playerRef.current = new window.YT.Player(target, {
         videoId: ytId,
         host: 'https://www.youtube-nocookie.com',
         playerVars: {
@@ -329,6 +355,23 @@ export default function CoursePlayer() {
     };
   }, []);
 
+  // ----- Document lesson: mark as "opened" (50%) on first view -----
+  // Placed here (before any early returns) to satisfy the rules of hooks.
+  useEffect(() => {
+    const lesson = lessons.find((l) => l.id === currentLessonId);
+    if (!lesson || lesson.content_type !== 'document') return;
+    if (lesson.progress?.completed) return;
+    if ((lesson.progress?.percent_complete || 0) >= 50) return;
+    let cancelled = false;
+    api.post(`/portal/lessons/${lesson.id}/progress`, { watched_seconds: 1, duration_seconds: 100 })
+      .then((resp) => {
+        if (cancelled) return;
+        setLessons((prev) => prev.map((l) => l.id === lesson.id ? { ...l, progress: resp.progress } : l));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentLessonId, lessons]);
+
   const togglePlay = () => {
     if (!playerRef.current) return;
     try {
@@ -384,7 +427,9 @@ export default function CoursePlayer() {
   }
 
   const currentLesson = lessons.find((l) => l.id === currentLessonId);
-  const currentYtId = currentLesson ? extractYouTubeId(currentLesson.video_url) : null;
+  const isDocLesson = currentLesson?.content_type === 'document';
+  const currentYtId = currentLesson && !isDocLesson ? extractYouTubeId(currentLesson.video_url) : null;
+  const docEmbedUrl = isDocLesson ? driveEmbedUrl(currentLesson.content_url) : null;
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   // Chapters parsed from the lesson description (YouTube-style timestamps).
@@ -409,6 +454,18 @@ export default function CoursePlayer() {
     if (nextLesson) setCurrentLessonId(nextLesson.id);
   };
 
+  // "Mark as completed" for the active document lesson.
+  const markDocCompleted = async () => {
+    const lesson = lessons.find((l) => l.id === currentLessonId);
+    if (!lesson || lesson.content_type !== 'document') return;
+    try {
+      const resp = await api.post(`/portal/lessons/${lesson.id}/progress`, { completed: true });
+      setLessons((prev) => prev.map((l) => l.id === lesson.id ? { ...l, progress: resp.progress } : l));
+    } catch (err) {
+      // surface error via toast? keep silent for now
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -426,12 +483,33 @@ export default function CoursePlayer() {
         <div className="lg:col-span-3 space-y-3">
           <div
             ref={playerWrapperRef}
-            className={`card p-0 overflow-hidden bg-black relative group select-none ${
+            className={`card p-0 overflow-hidden ${isDocLesson ? 'bg-gray-100' : 'bg-black'} relative group select-none ${
               isFullscreen ? 'flex items-center justify-center !rounded-none border-none' : ''
             }`}
             onContextMenu={(e) => e.preventDefault()}
           >
-            {currentYtId ? (
+            {/* Document iframe — only when current lesson is a doc with a valid URL */}
+            {isDocLesson && docEmbedUrl && (
+              <div className="w-full bg-white" style={{ height: '75vh' }}>
+                <iframe
+                  src={docEmbedUrl}
+                  className="w-full h-full border-0"
+                  title={currentLesson.title}
+                  allow="autoplay; fullscreen"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              </div>
+            )}
+            {isDocLesson && !docEmbedUrl && (
+              <div className="aspect-video flex items-center justify-center text-gray-400 text-sm flex-col gap-2">
+                <FileText className="w-10 h-10" />
+                <p>Couldn't load this document. Check the Drive URL format.</p>
+              </div>
+            )}
+            {/* YT player block — always mounted (hidden when showing a doc).
+                This prevents React vs YouTube IFrame API fighting over the
+                same DOM node during lesson-type switches. */}
+            {!isDocLesson && currentYtId ? (
               <div
                 className="aspect-video w-full relative"
                 style={isFullscreen ? {
@@ -442,7 +520,7 @@ export default function CoursePlayer() {
                   maxHeight: '100vh',
                 } : undefined}
               >
-                <div id={containerId} className="w-full h-full pointer-events-none" />
+                <div ref={ytContainerRef} className="w-full h-full pointer-events-none" />
 
                 {/* Click anywhere on the video → play/pause */}
                 <button
@@ -610,11 +688,11 @@ export default function CoursePlayer() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : !isDocLesson ? (
               <div className="aspect-video flex items-center justify-center text-white text-sm">
                 No video selected
               </div>
-            )}
+            ) : null}
           </div>
 
           {currentLesson && (
@@ -658,6 +736,27 @@ export default function CoursePlayer() {
                   </div>
                   <span>{currentLesson.progress.percent_complete || 0}%</span>
                   {currentLesson.progress.completed && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                </div>
+              )}
+              {/* Mark-as-completed for document lessons */}
+              {isDocLesson && !currentLesson.progress?.completed && (
+                <button
+                  onClick={markDocCompleted}
+                  className="mt-3 w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg transition-colors"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Mark as completed
+                </button>
+              )}
+              {isDocLesson && currentLesson.progress?.completed && (
+                <div className="mt-3 px-3 py-2.5 rounded-lg bg-green-50 text-green-700 text-sm font-medium text-center flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Completed ✓
+                  {nextLesson && (
+                    <button onClick={goToNextLesson} className="ml-3 text-indigo-600 hover:text-indigo-800 underline">
+                      Next lesson →
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -744,7 +843,8 @@ export default function CoursePlayer() {
                       const segStart = Number(l.start_seconds) || 0;
                       const segEnd   = Number(l.end_seconds) || 0;
                       if (segEnd > 0) displayDur = segEnd - segStart;
-                      const ytId = extractYouTubeId(l.video_url);
+                      const isDocItem = l.content_type === 'document';
+                      const ytId = !isDocItem ? extractYouTubeId(l.video_url) : null;
                       return (
                         <button
                           key={l.id}
@@ -761,6 +861,10 @@ export default function CoursePlayer() {
                                   className={`w-16 h-9 rounded object-cover ${active ? 'ring-2 ring-indigo-500' : ''}`}
                                   loading="lazy"
                                 />
+                              ) : isDocItem ? (
+                                <div className={`w-16 h-9 rounded bg-blue-50 flex items-center justify-center ${active ? 'ring-2 ring-indigo-500' : ''}`}>
+                                  <FileText className="w-5 h-5 text-blue-500" />
+                                </div>
                               ) : (
                                 <div className="w-16 h-9 rounded bg-gray-100 flex items-center justify-center">
                                   <PlayCircle className="w-4 h-4 text-gray-300" />

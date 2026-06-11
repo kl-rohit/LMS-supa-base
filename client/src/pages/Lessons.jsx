@@ -21,6 +21,7 @@ import {
   Scissors,
   FolderTree,
   GripVertical,
+  FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -28,7 +29,7 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import { useConfirm } from '../contexts/ConfirmContext';
-import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters } from '../utils/youtube';
+import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters, extractDriveId } from '../utils/youtube';
 import {
   DndContext,
   PointerSensor,
@@ -59,8 +60,10 @@ function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
-  const ytId = extractYouTubeId(lesson.video_url);
-  const hasSegment = (lesson.start_seconds || 0) > 0 || (lesson.end_seconds || 0) > 0;
+  const isDoc = lesson.content_type === 'document';
+  const ytId = isDoc ? null : extractYouTubeId(lesson.video_url);
+  const hasSegment = !isDoc && ((lesson.start_seconds || 0) > 0 || (lesson.end_seconds || 0) > 0);
+  const openUrl = isDoc ? lesson.content_url : lesson.video_url;
   return (
     <div
       ref={setNodeRef}
@@ -78,20 +81,29 @@ function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
         <GripVertical className="w-4 h-4" />
       </button>
       <div className="text-sm font-semibold text-gray-400 w-6">{displayIdx + 1}.</div>
-      {ytId && (
+      {ytId ? (
         <img src={ytThumbnail(ytId)} alt="" className="w-24 h-14 rounded object-cover flex-shrink-0" loading="lazy" />
+      ) : (
+        <div className="w-24 h-14 rounded bg-blue-50 flex items-center justify-center flex-shrink-0">
+          <FileText className="w-6 h-6 text-blue-500" />
+        </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-gray-900 truncate">{lesson.title}</p>
+        <p className="font-medium text-gray-900 truncate flex items-center gap-2">
+          {lesson.title}
+          {isDoc && (
+            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-normal">PDF</span>
+          )}
+        </p>
         <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
           {hasSegment && (
             <span className="font-mono text-indigo-600">
               {formatDuration(lesson.start_seconds || 0)}–{lesson.end_seconds ? formatDuration(lesson.end_seconds) : 'end'}
             </span>
           )}
-          {!hasSegment && lesson.duration_seconds > 0 && <span>{formatDuration(lesson.duration_seconds)}</span>}
-          <a href={lesson.video_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-red-600 hover:text-red-700">
-            <Youtube className="w-3 h-3" /> Open
+          {!hasSegment && !isDoc && lesson.duration_seconds > 0 && <span>{formatDuration(lesson.duration_seconds)}</span>}
+          <a href={openUrl} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 ${isDoc ? 'text-blue-600 hover:text-blue-700' : 'text-red-600 hover:text-red-700'}`}>
+            {isDoc ? <FileText className="w-3 h-3" /> : <Youtube className="w-3 h-3" />} Open
           </a>
         </p>
       </div>
@@ -109,7 +121,9 @@ const blankCourse = { name: '', description: '', thumbnail_url: '' };
 const blankLesson = {
   title: '',
   description: '',
+  content_type: 'video',  // 'video' or 'document'
   video_url: '',
+  content_url: '',         // Drive URL for document-type lessons
   duration_seconds: 0,
   section_name: '',
   start_seconds_str: '',
@@ -287,7 +301,9 @@ export default function Lessons() {
     setLessonForm({
       title: l.title || '',
       description: l.description || '',
+      content_type: l.content_type || 'video',
       video_url: l.video_url || '',
+      content_url: l.content_url || '',
       duration_seconds: l.duration_seconds || 0,
       section_name: l.section_name || '',
       start_seconds_str: l.start_seconds ? formatDuration(l.start_seconds) : '',
@@ -296,16 +312,29 @@ export default function Lessons() {
     setLessonModalOpen(true);
   };
   const saveLesson = async () => {
-    if (!lessonForm.title.trim() || !lessonForm.video_url.trim()) {
-      toast.error('Title and video URL are required');
+    if (!lessonForm.title.trim()) {
+      toast.error('Title is required');
       return;
     }
-    if (!extractYouTubeId(lessonForm.video_url)) {
-      toast.error("Doesn't look like a valid YouTube URL");
+    const isDoc = lessonForm.content_type === 'document';
+    const url = isDoc ? lessonForm.content_url.trim() : lessonForm.video_url.trim();
+    if (!url) {
+      toast.error(isDoc ? 'Drive URL is required' : 'YouTube URL is required');
       return;
     }
-    const start = parseTimeString(lessonForm.start_seconds_str);
-    const end   = parseTimeString(lessonForm.end_seconds_str);
+    if (isDoc) {
+      if (!extractDriveId(url)) {
+        toast.error("Doesn't look like a valid Google Drive URL");
+        return;
+      }
+    } else {
+      if (!extractYouTubeId(url)) {
+        toast.error("Doesn't look like a valid YouTube URL");
+        return;
+      }
+    }
+    const start = isDoc ? 0 : parseTimeString(lessonForm.start_seconds_str);
+    const end   = isDoc ? 0 : parseTimeString(lessonForm.end_seconds_str);
     if (end > 0 && start >= end) {
       toast.error('End time must be after start time');
       return;
@@ -313,8 +342,10 @@ export default function Lessons() {
     const payload = {
       title: lessonForm.title,
       description: lessonForm.description,
-      video_url: lessonForm.video_url,
-      duration_seconds: Number(lessonForm.duration_seconds) || 0,
+      content_type: lessonForm.content_type,
+      video_url: isDoc ? '' : url,
+      content_url: isDoc ? url : '',
+      duration_seconds: isDoc ? 0 : (Number(lessonForm.duration_seconds) || 0),
       section_name: lessonForm.section_name.trim(),
       start_seconds: start,
       end_seconds: end,
@@ -610,27 +641,73 @@ export default function Lessons() {
         >
           <div className="space-y-4">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Lesson type</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLessonForm({ ...lessonForm, content_type: 'video' })}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    lessonForm.content_type === 'video'
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                      : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <Youtube className="w-4 h-4 inline -mt-0.5 mr-1.5" />
+                  Video (YouTube)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLessonForm({ ...lessonForm, content_type: 'document' })}
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    lessonForm.content_type === 'document'
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                      : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 inline -mt-0.5 mr-1.5" />
+                  Document (Drive)
+                </button>
+              </div>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
               <input
                 type="text"
                 value={lessonForm.title}
                 onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
                 className="input-field"
-                placeholder="e.g. Lesson 3 — Raag Yaman"
+                placeholder={lessonForm.content_type === 'document' ? 'e.g. Raag Yaman — Notation PDF' : 'e.g. Lesson 3 — Raag Yaman'}
                 autoFocus
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">YouTube URL *</label>
-              <input
-                type="url"
-                value={lessonForm.video_url}
-                onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })}
-                className="input-field"
-                placeholder="https://youtu.be/..."
-              />
-              <p className="text-xs text-gray-400 mt-1">Paste an unlisted YouTube link. Public links work too.</p>
-            </div>
+            {lessonForm.content_type === 'document' ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Google Drive URL *</label>
+                <input
+                  type="url"
+                  value={lessonForm.content_url}
+                  onChange={(e) => setLessonForm({ ...lessonForm, content_url: e.target.value })}
+                  className="input-field"
+                  placeholder="https://drive.google.com/file/d/..."
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  In Drive: share the file as "Anyone with the link can view".
+                  For best privacy, disable download/print/copy in Drive's sharing settings.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">YouTube URL *</label>
+                <input
+                  type="url"
+                  value={lessonForm.video_url}
+                  onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })}
+                  className="input-field"
+                  placeholder="https://youtu.be/..."
+                />
+                <p className="text-xs text-gray-400 mt-1">Paste an unlisted YouTube link. Public links work too.</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section (optional)</label>
               <input
@@ -650,43 +727,47 @@ export default function Lessons() {
               <p className="text-xs text-gray-400 mt-1">Lessons with the same section group together in the parent's sidebar.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start time</label>
-                <input
-                  type="text"
-                  value={lessonForm.start_seconds_str}
-                  onChange={(e) => setLessonForm({ ...lessonForm, start_seconds_str: e.target.value })}
-                  className="input-field font-mono"
-                  placeholder="0:00 or 150"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End time</label>
-                <input
-                  type="text"
-                  value={lessonForm.end_seconds_str}
-                  onChange={(e) => setLessonForm({ ...lessonForm, end_seconds_str: e.target.value })}
-                  className="input-field font-mono"
-                  placeholder="(end of video)"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-gray-400 -mt-2">
-              For a chapter-as-lesson, set start/end to slice a shared video. Leave both blank to use the full video.
-            </p>
+            {lessonForm.content_type !== 'document' && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Start time</label>
+                    <input
+                      type="text"
+                      value={lessonForm.start_seconds_str}
+                      onChange={(e) => setLessonForm({ ...lessonForm, start_seconds_str: e.target.value })}
+                      className="input-field font-mono"
+                      placeholder="0:00 or 150"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">End time</label>
+                    <input
+                      type="text"
+                      value={lessonForm.end_seconds_str}
+                      onChange={(e) => setLessonForm({ ...lessonForm, end_seconds_str: e.target.value })}
+                      className="input-field font-mono"
+                      placeholder="(end of video)"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 -mt-2">
+                  For a chapter-as-lesson, set start/end to slice a shared video. Leave both blank to use the full video.
+                </p>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Duration (seconds, optional)</label>
-              <input
-                type="number"
-                value={lessonForm.duration_seconds}
-                onChange={(e) => setLessonForm({ ...lessonForm, duration_seconds: e.target.value })}
-                className="input-field"
-                placeholder="0 = auto-detect when first played"
-                min="0"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration (seconds, optional)</label>
+                  <input
+                    type="number"
+                    value={lessonForm.duration_seconds}
+                    onChange={(e) => setLessonForm({ ...lessonForm, duration_seconds: e.target.value })}
+                    className="input-field"
+                    placeholder="0 = auto-detect when first played"
+                    min="0"
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
               <textarea

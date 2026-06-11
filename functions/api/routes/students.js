@@ -117,11 +117,11 @@ router.get('/:id', async (req, res) => {
 // POST /api/students
 router.post('/', async (req, res) => {
   try {
-    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes } = req.body;
+    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes, date_of_birth } = req.body;
     if (!name || !parent_name || !mobile_number) {
       return res.status(400).json({ error: 'name, parent_name, and mobile_number are required' });
     }
-    const student = await insert(req, 'Students', {
+    const payload = {
       name, parent_name, mobile_number,
       fee_online: fee_online || 0,
       fee_offline: fee_offline || 0,
@@ -129,7 +129,10 @@ router.post('/', async (req, res) => {
       min_classes_per_month: min_classes_per_month || 0,
       status: status || 'active',
       notes: notes || '',
-    });
+    };
+    // Only set date_of_birth if provided — Catalyst rejects empty strings on Date columns
+    if (date_of_birth) payload.date_of_birth = date_of_birth;
+    const student = await insert(req, 'Students', payload);
     res.status(201).json({ student: normalize(student) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create student', detail: e.message });
@@ -141,7 +144,7 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Student not found' });
-    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes } = req.body;
+    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes, date_of_birth } = req.body;
     const patch = {};
     if (name !== undefined)                  patch.name                  = name;
     if (parent_name !== undefined)           patch.parent_name           = parent_name;
@@ -152,6 +155,7 @@ router.put('/:id', async (req, res) => {
     if (min_classes_per_month !== undefined) patch.min_classes_per_month = min_classes_per_month;
     if (status !== undefined)                patch.status                = status;
     if (notes !== undefined)                 patch.notes                 = notes;
+    if (date_of_birth !== undefined)         patch.date_of_birth         = date_of_birth || null;
     const updated = await update(req, 'Students', req.params.id, patch);
     res.json({ student: normalize(updated) });
   } catch (e) {

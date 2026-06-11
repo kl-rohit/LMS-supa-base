@@ -98,4 +98,57 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/dashboard/birthdays?days=30
+// Returns students whose birthday (month + day, ignoring year) falls in the
+// next N days from today. Sorted by days-until-birthday ascending.
+router.get('/birthdays', async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days) || 30));
+    const students = await getAll(req, 'Students').catch(() => []);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayY = today.getFullYear();
+
+    const results = students
+      .filter((s) => (s.status === 'active' || !s.status) && s.date_of_birth)
+      .map((s) => {
+        // Parse YYYY-MM-DD (Catalyst Date column is stored as ISO string)
+        const dobRaw = String(s.date_of_birth).slice(0, 10);
+        const m = dobRaw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return null;
+        const dobYear = parseInt(m[1], 10);
+        const dobMonth = parseInt(m[2], 10);
+        const dobDay = parseInt(m[3], 10);
+
+        // Next birthday: this year if upcoming, else next year
+        let nextBday = new Date(todayY, dobMonth - 1, dobDay);
+        nextBday.setHours(0, 0, 0, 0);
+        if (nextBday < today) {
+          nextBday = new Date(todayY + 1, dobMonth - 1, dobDay);
+          nextBday.setHours(0, 0, 0, 0);
+        }
+        const daysUntil = Math.round((nextBday - today) / (1000 * 60 * 60 * 24));
+        if (daysUntil > days) return null;
+
+        const turningAge = nextBday.getFullYear() - dobYear;
+        return {
+          student_id: s.ROWID,
+          name: s.name,
+          parent_name: s.parent_name,
+          mobile_number: s.mobile_number,
+          date_of_birth: dobRaw,
+          days_until: daysUntil,
+          next_birthday: nextBday.toISOString().slice(0, 10),
+          turning_age: turningAge,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.days_until - b.days_until);
+
+    res.json({ birthdays: results });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch birthdays', detail: e.message });
+  }
+});
+
 module.exports = router;

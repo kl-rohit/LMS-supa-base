@@ -8,13 +8,18 @@ import {
   AlertTriangle,
   Clock,
   ChevronRight,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import StatsCard from '../components/StatsCard';
 import Loader from '../components/Loader';
+import { useRevealTimer } from '../hooks/useRevealTimer';
 
 export default function Dashboard() {
+  // Bank-style mask for the financial stat. Auto-hides 20s after toggle.
+  const amountReveal = useRevealTimer(20000);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -70,6 +75,18 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Tiny show/hide toggle for the Fees stat */}
+      <div className="flex justify-end">
+        <button
+          onClick={amountReveal.toggle}
+          className="btn-secondary btn-sm"
+          title={amountReveal.revealed ? 'Hide amounts (auto-hides in 20s)' : 'Show amounts (auto-hides 20s later)'}
+        >
+          {amountReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          {amountReveal.revealed ? 'Hide' : 'Show'} amounts
+        </button>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
@@ -94,7 +111,9 @@ export default function Dashboard() {
         <StatsCard
           icon={IndianRupee}
           title="Fees Collected"
-          value={`\u20B9${Number(feesCollectedThisMonth).toLocaleString('en-IN')}`}
+          value={amountReveal.revealed
+            ? `\u20B9${Number(feesCollectedThisMonth).toLocaleString('en-IN')}`
+            : '\u20B9\u2022\u2022\u2022\u2022'}
           color="amber"
           subtitle="This month"
         />

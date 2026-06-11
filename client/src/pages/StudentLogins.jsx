@@ -14,6 +14,8 @@ import {
   Search,
   Power,
   Loader2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -21,6 +23,8 @@ import Loader from '../components/Loader';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
+import { maskEmail } from '../utils/mask';
+import { useRevealTimer } from '../hooks/useRevealTimer';
 
 const PORTAL_URL = `${window.location.origin}/app/portal`;
 
@@ -41,6 +45,7 @@ function whatsappLink(mobile, parentName, studentName, email) {
 }
 
 export default function StudentLogins() {
+  const emailReveal = useRevealTimer(20000);
   const [students, setStudents] = useState([]);
   const [logins, setLogins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,15 +162,25 @@ export default function StudentLogins() {
             Create a portal login for each parent. They'll get an email to set their password, then can see their child's class history and fees.
           </p>
         </div>
-        <div className="relative">
-          <Search className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email..."
-            className="input-field text-sm pl-8 w-64"
-          />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={emailReveal.toggle}
+            className="btn-secondary btn-sm"
+            title={emailReveal.revealed ? 'Hide emails (auto-hides in 20s)' : 'Show emails (auto-hides 20s later)'}
+          >
+            {emailReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {emailReveal.revealed ? 'Hide' : 'Show'} emails
+          </button>
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or email..."
+              className="input-field text-sm pl-8 w-64"
+            />
+          </div>
         </div>
       </div>
 
@@ -191,7 +206,9 @@ export default function StudentLogins() {
                     <td className="table-cell font-medium text-gray-900">{student.name}</td>
                     <td className="table-cell text-gray-600">{student.parent_name || '—'}</td>
                     <td className="table-cell text-gray-700">
-                      {login ? login.email : <span className="text-gray-400">No login yet</span>}
+                      {login
+                        ? (emailReveal.revealed ? login.email : maskEmail(login.email))
+                        : <span className="text-gray-400">No login yet</span>}
                     </td>
                     <td className="table-cell text-center">
                       {!login ? (

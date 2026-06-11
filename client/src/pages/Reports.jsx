@@ -26,6 +26,7 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Select from '../components/Select';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -356,16 +357,15 @@ export default function Reports() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <User className="w-5 h-5 text-indigo-600" />
-                <select
+                <Select
                   value={selectedStudentId}
-                  onChange={(e) => setSelectedStudentId(e.target.value)}
-                  className="select-field w-auto"
-                >
-                  <option value="">Select a student...</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+                  onChange={setSelectedStudentId}
+                  placeholder="Select a student..."
+                  options={[
+                    { value: '', label: 'Select a student...' },
+                    ...students.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
                 {selectedStudentId && studentReport?.attendance && (() => {
                   const monthSet = new Set();
                   studentReport.attendance.forEach((r) => {
@@ -373,18 +373,18 @@ export default function Reports() {
                   });
                   const availableMonths = Array.from(monthSet).sort().reverse();
                   return (
-                    <select
+                    <Select
                       value={historyMonthFilter}
-                      onChange={(e) => setHistoryMonthFilter(e.target.value)}
-                      className="select-field w-auto"
-                      title="Filter Class History & Absences by month"
-                    >
-                      <option value="all">All months</option>
-                      {availableMonths.map((ym) => {
-                        const [y, m] = ym.split('-');
-                        return <option key={ym} value={ym}>{MONTHS[parseInt(m, 10) - 1]} {y}</option>;
-                      })}
-                    </select>
+                      onChange={setHistoryMonthFilter}
+                      ariaLabel="Filter Class History & Absences by month"
+                      options={[
+                        { value: 'all', label: 'All months' },
+                        ...availableMonths.map((ym) => {
+                          const [y, m] = ym.split('-');
+                          return { value: ym, label: `${MONTHS[parseInt(m, 10) - 1]} ${y}` };
+                        }),
+                      ]}
+                    />
                   );
                 })()}
               </div>
@@ -635,21 +635,17 @@ export default function Reports() {
                             className="input-field text-sm pl-8 w-56"
                           />
                         </div>
-                        <select
+                        <Select
                           value={historyMonthFilter}
-                          onChange={(e) => setHistoryMonthFilter(e.target.value)}
-                          className="select-field text-sm w-auto"
-                        >
-                          <option value="all">All months</option>
-                          {availableMonths.map((ym) => {
-                            const [y, m] = ym.split('-');
-                            return (
-                              <option key={ym} value={ym}>
-                                {MONTHS[parseInt(m, 10) - 1]} {y}
-                              </option>
-                            );
-                          })}
-                        </select>
+                          onChange={setHistoryMonthFilter}
+                          options={[
+                            { value: 'all', label: 'All months' },
+                            ...availableMonths.map((ym) => {
+                              const [y, m] = ym.split('-');
+                              return { value: ym, label: `${MONTHS[parseInt(m, 10) - 1]} ${y}` };
+                            }),
+                          ]}
+                        />
                         <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
                           {['all', 'present', 'absent'].map((s) => (
                             <button
@@ -758,24 +754,16 @@ export default function Reports() {
               </button>
               <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-indigo-600" />
-                <select
+                <Select
                   value={monthlyMonth}
-                  onChange={(e) => setMonthlyMonth(Number(e.target.value))}
-                  className="select-field w-auto"
-                >
-                  {MONTHS.map((month, idx) => (
-                    <option key={idx} value={idx + 1}>{month}</option>
-                  ))}
-                </select>
-                <select
+                  onChange={(v) => setMonthlyMonth(Number(v))}
+                  options={MONTHS.map((month, idx) => ({ value: idx + 1, label: month }))}
+                />
+                <Select
                   value={monthlyYear}
-                  onChange={(e) => setMonthlyYear(Number(e.target.value))}
-                  className="select-field w-auto"
-                >
-                  {[2024, 2025, 2026, 2027].map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setMonthlyYear(Number(v))}
+                  options={[2024, 2025, 2026, 2027].map((y) => ({ value: y, label: String(y) }))}
+                />
               </div>
               <div className="flex items-center gap-2">
                 {monthlyReport && (
@@ -1186,26 +1174,22 @@ export default function Reports() {
                       </span>
                     </h3>
                     <div className="flex items-center gap-2">
-                      <select
+                      <Select
                         value={lessonStudentFilter}
-                        onChange={(e) => setLessonStudentFilter(e.target.value)}
-                        className="select-field text-sm w-auto"
-                      >
-                        <option value="all">All students</option>
-                        {studentOpts.map(([id, name]) => (
-                          <option key={id} value={id}>{name || '(unknown)'}</option>
-                        ))}
-                      </select>
-                      <select
+                        onChange={setLessonStudentFilter}
+                        options={[
+                          { value: 'all', label: 'All students' },
+                          ...studentOpts.map(([id, name]) => ({ value: id, label: name || '(unknown)' })),
+                        ]}
+                      />
+                      <Select
                         value={lessonCourseFilter}
-                        onChange={(e) => setLessonCourseFilter(e.target.value)}
-                        className="select-field text-sm w-auto"
-                      >
-                        <option value="all">All courses</option>
-                        {courseOpts.map(([id, name]) => (
-                          <option key={id} value={id}>{name || '(unknown)'}</option>
-                        ))}
-                      </select>
+                        onChange={setLessonCourseFilter}
+                        options={[
+                          { value: 'all', label: 'All courses' },
+                          ...courseOpts.map(([id, name]) => ({ value: id, label: name || '(unknown)' })),
+                        ]}
+                      />
                     </div>
                   </div>
 

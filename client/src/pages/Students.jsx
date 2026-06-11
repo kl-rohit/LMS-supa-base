@@ -12,14 +12,19 @@ import {
   FileSpreadsheet,
   Users,
   RotateCcw,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import api from '../utils/api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { formatMobileDisplay } from '../utils/phone';
+import { maskPhone } from '../utils/mask';
+import { useRevealTimer } from '../hooks/useRevealTimer';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Select from '../components/Select';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 
@@ -36,6 +41,24 @@ const emptyForm = {
 
 export default function Students() {
   const confirm = useConfirm();
+  // Bank-style mask for phone numbers — toggle reveals all, auto-hides 20s later.
+  const phoneReveal = useRevealTimer(20000);
+  // Bulk-select state for multi-row operations
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(String(id))) next.delete(String(id));
+      else next.add(String(id));
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Bulk-edit modal state
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditField, setBulkEditField] = useState('fee_offline_group');
+  const [bulkEditValue, setBulkEditValue] = useState('');
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -145,6 +168,54 @@ export default function Students() {
     } catch (err) {
       toast.error(err.message);
     }
+  };
+
+  // Apply the bulk-edit form to every selected student.
+  const handleBulkEdit = async () => {
+    if (selectedIds.size === 0) return;
+    const field = bulkEditField;
+    const rawValue = bulkEditValue.trim();
+    if (rawValue === '') { toast.error('Enter a value'); return; }
+    // Coerce numeric fields
+    const isNumeric = ['fee_online', 'fee_offline', 'fee_offline_group', 'min_classes_per_month'].includes(field);
+    const value = isNumeric ? (Number(rawValue) || 0) : rawValue;
+    const ok = await confirm({
+      title: `Update ${selectedIds.size} student(s)?`,
+      message: `Set ${field} = ${value} for ${selectedIds.size} selected student(s). This overwrites any existing value.`,
+      confirmText: 'Update',
+      danger: false,
+    });
+    if (!ok) return;
+    let success = 0;
+    for (const id of selectedIds) {
+      try {
+        await api.put(`/students/${id}`, { [field]: value });
+        success++;
+      } catch (err) { console.error('bulk edit failed for', id, err.message); }
+    }
+    toast.success(`Updated ${success}/${selectedIds.size} student(s)`);
+    setBulkEditOpen(false);
+    clearSelection();
+    fetchStudents();
+  };
+
+  // Bulk-deactivate (soft delete) every selected student.
+  const handleBulkDeactivate = async () => {
+    if (selectedIds.size === 0) return;
+    const ok = await confirm({
+      title: `Deactivate ${selectedIds.size} student(s)?`,
+      message: 'They will be hidden from active lists but their records (attendance, fees) are preserved. You can reactivate them later.',
+      confirmText: 'Deactivate',
+    });
+    if (!ok) return;
+    let success = 0;
+    for (const id of selectedIds) {
+      try { await api.delete(`/students/${id}`); success++; }
+      catch (err) { console.error('deactivate failed', err.message); }
+    }
+    toast.success(`Deactivated ${success}/${selectedIds.size}`);
+    clearSelection();
+    fetchStudents();
   };
 
   const handleDeleteAllInactive = async () => {
@@ -293,6 +364,14 @@ export default function Students() {
               Delete all inactive
             </button>
           )}
+          <button
+            onClick={phoneReveal.toggle}
+            className="btn-secondary btn-sm"
+            title={phoneReveal.revealed ? 'Hide phone numbers (auto-hides in 20s)' : 'Show phone numbers (auto-hides 20s later)'}
+          >
+            {phoneReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {phoneReveal.revealed ? 'Hide' : 'Show'} phones
+          </button>
           <button onClick={() => setImportModalOpen(true)} className="btn-secondary btn-sm">
             <Upload className="w-4 h-4" /> Import
           </button>
@@ -341,10 +420,50 @@ export default function Students() {
         />
       ) : (
         <div className="card p-0 overflow-hidden">
+          {/* Bulk action bar — visible only when ≥1 row is selected */}
+          {selectedIds.size > 0 && (
+            <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between flex-wrap gap-3">
+              <span className="text-sm font-medium">
+                {selectedIds.size} student{selectedIds.size === 1 ? '' : 's'} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setBulkEditField('fee_offline_group'); setBulkEditValue(''); setBulkEditOpen(true); }}
+                  className="px-3 py-1.5 rounded-md bg-white text-indigo-700 text-sm font-medium hover:bg-indigo-50"
+                >
+                  <Edit2 className="w-4 h-4 inline -mt-0.5 mr-1" /> Bulk edit
+                </button>
+                <button
+                  onClick={handleBulkDeactivate}
+                  className="px-3 py-1.5 rounded-md bg-red-500 text-white text-sm font-medium hover:bg-red-600"
+                >
+                  <Trash2 className="w-4 h-4 inline -mt-0.5 mr-1" /> Deactivate
+                </button>
+                <button
+                  onClick={clearSelection}
+                  className="px-3 py-1.5 rounded-md text-white text-sm hover:bg-indigo-500"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="table-header w-8">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size > 0 && filteredStudents.every((s) => selectedIds.has(String(s.id)))}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedIds(new Set(filteredStudents.map((s) => String(s.id))));
+                        else clearSelection();
+                      }}
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                      title="Select all"
+                    />
+                  </th>
                   <th className="table-header cursor-pointer" onClick={() => handleSort('name')}>
                     <div className="flex items-center gap-1">Name <SortIcon column="name" /></div>
                   </th>
@@ -367,10 +486,25 @@ export default function Students() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={student.id}
+                    className={`hover:bg-gray-50 transition-colors ${selectedIds.has(String(student.id)) ? 'bg-indigo-50/40' : ''}`}
+                  >
+                    <td className="table-cell">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(String(student.id))}
+                        onChange={() => toggleSelect(student.id)}
+                        className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                      />
+                    </td>
                     <td className="table-cell font-medium text-gray-900">{student.name}</td>
                     <td className="table-cell">{student.parent_name || '-'}</td>
-                    <td className="table-cell">{student.mobile_number ? formatMobileDisplay(student.mobile_number) : '-'}</td>
+                    <td className="table-cell font-mono">
+                      {student.mobile_number
+                        ? (phoneReveal.revealed ? formatMobileDisplay(student.mobile_number) : maskPhone(student.mobile_number))
+                        : '-'}
+                    </td>
                     <td className="table-cell text-right">{student.fee_online ? `\u20B9${student.fee_online}/hr` : '-'}</td>
                     <td className="table-cell text-right">{student.fee_offline ? `\u20B9${student.fee_offline}/hr` : '-'}</td>
                     <td className="table-cell text-right">{student.fee_offline_group ? `\u20B9${student.fee_offline_group}/hr` : '-'}</td>
@@ -551,6 +685,61 @@ export default function Students() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Bulk Edit Modal */}
+      <Modal
+        isOpen={bulkEditOpen}
+        onClose={() => setBulkEditOpen(false)}
+        title={`Bulk edit ${selectedIds.size} student(s)`}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Field</label>
+            <Select
+              value={bulkEditField}
+              onChange={setBulkEditField}
+              className="w-full"
+              options={[
+                { value: 'fee_online', label: 'Online fee (₹/hr)' },
+                { value: 'fee_offline', label: 'Offline fee (₹/hr)' },
+                { value: 'fee_offline_group', label: 'Group fee (₹/hr)' },
+                { value: 'min_classes_per_month', label: 'Minimum classes per month' },
+                { value: 'status', label: 'Status (active / inactive)' },
+                { value: 'notes', label: 'Notes (will replace existing)' },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">New value</label>
+            {bulkEditField === 'status' ? (
+              <Select
+                value={bulkEditValue}
+                onChange={setBulkEditValue}
+                placeholder="— pick —"
+                className="w-full"
+                options={[
+                  { value: 'active', label: 'active' },
+                  { value: 'inactive', label: 'inactive' },
+                ]}
+              />
+            ) : (
+              <input
+                type={['fee_online','fee_offline','fee_offline_group','min_classes_per_month'].includes(bulkEditField) ? 'number' : 'text'}
+                value={bulkEditValue}
+                onChange={(e) => setBulkEditValue(e.target.value)}
+                className="input-field"
+                min="0"
+              />
+            )}
+            <p className="text-xs text-gray-400 mt-1">This value will overwrite the existing value on all selected students.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button onClick={() => setBulkEditOpen(false)} className="btn-secondary btn-sm">Cancel</button>
+            <button onClick={handleBulkEdit} className="btn-primary btn-sm">Apply to {selectedIds.size}</button>
+          </div>
+        </div>
       </Modal>
 
       {/* Import Modal */}

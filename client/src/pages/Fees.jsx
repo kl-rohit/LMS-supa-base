@@ -14,13 +14,17 @@ import {
   Sliders,
   Edit2,
   Trash2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import Select from '../components/Select';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useRevealTimer } from '../hooks/useRevealTimer';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -29,6 +33,18 @@ const MONTHS = [
 
 export default function Fees() {
   const confirm = useConfirm();
+  // Bank-style mask for all monetary figures on this page.
+  const amountReveal = useRevealTimer(20000);
+  // Render an amount as either "₹1,200" or "₹••••" based on reveal state.
+  const showAmt = (value, opts = {}) => {
+    const { signedNegative = false } = opts;
+    const num = Number(value) || 0;
+    if (amountReveal.revealed) {
+      const abs = Math.abs(num).toLocaleString('en-IN');
+      return `${signedNegative && num < 0 ? '−' : ''}₹${abs}`;
+    }
+    return `₹••••`;
+  };
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -235,6 +251,18 @@ export default function Fees() {
       .sort((a, b) => a.student_name?.localeCompare(b.student_name));
   }, [feesData]);
 
+  // Bulk-select state — for marking many students as paid at once.
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(String(id))) next.delete(String(id));
+      else next.add(String(id));
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
   // Mark a student's monthly total as paid.
   const markAsPaid = async (student) => {
     try {
@@ -250,6 +278,39 @@ export default function Fees() {
     } catch (err) {
       toast.error(err.message);
     }
+  };
+
+  // Mark every selected unpaid student as paid in one go.
+  const bulkMarkPaid = async () => {
+    const toMark = mergedData.filter((s) => selectedIds.has(String(s.student_id)) && !s.paid);
+    if (toMark.length === 0) {
+      toast.error('No unpaid students in selection');
+      return;
+    }
+    const ok = await confirm({
+      title: `Mark ${toMark.length} student(s) as paid?`,
+      message: `This records a payment for ${toMark.length} student(s) for ${MONTHS[selectedMonth - 1]} ${selectedYear}. You can undo individual payments later from the same row.`,
+      confirmText: 'Mark all as paid',
+      danger: false,
+    });
+    if (!ok) return;
+    const today = formatDateLocal(new Date());
+    let success = 0;
+    for (const s of toMark) {
+      try {
+        await api.post('/fees/payments', {
+          student_id: s.student_id,
+          fee_month: selectedMonth,
+          fee_year: selectedYear,
+          paid_amount: s.total,
+          payment_date: today,
+        });
+        success++;
+      } catch (err) { console.error('bulk mark failed for', s.student_name, err.message); }
+    }
+    toast.success(`Marked ${success}/${toMark.length} as paid`);
+    clearSelection();
+    fetchFees();
   };
 
   // Add a "Minimum class shortfall" additional-fee row, billing the student
@@ -372,6 +433,14 @@ export default function Fees() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Fee Management</h2>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={amountReveal.toggle}
+            className="btn-secondary btn-sm"
+            title={amountReveal.revealed ? 'Hide amounts (auto-hides in 20s)' : 'Show amounts (auto-hides 20s later)'}
+          >
+            {amountReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {amountReveal.revealed ? 'Hide' : 'Show'} amounts
+          </button>
           <div className="relative">
             <button
               onClick={() => setColsMenuOpen((v) => !v)}
@@ -433,24 +502,16 @@ export default function Fees() {
           <div className="flex items-center gap-3">
             <Calendar className="w-5 h-5 text-indigo-600" />
             <div className="flex items-center gap-2">
-              <select
+              <Select
                 value={selectedMonth}
-                onChange={(e) => { setSelectedMonth(Number(e.target.value)); setExpandedStudent(null); }}
-                className="select-field w-auto"
-              >
-                {MONTHS.map((month, idx) => (
-                  <option key={idx} value={idx + 1}>{month}</option>
-                ))}
-              </select>
-              <select
+                onChange={(v) => { setSelectedMonth(Number(v)); setExpandedStudent(null); }}
+                options={MONTHS.map((month, idx) => ({ value: idx + 1, label: month }))}
+              />
+              <Select
                 value={selectedYear}
-                onChange={(e) => { setSelectedYear(Number(e.target.value)); setExpandedStudent(null); }}
-                className="select-field w-auto"
-              >
-                {[2024, 2025, 2026, 2027].map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
+                onChange={(v) => { setSelectedYear(Number(v)); setExpandedStudent(null); }}
+                options={[2024, 2025, 2026, 2027].map((y) => ({ value: y, label: String(y) }))}
+              />
             </div>
           </div>
           <button onClick={() => changeMonth(1)} className="p-2 rounded-lg hover:bg-gray-100">
@@ -468,10 +529,49 @@ export default function Fees() {
         />
       ) : (
         <div className="card p-0 overflow-hidden">
+          {/* Bulk action bar — visible only when ≥1 row is selected */}
+          {selectedIds.size > 0 && (
+            <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between flex-wrap gap-3">
+              <span className="text-sm font-medium">
+                {selectedIds.size} student{selectedIds.size === 1 ? '' : 's'} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={bulkMarkPaid}
+                  className="px-3 py-1.5 rounded-md bg-white text-indigo-700 text-sm font-medium hover:bg-indigo-50"
+                >
+                  <Check className="w-4 h-4 inline -mt-0.5 mr-1" />
+                  Mark all as paid
+                </button>
+                <button
+                  onClick={clearSelection}
+                  className="px-3 py-1.5 rounded-md text-white text-sm hover:bg-indigo-500"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="table-header w-8">
+                    <input
+                      type="checkbox"
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // Select all UNPAID rows (paid rows can't be re-paid)
+                          setSelectedIds(new Set(mergedData.filter((s) => !s.paid).map((s) => String(s.student_id))));
+                        } else {
+                          clearSelection();
+                        }
+                      }}
+                      checked={selectedIds.size > 0 && mergedData.filter((s) => !s.paid).every((s) => selectedIds.has(String(s.student_id)))}
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                      title="Select all unpaid"
+                    />
+                  </th>
                   <th className="table-header w-8"></th>
                   <th className="table-header">Student</th>
                   {visibleCols.classes_taken && <th className="table-header text-center">Attended</th>}
@@ -489,9 +589,19 @@ export default function Fees() {
                   <>
                     <tr
                       key={student.student_id}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      className={`hover:bg-gray-50 cursor-pointer transition-colors ${selectedIds.has(String(student.student_id)) ? 'bg-indigo-50/40' : ''}`}
                       onClick={() => toggleExpand(student.student_id)}
                     >
+                      <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(String(student.student_id))}
+                          onChange={() => toggleSelect(student.student_id)}
+                          disabled={student.paid}
+                          className="w-4 h-4 text-indigo-600 rounded border-gray-300 disabled:opacity-30"
+                          title={student.paid ? 'Already paid' : 'Select to mark as paid in bulk'}
+                        />
+                      </td>
                       <td className="table-cell">
                         {expandedStudent === student.student_id ? (
                           <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -540,7 +650,7 @@ export default function Fees() {
                         </td>
                       )}
                       {visibleCols.class_fees && (
-                        <td className="table-cell text-right">{'\u20B9'}{Number(student.class_fee_total).toLocaleString('en-IN')}</td>
+                        <td className="table-cell text-right">{showAmt(student.class_fee_total)}</td>
                       )}
                       {visibleCols.additional && (
                         <td className="table-cell text-right">
@@ -548,16 +658,16 @@ export default function Fees() {
                             '-'
                           ) : student.additional_fee_total < 0 ? (
                             <span className="text-green-700" title="Discount">
-                              {'\u2212'}{'\u20B9'}{Math.abs(Number(student.additional_fee_total)).toLocaleString('en-IN')}
+                              {showAmt(student.additional_fee_total, { signedNegative: true })}
                             </span>
                           ) : (
-                            <>{'\u20B9'}{Number(student.additional_fee_total).toLocaleString('en-IN')}</>
+                            <>{showAmt(student.additional_fee_total)}</>
                           )}
                         </td>
                       )}
                       {visibleCols.total && (
                         <td className="table-cell text-right font-bold text-indigo-700">
-                          {'\u20B9'}{Number(student.total).toLocaleString('en-IN')}
+                          {showAmt(student.total)}
                         </td>
                       )}
                       {visibleCols.status && (
@@ -584,7 +694,7 @@ export default function Fees() {
                     </tr>
                     {expandedStudent === student.student_id && (
                       <tr key={`${student.student_id}-breakdown`}>
-                        <td colSpan={2 + Object.values(visibleCols).filter(Boolean).length} className="px-4 py-3 bg-gray-50">
+                        <td colSpan={3 + Object.values(visibleCols).filter(Boolean).length} className="px-4 py-3 bg-gray-50">
                           {loadingBreakdown ? (
                             <div className="py-4 text-center text-sm text-gray-400">Loading breakdown...</div>
                           ) : studentBreakdown.length === 0 ? (
@@ -699,24 +809,24 @@ export default function Fees() {
               </span>
               <div className="flex items-center gap-5 text-sm flex-wrap">
                 <span className="text-gray-600">
-                  Class: <span className="font-medium">{'\u20B9'}{classFeesTotal.toLocaleString('en-IN')}</span>
+                  Class: <span className="font-medium">{showAmt(classFeesTotal)}</span>
                 </span>
                 <span className="text-gray-600">
-                  Additional: <span className="font-medium">{'\u20B9'}{positiveAdditional.toLocaleString('en-IN')}</span>
+                  Additional: <span className="font-medium">{showAmt(positiveAdditional)}</span>
                 </span>
                 {discountTotal < 0 && (
                   <span className="text-green-700">
-                    Discounts: <span className="font-semibold">\u2212{'\u20B9'}{Math.abs(discountTotal).toLocaleString('en-IN')}</span>
+                    Discounts: <span className="font-semibold">{showAmt(discountTotal, { signedNegative: true })}</span>
                   </span>
                 )}
                 <span className="text-green-700">
-                  Paid: <span className="font-semibold">{'\u20B9'}{paidTotal.toLocaleString('en-IN')}</span>
+                  Paid: <span className="font-semibold">{showAmt(paidTotal)}</span>
                 </span>
                 <span className="text-amber-700">
-                  Pending: <span className="font-semibold">{'\u20B9'}{pendingTotal.toLocaleString('en-IN')}</span>
+                  Pending: <span className="font-semibold">{showAmt(pendingTotal)}</span>
                 </span>
                 <span className="text-lg font-bold text-indigo-700">
-                  {'\u20B9'}{grandTotal.toLocaleString('en-IN')}
+                  {showAmt(grandTotal)}
                 </span>
               </div>
             </div>

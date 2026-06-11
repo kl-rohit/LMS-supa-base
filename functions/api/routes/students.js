@@ -117,7 +117,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/students
 router.post('/', async (req, res) => {
   try {
-    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, status, notes } = req.body;
+    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes } = req.body;
     if (!name || !parent_name || !mobile_number) {
       return res.status(400).json({ error: 'name, parent_name, and mobile_number are required' });
     }
@@ -126,6 +126,7 @@ router.post('/', async (req, res) => {
       fee_online: fee_online || 0,
       fee_offline: fee_offline || 0,
       fee_offline_group: fee_offline_group || 0,
+      min_classes_per_month: min_classes_per_month || 0,
       status: status || 'active',
       notes: notes || '',
     });
@@ -140,16 +141,17 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Student not found' });
-    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, status, notes } = req.body;
+    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes } = req.body;
     const patch = {};
-    if (name !== undefined)              patch.name              = name;
-    if (parent_name !== undefined)       patch.parent_name       = parent_name;
-    if (mobile_number !== undefined)     patch.mobile_number     = mobile_number;
-    if (fee_online !== undefined)        patch.fee_online        = fee_online;
-    if (fee_offline !== undefined)       patch.fee_offline       = fee_offline;
-    if (fee_offline_group !== undefined) patch.fee_offline_group = fee_offline_group;
-    if (status !== undefined)            patch.status            = status;
-    if (notes !== undefined)             patch.notes             = notes;
+    if (name !== undefined)                  patch.name                  = name;
+    if (parent_name !== undefined)           patch.parent_name           = parent_name;
+    if (mobile_number !== undefined)         patch.mobile_number         = mobile_number;
+    if (fee_online !== undefined)            patch.fee_online            = fee_online;
+    if (fee_offline !== undefined)           patch.fee_offline           = fee_offline;
+    if (fee_offline_group !== undefined)     patch.fee_offline_group     = fee_offline_group;
+    if (min_classes_per_month !== undefined) patch.min_classes_per_month = min_classes_per_month;
+    if (status !== undefined)                patch.status                = status;
+    if (notes !== undefined)                 patch.notes                 = notes;
     const updated = await update(req, 'Students', req.params.id, patch);
     res.json({ student: normalize(updated) });
   } catch (e) {

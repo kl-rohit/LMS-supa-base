@@ -11,13 +11,14 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
-  Youtube,
   Search,
   Check,
   X,
-  AlertCircle,
   Edit2,
   Trash2,
+  Youtube,
+  PlayCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -35,11 +36,12 @@ const TABS = [
   { id: 'student', label: 'Student Report', icon: User },
   { id: 'monthly', label: 'Monthly Report', icon: Calendar },
   { id: 'overall', label: 'Overall Report', icon: TrendingUp },
+  { id: 'lessons', label: 'Lesson Activity', icon: Youtube },
 ];
 
 export default function Reports() {
   const now = new Date();
-  const [activeTab, setActiveTab] = useState('student');
+  const [activeTab, setActiveTab] = useState('overall');
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -54,7 +56,7 @@ export default function Reports() {
   const [historySearch, setHistorySearch] = useState('');
   // Class History inline edit
   const [editingRow, setEditingRow] = useState(null);
-  const [editForm, setEditForm] = useState({ status: 'present', topic: '', notes: '', recording_url: '', fee_charged: 0 });
+  const [editForm, setEditForm] = useState({ status: 'present', topic: '', notes: '', fee_charged: 0 });
   const [savingEdit, setSavingEdit] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
@@ -67,6 +69,15 @@ export default function Reports() {
   // Overall report
   const [overallReport, setOverallReport] = useState(null);
   const [loadingOverall, setLoadingOverall] = useState(false);
+
+  // Lessons activity report (cross-student × cross-course progress)
+  const [lessonActivity, setLessonActivity] = useState([]);
+  const [loadingLessons, setLoadingLessons] = useState(false);
+  const [lessonStudentFilter, setLessonStudentFilter] = useState('all');
+  const [lessonCourseFilter, setLessonCourseFilter] = useState('all');
+
+  // Per-student lesson progress, shown inline on the Student Report tab
+  const [studentLessons, setStudentLessons] = useState([]);
 
   useEffect(() => {
     fetchStudents();
@@ -83,6 +94,31 @@ export default function Reports() {
   useEffect(() => {
     if (selectedStudentId && activeTab === 'student') fetchStudentReport();
   }, [selectedStudentId, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'lessons') fetchLessonActivity();
+  }, [activeTab]);
+
+  // Fetch this student's lesson progress when they're picked on the Student tab.
+  useEffect(() => {
+    if (selectedStudentId && activeTab === 'student') {
+      api.get(`/lessons/activity?student_id=${selectedStudentId}`)
+        .then((d) => setStudentLessons(d.activity || []))
+        .catch(() => setStudentLessons([]));
+    }
+  }, [selectedStudentId, activeTab]);
+
+  const fetchLessonActivity = async () => {
+    try {
+      setLoadingLessons(true);
+      const data = await api.get('/lessons/activity');
+      setLessonActivity(data.activity || []);
+    } catch (err) {
+      toast.error('Failed to load lesson activity: ' + err.message);
+    } finally {
+      setLoadingLessons(false);
+    }
+  };
 
   const fetchStudents = async () => {
     try {
@@ -144,7 +180,6 @@ export default function Reports() {
       status: r.status || 'present',
       topic: r.topic || '',
       notes: r.notes || '',
-      recording_url: r.recording_url || '',
       fee_charged: r.fee_charged || 0,
     });
   };
@@ -162,7 +197,6 @@ export default function Reports() {
         status: editForm.status,
         topic: editForm.topic,
         notes: editForm.notes,
-        recording_url: editForm.recording_url,
         fee_charged: editForm.status === 'absent' ? 0 : Number(editForm.fee_charged) || 0,
       };
       await api.put(`/attendance/${editingRow.id}`, payload);
@@ -332,6 +366,27 @@ export default function Reports() {
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
+                {selectedStudentId && studentReport?.attendance && (() => {
+                  const monthSet = new Set();
+                  studentReport.attendance.forEach((r) => {
+                    if (r.date && /^\d{4}-\d{2}/.test(r.date)) monthSet.add(r.date.slice(0, 7));
+                  });
+                  const availableMonths = Array.from(monthSet).sort().reverse();
+                  return (
+                    <select
+                      value={historyMonthFilter}
+                      onChange={(e) => setHistoryMonthFilter(e.target.value)}
+                      className="select-field w-auto"
+                      title="Filter Class History & Absences by month"
+                    >
+                      <option value="all">All months</option>
+                      {availableMonths.map((ym) => {
+                        const [y, m] = ym.split('-');
+                        return <option key={ym} value={ym}>{MONTHS[parseInt(m, 10) - 1]} {y}</option>;
+                      })}
+                    </select>
+                  );
+                })()}
               </div>
               {studentReport && (
                 <button
@@ -374,6 +429,95 @@ export default function Reports() {
                   <p className="text-sm text-gray-500">Attendance Rate</p>
                 </div>
               </div>
+
+              {/* Absences — quick list with dates + topics. Respects the top-of-page month filter. */}
+              {studentReport.attendance && (() => {
+                const absences = studentReport.attendance.filter((r) => {
+                  if (r.status !== 'absent') return false;
+                  if (historyMonthFilter !== 'all' && (!r.date || !r.date.startsWith(historyMonthFilter))) return false;
+                  return true;
+                });
+                if (absences.length === 0) return null;
+                const monthLabel = historyMonthFilter === 'all' ? 'all-time' : (() => {
+                  const [y, m] = historyMonthFilter.split('-');
+                  return `${MONTHS[parseInt(m, 10) - 1]} ${y}`;
+                })();
+                return (
+                  <div className="card">
+                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <X className="w-5 h-5 text-red-500" />
+                      Absences <span className="text-sm text-gray-400 font-normal">({absences.length} · {monthLabel})</span>
+                    </h3>
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {absences.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between gap-4 px-3 py-2 rounded-md bg-red-50/40 border border-red-100">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 whitespace-nowrap">
+                              {r.date
+                                ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' })
+                                : '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5 truncate">
+                              {r.class_name || (r.camp_id ? 'Camp' : 'Ad-hoc')}
+                              {r.topic ? ` — ${r.topic}` : ''}
+                            </p>
+                          </div>
+                          <span className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                            <X className="w-3 h-3" /> Absent
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Lesson Progress — per-course progress for the selected student */}
+              {studentLessons.length > 0 && (
+                <div className="card">
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <Youtube className="w-5 h-5 text-red-500" />
+                    Lesson Progress
+                    <span className="text-sm text-gray-400 font-normal">({studentLessons.length} course{studentLessons.length === 1 ? '' : 's'})</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {studentLessons.map((r) => {
+                      const isComplete = r.percent_complete >= 90;
+                      return (
+                        <div key={r.course_id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100">
+                          <div className="flex-shrink-0">
+                            {isComplete ? (
+                              <CheckCircle2 className="w-6 h-6 text-green-500" />
+                            ) : (
+                              <PlayCircle className="w-6 h-6 text-indigo-500" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-800 truncate">{r.course_name}</p>
+                            <div className="mt-1 flex items-center gap-2">
+                              <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${isComplete ? 'bg-green-500' : r.percent_complete >= 50 ? 'bg-indigo-500' : 'bg-amber-500'}`}
+                                  style={{ width: `${r.percent_complete}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {r.lessons_completed}/{r.lessons_total} · {r.percent_complete}%
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {r.total_watched_minutes > 0 ? `${r.total_watched_minutes} min watched` : 'Not started'}
+                              {r.last_activity_at && (
+                                <> · Last opened {new Date(String(r.last_activity_at).replace(' ', 'T')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Monthly Breakdown */}
               {studentReport.monthly_breakdown && studentReport.monthly_breakdown.length > 0 && (
@@ -507,7 +651,7 @@ export default function Reports() {
                           })}
                         </select>
                         <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
-                          {['all', 'present', 'absent', 'late'].map((s) => (
+                          {['all', 'present', 'absent'].map((s) => (
                             <button
                               key={s}
                               onClick={() => setHistoryStatusFilter(s)}
@@ -535,7 +679,6 @@ export default function Reports() {
                               <th className="table-header text-center">Status</th>
                               <th className="table-header">Topic taught</th>
                               <th className="table-header">Notes / discussed</th>
-                              <th className="table-header text-center">Recording</th>
                               <th className="table-header text-right">Fee</th>
                               <th className="table-header text-center w-12"></th>
                             </tr>
@@ -552,7 +695,7 @@ export default function Reports() {
                                   {r.class_name || (r.camp_id ? 'Camp' : 'Ad-hoc')}
                                 </td>
                                 <td className="table-cell text-center">
-                                  {r.status === 'present' && (
+                                  {(r.status === 'present' || r.status === 'late') && (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                                       <Check className="w-3 h-3" /> Present
                                     </span>
@@ -560,11 +703,6 @@ export default function Reports() {
                                   {r.status === 'absent' && (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
                                       <X className="w-3 h-3" /> Absent
-                                    </span>
-                                  )}
-                                  {r.status === 'late' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
-                                      <AlertCircle className="w-3 h-3" /> Late
                                     </span>
                                   )}
                                 </td>
@@ -578,21 +716,6 @@ export default function Reports() {
                                 <td className="table-cell text-gray-700 max-w-xs">
                                   {r.notes ? (
                                     <span title={r.notes}>{r.notes}</span>
-                                  ) : (
-                                    <span className="text-gray-300">—</span>
-                                  )}
-                                </td>
-                                <td className="table-cell text-center">
-                                  {r.recording_url ? (
-                                    <a
-                                      href={r.recording_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-red-600 hover:text-red-700"
-                                      title="Open recording"
-                                    >
-                                      <Youtube className="w-4 h-4" />
-                                    </a>
                                   ) : (
                                     <span className="text-gray-300">—</span>
                                   )}
@@ -719,7 +842,18 @@ export default function Reports() {
                       <tbody className="divide-y divide-gray-100">
                         {monthlyReport.students.map((s, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="table-cell font-medium text-gray-900">{s.student_name || s.name}</td>
+                            <td className="table-cell font-medium">
+                              <button
+                                onClick={() => {
+                                  setSelectedStudentId(String(s.student_id || s.id));
+                                  setActiveTab('student');
+                                }}
+                                className="text-indigo-600 hover:text-indigo-800 hover:underline text-left"
+                                title="View this student's full report"
+                              >
+                                {s.student_name || s.name}
+                              </button>
+                            </td>
                             <td className="table-cell text-center">{s.total_classes || 0}</td>
                             <td className="table-cell text-center">
                               <div className="flex items-center justify-center gap-2">
@@ -798,7 +932,7 @@ export default function Reports() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <div className="flex gap-2">
-                {['present', 'absent', 'late'].map((s) => (
+                {['present', 'absent'].map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -841,20 +975,6 @@ export default function Reports() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <span className="inline-flex items-center gap-1">
-                  <Youtube className="w-4 h-4 text-red-500" /> Recording URL
-                </span>
-              </label>
-              <input
-                type="url"
-                value={editForm.recording_url}
-                onChange={(e) => setEditForm({ ...editForm, recording_url: e.target.value })}
-                placeholder="https://youtube.com/..."
-                className="input-field"
-              />
-            </div>
 
             {editForm.status !== 'absent' && (
               <div>
@@ -1031,6 +1151,128 @@ export default function Reports() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Lesson Activity Tab — cross-student progress overview */}
+      {activeTab === 'lessons' && (
+        <div className="space-y-4">
+          {loadingLessons ? (
+            <Loader text="Loading lesson activity..." />
+          ) : (() => {
+            // Build filter options
+            const studentOpts = Array.from(new Map(
+              lessonActivity.map((r) => [String(r.student_id), r.student_name])
+            ).entries());
+            const courseOpts = Array.from(new Map(
+              lessonActivity.map((r) => [String(r.course_id), r.course_name])
+            ).entries());
+
+            const filtered = lessonActivity.filter((r) => {
+              if (lessonStudentFilter !== 'all' && String(r.student_id) !== lessonStudentFilter) return false;
+              if (lessonCourseFilter !== 'all' && String(r.course_id) !== lessonCourseFilter) return false;
+              return true;
+            });
+
+            return (
+              <>
+                <div className="card">
+                  <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <Youtube className="w-5 h-5 text-red-500" />
+                      Lesson Activity
+                      <span className="text-sm text-gray-400 font-normal">
+                        ({filtered.length} of {lessonActivity.length})
+                      </span>
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={lessonStudentFilter}
+                        onChange={(e) => setLessonStudentFilter(e.target.value)}
+                        className="select-field text-sm w-auto"
+                      >
+                        <option value="all">All students</option>
+                        {studentOpts.map(([id, name]) => (
+                          <option key={id} value={id}>{name || '(unknown)'}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={lessonCourseFilter}
+                        onChange={(e) => setLessonCourseFilter(e.target.value)}
+                        className="select-field text-sm w-auto"
+                      >
+                        <option value="all">All courses</option>
+                        {courseOpts.map(([id, name]) => (
+                          <option key={id} value={id}>{name || '(unknown)'}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {filtered.length === 0 ? (
+                    <EmptyState
+                      icon={Youtube}
+                      title="No lesson activity yet"
+                      message="Once parents start watching lessons, their progress will appear here."
+                    />
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="table-header">Student</th>
+                            <th className="table-header">Course</th>
+                            <th className="table-header text-center">Progress</th>
+                            <th className="table-header text-center">Lessons</th>
+                            <th className="table-header text-right">Watched</th>
+                            <th className="table-header whitespace-nowrap">Last activity</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filtered.map((r, idx) => {
+                            const isComplete = r.percent_complete >= 90;
+                            return (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="table-cell font-medium text-gray-900">{r.student_name || '—'}</td>
+                                <td className="table-cell text-gray-700">{r.course_name || '—'}</td>
+                                <td className="table-cell">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <div className="w-24 bg-gray-100 rounded-full h-2 overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full ${isComplete ? 'bg-green-500' : r.percent_complete >= 50 ? 'bg-indigo-500' : 'bg-amber-500'}`}
+                                        style={{ width: `${r.percent_complete}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gray-600 w-10 text-left">
+                                      {r.percent_complete}%
+                                    </span>
+                                    {isComplete && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                                  </div>
+                                </td>
+                                <td className="table-cell text-center text-gray-700">
+                                  {r.lessons_completed}/{r.lessons_total}
+                                </td>
+                                <td className="table-cell text-right text-gray-700 whitespace-nowrap">
+                                  {r.total_watched_minutes > 0 ? `${r.total_watched_minutes} min` : '—'}
+                                </td>
+                                <td className="table-cell text-gray-500 whitespace-nowrap text-xs">
+                                  {r.last_activity_at
+                                    ? new Date(String(r.last_activity_at).replace(' ', 'T')).toLocaleString('en-IN', {
+                                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                                      })
+                                    : 'Never opened'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

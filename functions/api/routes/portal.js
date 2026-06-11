@@ -3,7 +3,7 @@
 // Every query is scoped to that student_id — no cross-student access.
 
 const router = require('express').Router();
-const { getById, zcql, unwrap, normalize, q, safeId } = require('../db/catalystDb');
+const { getById, zcql, unwrap, normalize, q, safeId, insert, update } = require('../db/catalystDb');
 
 // GET /api/portal/me — info about the linked student
 router.get('/me', async (req, res) => {
@@ -89,21 +89,154 @@ router.get('/fees', async (req, res) => {
   }
 });
 
-// GET /api/portal/recordings — every attendance row that has a recording_url
-router.get('/recordings', async (req, res) => {
+// ===== Lessons module — parent-facing =====
+// All endpoints below verify that req.studentId is enrolled before returning
+// any data. No cross-student access possible.
+
+// GET /api/portal/courses — courses the linked student is enrolled in
+router.get('/courses', async (req, res) => {
   try {
     const sid = safeId(req.studentId);
-    if (!sid) return res.status(400).json({ error: 'Invalid student id on session' });
-    const rows = await zcql(
-      req,
-      `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid} ORDER BY Attendance.class_date DESC`
-    );
-    const list = unwrap(rows, 'Attendance')
-      .map(normalize)
-      .filter((a) => a.recording_url && a.recording_url.trim() !== '');
-    res.json({ recordings: list });
+    if (!sid) return res.status(400).json({ error: 'Invalid student id' });
+    const enrollRows = await zcql(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid}`);
+    const enrollments = unwrap(enrollRows, 'CourseEnrollments').map(normalize)
+      .filter((e) => (e.status || 'active') === 'active');
+
+    if (enrollments.length === 0) return res.json({ courses: [] });
+
+    // Fetch courses + progress summary for each enrollment
+    const results = await Promise.all(enrollments.map(async (en) => {
+      let course = null;
+      try { course = await getById(req, 'Courses', en.course_id); } catch {}
+      if (!course || (course.status && course.status !== 'active')) return null;
+
+      let lessons = [];
+      try {
+        const rows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${safeId(en.course_id)}`);
+        lessons = unwrap(rows, 'Lessons');
+      } catch {}
+
+      // Completed count for this student
+      let completed = 0;
+      try {
+        const lessonIds = lessons.map((l) => l.ROWID);
+        if (lessonIds.length > 0) {
+          const progressRows = await zcql(req,
+            `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.completed = true`
+          );
+          const completedIds = new Set(unwrap(progressRows, 'LessonProgress').map((p) => String(p.lesson_id)));
+          completed = lessons.filter((l) => completedIds.has(String(l.ROWID))).length;
+        }
+      } catch {}
+
+      return {
+        ...normalize(course),
+        enrollment_id: en.id,
+        lessons_total: lessons.length,
+        lessons_completed: completed,
+        progress_percent: lessons.length > 0 ? Math.round((completed / lessons.length) * 100) : 0,
+      };
+    }));
+    res.json({ courses: results.filter(Boolean) });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch recordings', detail: e.message });
+    res.status(500).json({ error: 'Failed to fetch courses', detail: e.message });
+  }
+});
+
+// GET /api/portal/courses/:id/lessons — list lessons + per-lesson progress
+router.get('/courses/:id/lessons', async (req, res) => {
+  try {
+    const sid = safeId(req.studentId);
+    const cid = safeId(req.params.id);
+    if (!sid || !cid) return res.status(400).json({ error: 'Invalid ids' });
+
+    // Verify enrollment
+    const enrollRows = await zcql(req,
+      `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.course_id = ${cid}`
+    );
+    if (unwrap(enrollRows, 'CourseEnrollments').length === 0) {
+      return res.status(403).json({ error: 'Not enrolled in this course' });
+    }
+
+    const course = await getById(req, 'Courses', cid);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    const lessonRows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${cid} ORDER BY Lessons.order_index ASC`);
+    const lessons = unwrap(lessonRows, 'Lessons').map(normalize);
+
+    // Per-lesson progress
+    const progressRows = await zcql(req,
+      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid}`
+    );
+    const progressByLesson = {};
+    unwrap(progressRows, 'LessonProgress').forEach((p) => {
+      progressByLesson[String(p.lesson_id)] = normalize(p);
+    });
+
+    const decorated = lessons.map((l) => ({
+      ...l,
+      progress: progressByLesson[String(l.id)] || null,
+    }));
+
+    res.json({ course: normalize(course), lessons: decorated });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch lessons', detail: e.message });
+  }
+});
+
+// POST /api/portal/lessons/:id/progress — upsert progress for this student × lesson
+// Body: { watched_seconds, duration_seconds }
+router.post('/lessons/:id/progress', async (req, res) => {
+  try {
+    const sid = safeId(req.studentId);
+    const lid = safeId(req.params.id);
+    if (!sid || !lid) return res.status(400).json({ error: 'Invalid ids' });
+
+    const lesson = await getById(req, 'Lessons', lid);
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+
+    // Verify enrollment for this lesson's course
+    const enrollRows = await zcql(req,
+      `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.course_id = ${safeId(lesson.course_id)}`
+    );
+    if (unwrap(enrollRows, 'CourseEnrollments').length === 0) {
+      return res.status(403).json({ error: 'Not enrolled in this course' });
+    }
+
+    const watched = Math.max(0, Number(req.body.watched_seconds) || 0);
+    const duration = Math.max(0, Number(req.body.duration_seconds) || Number(lesson.duration_seconds) || 0);
+
+    // Upsert: find existing progress row
+    const existingRows = await zcql(req,
+      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.lesson_id = ${lid}`
+    );
+    const existing = unwrap(existingRows, 'LessonProgress')[0];
+
+    // Progress only moves forward: keep the highest watched_seconds ever recorded.
+    // percent_complete + completed are derived from that max, so re-watching
+    // an earlier segment can't undo prior progress.
+    const maxWatched = Math.max(watched, Number(existing?.watched_seconds) || 0);
+    const percent = duration > 0 ? Math.min(100, Math.round((maxWatched / duration) * 100)) : 0;
+    const completed = percent >= 90; // 90%+ counts as complete
+
+    const payload = {
+      student_id: String(sid),
+      lesson_id: String(lid),
+      watched_seconds: maxWatched,
+      duration_seconds: duration,
+      percent_complete: percent,
+      completed,
+    };
+
+    let row;
+    if (existing) {
+      row = await update(req, 'LessonProgress', existing.ROWID, payload);
+    } else {
+      row = await insert(req, 'LessonProgress', payload);
+    }
+    res.json({ progress: normalize(row) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update progress', detail: e.message });
   }
 });
 

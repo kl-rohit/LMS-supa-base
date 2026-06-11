@@ -1,7 +1,7 @@
 // Parent view: read-only class history with month filter.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, X, AlertCircle, Youtube, Search } from 'lucide-react';
+import { Check, X, Search } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 
@@ -73,7 +73,7 @@ export default function PortalAttendance() {
               })}
             </select>
             <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
-              {['all', 'present', 'absent', 'late'].map((s) => (
+              {['all', 'present', 'absent'].map((s) => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
@@ -100,7 +100,6 @@ export default function PortalAttendance() {
                   <th className="table-header text-center">Status</th>
                   <th className="table-header">Topic taught</th>
                   <th className="table-header">Notes</th>
-                  <th className="table-header text-center">Recording</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -115,7 +114,7 @@ export default function PortalAttendance() {
                       {r.class_name || (r.camp_id ? 'Camp' : 'Ad-hoc')}
                     </td>
                     <td className="table-cell text-center">
-                      {r.status === 'present' && (
+                      {(r.status === 'present' || r.status === 'late') && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                           <Check className="w-3 h-3" /> Present
                         </span>
@@ -125,32 +124,12 @@ export default function PortalAttendance() {
                           <X className="w-3 h-3" /> Absent
                         </span>
                       )}
-                      {r.status === 'late' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
-                          <AlertCircle className="w-3 h-3" /> Late
-                        </span>
-                      )}
                     </td>
                     <td className="table-cell text-gray-700 max-w-xs">
                       {r.topic || <span className="text-gray-300">—</span>}
                     </td>
                     <td className="table-cell text-gray-700 max-w-xs">
                       {r.notes || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="table-cell text-center">
-                      {r.recording_url ? (
-                        <a
-                          href={r.recording_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-red-600 hover:text-red-700"
-                          title="Open recording"
-                        >
-                          <Youtube className="w-4 h-4" />
-                        </a>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
                     </td>
                   </tr>
                 ))}

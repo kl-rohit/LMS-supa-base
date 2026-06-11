@@ -16,6 +16,7 @@ import {
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import api from '../utils/api';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { formatMobileDisplay } from '../utils/phone';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -29,10 +30,12 @@ const emptyForm = {
   fee_online: '',
   fee_offline: '',
   fee_offline_group: '',
+  min_classes_per_month: '',
   notes: '',
 };
 
 export default function Students() {
+  const confirm = useConfirm();
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -76,6 +79,7 @@ export default function Students() {
         fee_online: form.fee_online ? Number(form.fee_online) : 0,
         fee_offline: form.fee_offline ? Number(form.fee_offline) : 0,
         fee_offline_group: form.fee_offline_group ? Number(form.fee_offline_group) : 0,
+        min_classes_per_month: form.min_classes_per_month ? Number(form.min_classes_per_month) : 0,
       };
       if (editingStudent) {
         await api.put(`/students/${editingStudent.id}`, payload);
@@ -104,6 +108,7 @@ export default function Students() {
       fee_online: student.fee_online || '',
       fee_offline: student.fee_offline || '',
       fee_offline_group: student.fee_offline_group || '',
+      min_classes_per_month: student.min_classes_per_month || '',
       notes: student.notes || '',
     });
     setModalOpen(true);
@@ -148,7 +153,12 @@ export default function Students() {
       toast.error('No inactive students to delete');
       return;
     }
-    if (!window.confirm(`Permanently delete all ${inactiveCount} inactive student(s)? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: 'Delete all inactive students?',
+      message: `This will permanently delete ${inactiveCount} inactive student(s). Their attendance and fee records will be kept, but the students themselves will be gone. This cannot be undone.`,
+      confirmText: 'Delete all',
+    });
+    if (!ok) return;
     try {
       const data = await api.delete('/students/inactive');
       toast.success(data?.message || 'Inactive students deleted');
@@ -506,6 +516,21 @@ export default function Students() {
                 />
               </div>
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Minimum classes per month</label>
+            <input
+              type="number"
+              value={form.min_classes_per_month}
+              onChange={(e) => setForm({ ...form, min_classes_per_month: e.target.value })}
+              className="input-field"
+              placeholder="0 = no minimum"
+              min="0"
+              max="31"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Fees page will flag students who attend fewer than this each month. Leave blank or 0 for no minimum.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>

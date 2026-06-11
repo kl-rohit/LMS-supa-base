@@ -29,17 +29,46 @@ router.get('/monthly/:year/:month', async (req, res) => {
       try {
         const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)}`);
         const attendance = unwrap(aRows, 'Attendance');
-        const present = attendance.filter((a) => a.status === 'present' || a.status === 'late');
-        const classFees = present.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
+        const presentCount = attendance.filter((a) => a.status === 'present').length;
+        const lateCount    = attendance.filter((a) => a.status === 'late').length;
+        const absentCount  = attendance.filter((a) => a.status === 'absent').length;
+        const attended = attendance.filter((a) => a.status === 'present' || a.status === 'late');
+        const classFees = attended.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
         const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year}`);
         const additional = unwrap(afRows, 'AdditionalFees');
         const additionalTotal = additional.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
         const grandTotal = classFees + additionalTotal;
         const payment = paymentsByStudent[String(s.ROWID)];
+        // Compute shortfall (when below minimum) so the frontend can offer
+        // a "charge for the missed classes" action. Avg fee comes from
+        // actual attended classes, falling back to the student's standard
+        // rate if they attended zero.
+        const minClasses = Number(s.min_classes_per_month) || 0;
+        const attendedCount = presentCount + lateCount;
+        let shortfallAmount = 0;
+        let shortfallClasses = 0;
+        if (minClasses > 0 && attendedCount < minClasses) {
+          shortfallClasses = minClasses - attendedCount;
+          const avgFee = attendedCount > 0
+            ? classFees / attendedCount
+            : Number(s.fee_offline_group) || Number(s.fee_offline) || Number(s.fee_online) || 0;
+          shortfallAmount = Math.round(avgFee * shortfallClasses);
+        }
+
         results.push({
           student_id: s.ROWID,
           student_name: s.name,
-          class_fees: { total_classes: present.length, total: classFees },
+          min_classes: minClasses,
+          shortfall_classes: shortfallClasses,
+          shortfall_amount: shortfallAmount,
+          class_fees: {
+            total_classes: attended.length,    // attended = present + late (legacy)
+            present: presentCount,
+            late: lateCount,
+            absent: absentCount,
+            total_marked: presentCount + lateCount + absentCount,
+            total: classFees,
+          },
           additional_fees: { count: additional.length, total: additionalTotal },
           grand_total: grandTotal,
           paid: !!payment,

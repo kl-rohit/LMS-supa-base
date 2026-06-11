@@ -16,6 +16,7 @@ import {
   Settings as SettingsIcon,
   LogOut,
   KeyRound,
+  Video,
 } from 'lucide-react';
 
 import Dashboard from './pages/Dashboard';
@@ -29,9 +30,11 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import StudentLogins from './pages/StudentLogins';
+import Lessons from './pages/Lessons';
 import ParentLayout from './layouts/ParentLayout';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
 
 const navItems = [
@@ -43,6 +46,7 @@ const navItems = [
   { to: '/fees', label: 'Fees', icon: IndianRupee },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
+  { to: '/lessons', label: 'Lessons', icon: Video },
   { to: '/student-logins', label: 'Parent Logins', icon: KeyRound },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -149,6 +153,7 @@ function TeacherLayout() {
             <Route path="/fees" element={<Fees />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/lessons" element={<Lessons />} />
             <Route path="/student-logins" element={<StudentLogins />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
@@ -161,6 +166,7 @@ function TeacherLayout() {
 export default function App() {
   return (
     <AuthProvider>
+      <ConfirmProvider>
       <Toaster
         position="top-right"
         toastOptions={{
@@ -187,6 +193,7 @@ export default function App() {
           }
         />
       </Routes>
+      </ConfirmProvider>
     </AuthProvider>
   );
 }

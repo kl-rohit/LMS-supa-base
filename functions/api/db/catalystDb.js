@@ -37,6 +37,7 @@ const NUMERIC_FIELDS = [
   'day_of_week', 'is_active', 'is_sent',
   'duration_hours', 'fee_charged', 'fee_online', 'fee_offline', 'fee_offline_group',
   'amount', 'month', 'year', 'fee_month', 'fee_year',
+  'min_classes_per_month',
 ];
 
 function normalize(row) {

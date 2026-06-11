@@ -16,11 +16,13 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 
 export default function Messages() {
+  const confirm = useConfirm();
   const [messages, setMessages] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -229,7 +231,12 @@ export default function Messages() {
 
   // Delete a single message
   const deleteMessage = async (messageId) => {
-    if (!window.confirm('Are you sure you want to delete this message?')) return;
+    const ok = await confirm({
+      title: 'Delete this message?',
+      message: 'This will permanently remove the message draft. This cannot be undone.',
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/messages/${messageId}`);
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
@@ -244,7 +251,12 @@ export default function Messages() {
     const count = filteredMessages.length;
     if (count === 0) return;
     const label = filter === 'all' ? 'all' : filter.replace('_', ' ');
-    if (!window.confirm(`Are you sure you want to delete ${count} ${label} message(s)? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete ${count} message(s)?`,
+      message: `This will permanently remove all ${label} messages (${count}). This cannot be undone.`,
+      confirmText: 'Delete all',
+    });
+    if (!ok) return;
     try {
       await Promise.all(filteredMessages.map((m) => api.delete(`/messages/${m.id}`)));
       const deletedIds = new Set(filteredMessages.map((m) => m.id));

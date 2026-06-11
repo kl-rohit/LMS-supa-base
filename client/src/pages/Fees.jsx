@@ -10,14 +10,17 @@ import {
   ChevronRight,
   Check,
   X,
-  Youtube,
   Minus,
+  Sliders,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -25,6 +28,7 @@ const MONTHS = [
 ];
 
 export default function Fees() {
+  const confirm = useConfirm();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -48,6 +52,29 @@ export default function Fees() {
   });
   const [savingFee, setSavingFee] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+
+  // Column visibility — user picks which columns to see. Persisted in localStorage.
+  const DEFAULT_COLS = {
+    classes_taken: true,
+    present:       false,
+    absent:        false,
+    min_status:    true,
+    class_fees:    true,
+    additional:    true,
+    total:         true,
+    status:        true,
+  };
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fees_visible_cols');
+      if (saved) return { ...DEFAULT_COLS, ...JSON.parse(saved) };
+    } catch {}
+    return DEFAULT_COLS;
+  });
+  const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem('fees_visible_cols', JSON.stringify(visibleCols)); } catch {}
+  }, [visibleCols]);
 
   function formatDateLocal(date) {
     const y = date.getFullYear();
@@ -193,6 +220,12 @@ export default function Fees() {
       student_id: f.student_id,
       student_name: f.student_name,
       classes_taken: f.class_fees?.total_classes || 0,
+      present_count: (f.class_fees?.present || 0) + (f.class_fees?.late || 0), // legacy 'late' → counted as present
+      absent_count: f.class_fees?.absent || 0,
+      total_marked: f.class_fees?.total_marked || 0,
+      min_classes: f.min_classes || 0,
+      shortfall_classes: f.shortfall_classes || 0,
+      shortfall_amount: f.shortfall_amount || 0,
       class_fee_total: f.class_fees?.total || 0,
       additional_fee_total: f.additional_fees?.total || 0,
       total: f.grand_total || 0,
@@ -219,10 +252,89 @@ export default function Fees() {
     }
   };
 
+  // Add a "Minimum class shortfall" additional-fee row, billing the student
+  // for the gap between their attended count and their configured minimum.
+  // The amount comes from the backend (avg fee × shortfall classes).
+  const applyShortfall = async (student) => {
+    if (!student.shortfall_amount || student.shortfall_classes <= 0) return;
+    const ok = await confirm({
+      title: 'Charge for missed classes?',
+      message: `Add ₹${student.shortfall_amount.toLocaleString('en-IN')} to ${student.student_name}'s bill for ${student.shortfall_classes} missed class(es).`,
+      confirmText: 'Add charge',
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      const monthName = MONTHS[selectedMonth - 1];
+      await api.post('/fees/additional', {
+        student_id: student.student_id,
+        amount: student.shortfall_amount,
+        description: `Min class shortfall — ${monthName} ${selectedYear} (${student.shortfall_classes} class${student.shortfall_classes === 1 ? '' : 'es'})`,
+        fee_date: formatDateLocal(new Date()),
+        month: selectedMonth,
+        year: selectedYear,
+      });
+      toast.success(`Shortfall of ₹${student.shortfall_amount} added`);
+      fetchFees();
+    } catch (err) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
+
+  // Edit / delete an existing additional fee or discount row.
+  const [editFeeId, setEditFeeId] = useState(null);
+  const [editFeeForm, setEditFeeForm] = useState({ description: '', amount: '' });
+
+  const openEditFee = (af) => {
+    const amt = Number(af.amount) || 0;
+    setEditFeeId(af.id);
+    setEditFeeForm({
+      description: af.description || '',
+      amount: String(Math.abs(amt)),
+      is_discount: amt < 0,
+    });
+  };
+  const closeEditFee = () => { setEditFeeId(null); };
+  const saveEditFee = async () => {
+    try {
+      const raw = Number(editFeeForm.amount) || 0;
+      const signed = editFeeForm.is_discount ? -Math.abs(raw) : Math.abs(raw);
+      await api.put(`/fees/additional/${editFeeId}`, {
+        description: editFeeForm.description,
+        amount: signed,
+      });
+      toast.success('Updated');
+      closeEditFee();
+      fetchFees();
+    } catch (err) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
+  const deleteFee = async (af) => {
+    const ok = await confirm({
+      title: 'Delete this entry?',
+      message: `Remove "${af.description}" (₹${Math.abs(Number(af.amount) || 0).toLocaleString('en-IN')}). The student's total will recalculate.`,
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/fees/additional/${af.id}`);
+      toast.success('Deleted');
+      fetchFees();
+    } catch (err) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
+
   // Undo a payment.
   const undoPayment = async (student) => {
     if (!student.payment?.id) return;
-    if (!window.confirm(`Undo payment for ${student.student_name}?`)) return;
+    const ok = await confirm({
+      title: 'Undo payment?',
+      message: `Mark ${student.student_name}'s payment as not received. You can re-mark it as paid later.`,
+      confirmText: 'Undo payment',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/fees/payments/${student.payment.id}`);
       toast.success('Payment undone');
@@ -260,6 +372,43 @@ export default function Fees() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Fee Management</h2>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <button
+              onClick={() => setColsMenuOpen((v) => !v)}
+              className="btn-secondary btn-sm"
+              title="Show or hide columns"
+            >
+              <Sliders className="w-4 h-4" /> Columns
+            </button>
+            {colsMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setColsMenuOpen(false)} />
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20 p-2">
+                  <p className="text-xs text-gray-400 px-2 py-1 uppercase tracking-wide">Visible columns</p>
+                  {[
+                    { k: 'classes_taken', label: 'Classes Attended' },
+                    { k: 'present',       label: 'Present count' },
+                    { k: 'absent',        label: 'Absent count' },
+                    { k: 'min_status',    label: 'Min attendance status' },
+                    { k: 'class_fees',    label: 'Class Fees' },
+                    { k: 'additional',    label: 'Additional Fees' },
+                    { k: 'total',         label: 'Total' },
+                    { k: 'status',        label: 'Payment Status' },
+                  ].map(({ k, label }) => (
+                    <label key={k} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-md cursor-pointer text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={!!visibleCols[k]}
+                        onChange={(e) => setVisibleCols((prev) => ({ ...prev, [k]: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 rounded"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => { setFeeForm({ ...feeForm, adjustment_type: 'discount' }); setAddFeeModalOpen(true); }}
             className="btn-secondary btn-sm border-green-300 text-green-700 hover:bg-green-50"
@@ -325,11 +474,14 @@ export default function Fees() {
                 <tr>
                   <th className="table-header w-8"></th>
                   <th className="table-header">Student</th>
-                  <th className="table-header text-center">Classes Taken</th>
-                  <th className="table-header text-right">Class Fees</th>
-                  <th className="table-header text-right">Additional Fees</th>
-                  <th className="table-header text-right">Total</th>
-                  <th className="table-header text-center">Status</th>
+                  {visibleCols.classes_taken && <th className="table-header text-center">Attended</th>}
+                  {visibleCols.present       && <th className="table-header text-center">Present</th>}
+                  {visibleCols.absent        && <th className="table-header text-center">Absent</th>}
+                  {visibleCols.min_status    && <th className="table-header text-center">Min status</th>}
+                  {visibleCols.class_fees    && <th className="table-header text-right">Class Fees</th>}
+                  {visibleCols.additional    && <th className="table-header text-right">Additional Fees</th>}
+                  {visibleCols.total         && <th className="table-header text-right">Total</th>}
+                  {visibleCols.status        && <th className="table-header text-center">Status</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -348,22 +500,67 @@ export default function Fees() {
                         )}
                       </td>
                       <td className="table-cell font-medium text-gray-900">{student.student_name}</td>
-                      <td className="table-cell text-center">{student.classes_taken}</td>
-                      <td className="table-cell text-right">{'\u20B9'}{Number(student.class_fee_total).toLocaleString('en-IN')}</td>
-                      <td className="table-cell text-right">
-                        {student.additional_fee_total === 0 ? (
-                          '-'
-                        ) : student.additional_fee_total < 0 ? (
-                          <span className="text-green-700" title="Discount">
-                            \u2212{'\u20B9'}{Math.abs(Number(student.additional_fee_total)).toLocaleString('en-IN')}
-                          </span>
-                        ) : (
-                          <>{'\u20B9'}{Number(student.additional_fee_total).toLocaleString('en-IN')}</>
-                        )}
-                      </td>
-                      <td className="table-cell text-right font-bold text-indigo-700">
-                        {'\u20B9'}{Number(student.total).toLocaleString('en-IN')}
-                      </td>
+                      {visibleCols.classes_taken && (
+                        <td className="table-cell text-center">{student.classes_taken}</td>
+                      )}
+                      {visibleCols.present && (
+                        <td className="table-cell text-center text-green-700">{student.present_count}</td>
+                      )}
+                      {visibleCols.absent && (
+                        <td className="table-cell text-center text-red-600">{student.absent_count}</td>
+                      )}
+                      {visibleCols.min_status && (
+                        <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
+                          {student.min_classes > 0 ? (
+                            student.present_count >= student.min_classes ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium" title={`Minimum ${student.min_classes} class(es) per month required`}>
+                                <Check className="w-3 h-3" />
+                                {student.present_count}/{student.min_classes}
+                              </span>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium" title={`Below minimum: needs ${student.min_classes - student.present_count} more`}>
+                                  <X className="w-3 h-3" />
+                                  {student.present_count}/{student.min_classes}
+                                </span>
+                                {!student.paid && student.shortfall_amount > 0 && (
+                                  <button
+                                    onClick={() => applyShortfall(student)}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                                    title={`Adds a one-time fee of ₹${student.shortfall_amount} for the ${student.shortfall_classes} missed class(es)`}
+                                  >
+                                    Charge +₹{student.shortfall_amount.toLocaleString('en-IN')}
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-300" title="No minimum configured for this student">—</span>
+                          )}
+                        </td>
+                      )}
+                      {visibleCols.class_fees && (
+                        <td className="table-cell text-right">{'\u20B9'}{Number(student.class_fee_total).toLocaleString('en-IN')}</td>
+                      )}
+                      {visibleCols.additional && (
+                        <td className="table-cell text-right">
+                          {student.additional_fee_total === 0 ? (
+                            '-'
+                          ) : student.additional_fee_total < 0 ? (
+                            <span className="text-green-700" title="Discount">
+                              {'\u2212'}{'\u20B9'}{Math.abs(Number(student.additional_fee_total)).toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <>{'\u20B9'}{Number(student.additional_fee_total).toLocaleString('en-IN')}</>
+                          )}
+                        </td>
+                      )}
+                      {visibleCols.total && (
+                        <td className="table-cell text-right font-bold text-indigo-700">
+                          {'\u20B9'}{Number(student.total).toLocaleString('en-IN')}
+                        </td>
+                      )}
+                      {visibleCols.status && (
                       <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
                         {student.paid ? (
                           <button
@@ -383,10 +580,11 @@ export default function Fees() {
                           </button>
                         )}
                       </td>
+                      )}
                     </tr>
                     {expandedStudent === student.student_id && (
                       <tr key={`${student.student_id}-breakdown`}>
-                        <td colSpan={7} className="px-4 py-3 bg-gray-50">
+                        <td colSpan={2 + Object.values(visibleCols).filter(Boolean).length} className="px-4 py-3 bg-gray-50">
                           {loadingBreakdown ? (
                             <div className="py-4 text-center text-sm text-gray-400">Loading breakdown...</div>
                           ) : studentBreakdown.length === 0 ? (
@@ -403,7 +601,6 @@ export default function Fees() {
                                       <th className="pb-2 text-left font-medium">Type</th>
                                       <th className="pb-2 text-left font-medium">Duration</th>
                                       <th className="pb-2 text-left font-medium">Topic</th>
-                                      <th className="pb-2 text-center font-medium">Recording</th>
                                       <th className="pb-2 text-right font-medium">Fee</th>
                                     </tr>
                                   </thead>
@@ -428,21 +625,6 @@ export default function Fees() {
                                         </td>
                                         <td className="py-2 text-gray-600">{row.duration_hours ? `${row.duration_hours}h` : '-'}</td>
                                         <td className="py-2 text-gray-600">{row.topic || '-'}</td>
-                                        <td className="py-2 text-center">
-                                          {row.recording_url ? (
-                                            <a
-                                              href={row.recording_url}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="inline-flex items-center gap-1 text-red-600 hover:text-red-700"
-                                              title={row.recording_url}
-                                            >
-                                              <Youtube className="w-4 h-4" /> Watch
-                                            </a>
-                                          ) : (
-                                            <span className="text-gray-300">-</span>
-                                          )}
-                                        </td>
                                         <td className="py-2 text-right font-medium text-gray-900">
                                           {'\u20B9'}{Number(row.fee_charged || 0).toLocaleString('en-IN')}
                                         </td>
@@ -463,8 +645,8 @@ export default function Fees() {
                                         const amt = Number(af.amount) || 0;
                                         const isDiscount = amt < 0;
                                         return (
-                                          <div key={idx} className="flex items-center justify-between py-1.5 text-sm">
-                                            <div>
+                                          <div key={idx} className="flex items-center justify-between py-1.5 text-sm group">
+                                            <div className="min-w-0 flex-1">
                                               <span className={isDiscount ? 'text-green-700' : 'text-gray-700'}>
                                                 {isDiscount ? '\uD83C\uDFF7\uFE0F ' : ''}{af.description}
                                               </span>
@@ -472,9 +654,25 @@ export default function Fees() {
                                                 {new Date(af.fee_date || af.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                                               </span>
                                             </div>
-                                            <span className={`font-medium ${isDiscount ? 'text-green-700' : 'text-gray-900'}`}>
-                                              {isDiscount ? '\u2212' : ''}{'\u20B9'}{Math.abs(amt).toLocaleString('en-IN')}
-                                            </span>
+                                            <div className="flex items-center gap-2 ml-2" onClick={(e) => e.stopPropagation()}>
+                                              <span className={`font-medium ${isDiscount ? 'text-green-700' : 'text-gray-900'}`}>
+                                                {isDiscount ? '\u2212' : ''}{'\u20B9'}{Math.abs(amt).toLocaleString('en-IN')}
+                                              </span>
+                                              <button
+                                                onClick={() => openEditFee(af)}
+                                                className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Edit"
+                                              >
+                                                <Edit2 className="w-3.5 h-3.5" />
+                                              </button>
+                                              <button
+                                                onClick={() => deleteFee(af)}
+                                                className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Delete"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                            </div>
                                           </div>
                                         );
                                       })}
@@ -686,6 +884,46 @@ export default function Fees() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Edit existing additional fee / discount */}
+      <Modal
+        isOpen={!!editFeeId}
+        onClose={closeEditFee}
+        title={editFeeForm.is_discount ? 'Edit discount' : 'Edit additional fee'}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+            <input
+              type="text"
+              value={editFeeForm.description}
+              onChange={(e) => setEditFeeForm({ ...editFeeForm, description: e.target.value })}
+              className="input-field"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Amount (₹) *
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={editFeeForm.amount}
+              onChange={(e) => setEditFeeForm({ ...editFeeForm, amount: e.target.value })}
+              className="input-field"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              {editFeeForm.is_discount ? 'Stored as a negative amount (subtracted from total).' : 'Stored as a positive amount (added to total).'}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button type="button" onClick={closeEditFee} className="btn-secondary btn-sm">Cancel</button>
+            <button type="button" onClick={saveEditFee} className="btn-primary btn-sm">Save</button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

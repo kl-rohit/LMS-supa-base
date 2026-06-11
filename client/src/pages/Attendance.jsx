@@ -15,7 +15,6 @@ import {
   ClipboardCheck,
   Trash2,
   Plus,
-  Youtube,
   Share2,
   Edit2,
 } from 'lucide-react';
@@ -24,8 +23,10 @@ import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 export default function Attendance() {
+  const confirm = useConfirm();
   const [selectedDate, setSelectedDate] = useState(formatDateLocal(new Date()));
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -52,7 +53,7 @@ export default function Attendance() {
   const [allClasses, setAllClasses] = useState([]);
   // Inline edit modal for marked attendance rows
   const [editingRecord, setEditingRecord] = useState(null);
-  const [editForm, setEditForm] = useState({ status: 'present', topic: '', notes: '', recording_url: '', fee_charged: 0 });
+  const [editForm, setEditForm] = useState({ status: 'present', topic: '', notes: '', fee_charged: 0 });
   const [savingEdit, setSavingEdit] = useState(false);
   // Marked attendance for the selected date (across all classes)
   const [dateAttendance, setDateAttendance] = useState([]);
@@ -211,7 +212,6 @@ export default function Attendance() {
           calculated_fee: fee,
           absent_streak: alertInfo?.consecutive_absences || alertInfo?.absent_count || 0,
           existing_id: existingRecord?.id || null,
-          recording_url: existingRecord?.recording_url || '',
         };
       });
 
@@ -348,7 +348,6 @@ export default function Attendance() {
         student_id: r.student_id,
         status: r.status,
         topic: r.topic,
-        recording_url: r.recording_url || '',
         fee_charged: r.status === 'present' ? r.fee_charged : 0,
       }));
       if (selectedClass._isCamp) {
@@ -374,7 +373,12 @@ export default function Attendance() {
   const deleteAttendanceRecord = async (recordIndex) => {
     const record = attendanceRecords[recordIndex];
     if (!record?.existing_id) return;
-    if (!window.confirm(`Delete attendance record for ${record.student_name}?`)) return;
+    const ok = await confirm({
+      title: 'Delete attendance record?',
+      message: `Remove ${record.student_name}'s attendance for this class. Their fee total will recalculate.`,
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/attendance/${record.existing_id}`);
       // Update the record to remove existing_id (mark as new/unsaved)
@@ -401,7 +405,12 @@ export default function Attendance() {
 
   const deleteDateGroup = async (group) => {
     if (!group?.records?.length) return;
-    if (!window.confirm(`Delete all ${group.records.length} attendance record(s) for "${group.class_name}"?`)) return;
+    const ok = await confirm({
+      title: 'Delete all records for this class?',
+      message: `This will remove all ${group.records.length} attendance record(s) for "${group.class_name}" on this date.`,
+      confirmText: 'Delete all',
+    });
+    if (!ok) return;
     try {
       await Promise.all(group.records.map((r) => api.delete(`/attendance/${r.id}`)));
       toast.success(`Deleted ${group.records.length} record(s)`);
@@ -417,7 +426,12 @@ export default function Attendance() {
 
   const deleteDateRecord = async (rec) => {
     if (!rec?.id) return;
-    if (!window.confirm(`Delete ${rec.student_name}'s attendance for ${rec.class_name}?`)) return;
+    const ok = await confirm({
+      title: 'Delete attendance record?',
+      message: `Remove ${rec.student_name}'s attendance for ${rec.class_name}.`,
+      confirmText: 'Delete',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/attendance/${rec.id}`);
       toast.success('Attendance record deleted');
@@ -439,7 +453,6 @@ export default function Attendance() {
       status: rec.status || 'present',
       topic: rec.topic || '',
       notes: rec.notes || '',
-      recording_url: rec.recording_url || '',
       fee_charged: rec.fee_charged || 0,
     });
   };
@@ -457,7 +470,6 @@ export default function Attendance() {
         status: editForm.status,
         topic: editForm.topic,
         notes: editForm.notes,
-        recording_url: editForm.recording_url,
         fee_charged: editForm.status === 'absent' ? 0 : Number(editForm.fee_charged) || 0,
       };
       await api.put(`/attendance/${editingRecord.id}`, payload);
@@ -480,7 +492,12 @@ export default function Attendance() {
       toast.error('No saved attendance records to delete');
       return;
     }
-    if (!window.confirm(`Delete all ${savedRecords.length} attendance record(s) for this class on ${selectedDate}?`)) return;
+    const ok = await confirm({
+      title: 'Delete all attendance for this class?',
+      message: `This will remove ${savedRecords.length} attendance record(s) for this class on ${selectedDate}.`,
+      confirmText: 'Delete all',
+    });
+    if (!ok) return;
     try {
       await Promise.all(savedRecords.map((r) => api.delete(`/attendance/${r.existing_id}`)));
       // Reset all records to unsaved state
@@ -620,6 +637,15 @@ export default function Attendance() {
             <h2 className="text-lg font-semibold text-gray-900">Mark Attendance</h2>
           </div>
           <div className="flex items-center gap-2">
+            {selectedDate !== formatDateLocal(new Date()) && (
+              <button
+                onClick={() => setSelectedDate(formatDateLocal(new Date()))}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+                title="Jump to today"
+              >
+                Today
+              </button>
+            )}
             <button onClick={() => changeDate(-1)} className="p-2 rounded-lg hover:bg-gray-100">
               <ChevronLeft className="w-4 h-4 text-gray-600" />
             </button>
@@ -924,34 +950,13 @@ export default function Attendance() {
             />
           ) : (
             <>
-              {/* "Apply recording URL to all" — convenience for group classes */}
-              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
-                <span className="text-xs text-amber-800 font-medium whitespace-nowrap">Recording URL (apply to all):</span>
-                <input
-                  type="url"
-                  placeholder="https://youtu.be/..."
-                  className="input-field text-sm flex-1 bg-white"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const url = e.target.value.trim();
-                      if (!url) return;
-                      setAttendanceRecords((prev) => prev.map((r) => ({ ...r, recording_url: url })));
-                      e.target.value = '';
-                      toast.success('Recording URL applied to all students');
-                    }
-                  }}
-                />
-                <span className="text-xs text-amber-700">Press Enter to apply</span>
-              </div>
-
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="table-header">Student</th>
                       <th className="table-header text-center">Status</th>
-                      <th className="table-header">Topic</th>
-                      <th className="table-header">Recording</th>
+                      <th className="table-header">What was taught</th>
                       <th className="table-header text-right">Fee</th>
                       <th className="table-header text-center w-16"></th>
                     </tr>
@@ -994,36 +999,15 @@ export default function Attendance() {
                             </button>
                           </div>
                         </td>
-                        <td className="table-cell">
-                          <input
-                            type="text"
+                        <td className="table-cell min-w-[280px]">
+                          <textarea
                             value={record.topic}
                             onChange={(e) => updateRecord(idx, 'topic', e.target.value)}
-                            className="input-field text-sm"
+                            rows={2}
+                            className="input-field text-sm resize-y leading-snug"
                             placeholder="What was taught..."
+                            title={record.topic}
                           />
-                        </td>
-                        <td className="table-cell">
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="url"
-                              value={record.recording_url || ''}
-                              onChange={(e) => updateRecord(idx, 'recording_url', e.target.value)}
-                              className="input-field text-sm flex-1"
-                              placeholder="YouTube URL"
-                            />
-                            {record.recording_url && (
-                              <a
-                                href={record.recording_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 rounded-md text-red-500 hover:bg-red-50"
-                                title="Open recording"
-                              >
-                                <Youtube className="w-4 h-4" />
-                              </a>
-                            )}
-                          </div>
                         </td>
                         <td className="table-cell text-right">
                           {record.status === 'present' ? (
@@ -1233,7 +1217,7 @@ export default function Attendance() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <div className="flex gap-2">
-                {['present', 'absent', 'late'].map((s) => (
+                {['present', 'absent'].map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -1242,9 +1226,7 @@ export default function Attendance() {
                       editForm.status === s
                         ? s === 'present'
                           ? 'bg-green-100 border-green-300 text-green-700'
-                          : s === 'absent'
-                          ? 'bg-red-100 border-red-300 text-red-700'
-                          : 'bg-amber-100 border-amber-300 text-amber-700'
+                          : 'bg-red-100 border-red-300 text-red-700'
                         : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}
                   >
@@ -1273,21 +1255,6 @@ export default function Attendance() {
                 placeholder="What was covered, homework, observations..."
                 rows={3}
                 className="input-field resize-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                <span className="inline-flex items-center gap-1">
-                  <Youtube className="w-4 h-4 text-red-500" /> Recording URL
-                </span>
-              </label>
-              <input
-                type="url"
-                value={editForm.recording_url}
-                onChange={(e) => setEditForm({ ...editForm, recording_url: e.target.value })}
-                placeholder="https://youtube.com/..."
-                className="input-field"
               />
             </div>
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { useConfirm } from '../contexts/ConfirmContext';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
@@ -38,6 +39,7 @@ const emptyForm = {
 const isGroupType = (type) => type === 'offline_group' || type === 'online_group';
 
 export default function Classes() {
+  const confirm = useConfirm();
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -218,7 +220,12 @@ export default function Classes() {
     }
   }
   async function deleteCamp(camp) {
-    if (!window.confirm(`Permanently delete "${camp.name}"? Attendance records will be kept.`)) return;
+    const ok = await confirm({
+      title: 'Delete this camp?',
+      message: `Permanently remove the camp "${camp.name}". Attendance records linked to it will be kept.`,
+      confirmText: 'Delete camp',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/camps/${camp.id}`);
       toast.success('Camp deleted');

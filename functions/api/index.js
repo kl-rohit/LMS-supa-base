@@ -28,6 +28,9 @@ app.get('/', (_req, res) => {
       '/api/import',
       '/api/camps',
       '/api/student-logins (admin)',
+      '/api/courses (admin)',
+      '/api/lessons (admin)',
+      '/api/enrollments (admin)',
       '/api/portal (parent)',
     ],
   });
@@ -55,5 +58,8 @@ app.use('/api/dashboard',      require('./routes/dashboard'));
 app.use('/api/import',         require('./routes/import'));
 app.use('/api/camps',          require('./routes/camps'));
 app.use('/api/student-logins', require('./routes/student-logins'));
+app.use('/api/courses',        require('./routes/courses'));
+app.use('/api/lessons',        require('./routes/lessons'));
+app.use('/api/enrollments',    require('./routes/enrollments'));
 
 module.exports = app;

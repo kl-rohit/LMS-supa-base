@@ -7,7 +7,7 @@ import {
   LayoutDashboard,
   ClipboardCheck,
   IndianRupee,
-  Youtube,
+  Video,
   Menu,
   X,
   Music2,
@@ -19,13 +19,14 @@ import api from '../utils/api';
 import PortalDashboard from '../pages/portal/Dashboard';
 import PortalAttendance from '../pages/portal/Attendance';
 import PortalFees from '../pages/portal/Fees';
-import PortalRecordings from '../pages/portal/Recordings';
+import PortalCourses from '../pages/portal/Courses';
+import CoursePlayer from '../pages/portal/CoursePlayer';
 
 const navItems = [
   { to: '/portal/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { to: '/portal/lessons', label: 'My Lessons', icon: Video },
   { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck },
   { to: '/portal/fees', label: 'Fees', icon: IndianRupee },
-  { to: '/portal/recordings', label: 'Recordings', icon: Youtube },
 ];
 
 export default function ParentLayout() {
@@ -143,9 +144,10 @@ export default function ParentLayout() {
           <Routes>
             <Route path="/" element={<Navigate to="/portal/dashboard" replace />} />
             <Route path="dashboard" element={<PortalDashboard />} />
+            <Route path="lessons" element={<PortalCourses />} />
+            <Route path="lessons/:courseId" element={<CoursePlayer />} />
             <Route path="attendance" element={<PortalAttendance />} />
             <Route path="fees" element={<PortalFees />} />
-            <Route path="recordings" element={<PortalRecordings />} />
           </Routes>
         </main>
       </div>

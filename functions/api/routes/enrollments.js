@@ -12,14 +12,17 @@ router.get('/', async (req, res) => {
     const rows = await zcql(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.course_id = ${cid}`);
     const list = unwrap(rows, 'CourseEnrollments').map(normalize);
 
-    // How many lessons does this course have? (for progress %)
-    let lessonCount = 0;
+    // Pull THIS course's lesson IDs so we can scope progress counts to it.
+    // Without this, a student's completed lessons from OTHER courses would
+    // pollute the count here.
+    let courseLessonIds = new Set();
     try {
       const lessonRows = await zcql(req, `SELECT ROWID FROM Lessons WHERE Lessons.course_id = ${cid}`);
-      lessonCount = unwrap(lessonRows, 'Lessons').length;
+      courseLessonIds = new Set(unwrap(lessonRows, 'Lessons').map((l) => String(l.ROWID)));
     } catch {}
+    const lessonCount = courseLessonIds.size;
 
-    // Decorate with student name + completion count
+    // Decorate with student name + completion count (scoped to this course)
     const decorated = await Promise.all(list.map(async (en) => {
       let student_name = null;
       try {
@@ -31,7 +34,10 @@ router.get('/', async (req, res) => {
         const progressRows = await zcql(req,
           `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${safeId(en.student_id)} AND LessonProgress.completed = true`
         );
-        completed = unwrap(progressRows, 'LessonProgress').length;
+        // Filter to only lessons that belong to THIS course.
+        completed = unwrap(progressRows, 'LessonProgress')
+          .filter((p) => courseLessonIds.has(String(p.lesson_id)))
+          .length;
       } catch {}
       return {
         ...en,

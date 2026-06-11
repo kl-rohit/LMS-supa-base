@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   MessageSquare,
   AlertTriangle,
@@ -13,6 +13,8 @@ import {
   Phone,
   User,
   Trash2,
+  Settings as SettingsIcon,
+  Rocket,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -20,6 +22,55 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import Modal from '../components/Modal';
+
+// Substitute {placeholder} tokens with ctx[key]. Unknown placeholders stay
+// literal so the teacher can fill them manually (e.g. ____ amounts in
+// manually-composed fee reminders).
+function substituteTemplate(text, ctx) {
+  if (!text || typeof text !== 'string') return '';
+  return text.replace(/\{(\w+)\}/g, (match, key) => {
+    if (ctx && Object.prototype.hasOwnProperty.call(ctx, key) && ctx[key] !== undefined && ctx[key] !== null) {
+      return String(ctx[key]);
+    }
+    return match;
+  });
+}
+
+// Defaults that mirror the server's DEFAULT_TEMPLATES in
+// functions/api/routes/settings.js. Used as the bootstrap value before
+// /api/settings/templates returns, and as a fallback if a key is missing
+// from the server response.
+const DEFAULT_TEMPLATES = {
+  absence_alert:
+    `Dear {parent},\n\nThis is to inform you that {name} has been absent for the last {count} consecutive classes. Kindly ensure regular attendance for better progress.\n\nPlease reach out if there are any concerns.\n\nRegards,\nVeena Dhwani Academy`,
+  fee_reminder:
+    `Dear {parent},\n\nThis is a gentle reminder regarding the {month} {year} fee payment for {name}.\n\nFees for {name} — {month} {year}: ₹{amount}\n  • Class fees: ₹{class_fees}\n  • Additional: ₹{additional_fees}\n\nKindly do the needful. Thank you.\n\nVeena Dhwani Academy`,
+  class_update:
+    `Dear {parent},\n\nThis is to inform you about an update regarding {name}'s music class schedule. Please check with us for the revised timings.\n\nRegards,\nVeena Dhwani Academy`,
+  thank_you:
+    `Dear {parent},\n\nThank you for your continued support and for ensuring {name}'s regular attendance at Veena Dhwani Academy. We truly appreciate it.\n\nRegards,\nVeena Dhwani Academy`,
+  holiday_notice:
+    `Dear {parent},\n\nThis is to inform you that Veena Dhwani Academy will remain closed on account of the upcoming holiday. {name}'s classes will resume as per the regular schedule after the break.\n\nRegards,\nVeena Dhwani Academy`,
+};
+
+// Which placeholders each template supports — drives the clickable chip
+// buttons rendered under each textarea in the Edit Templates modal.
+const TEMPLATE_PLACEHOLDERS = {
+  absence_alert:  ['{parent}', '{name}', '{count}'],
+  fee_reminder:   ['{parent}', '{name}', '{month}', '{year}', '{amount}', '{class_fees}', '{additional_fees}'],
+  class_update:   ['{parent}', '{name}'],
+  thank_you:      ['{parent}', '{name}'],
+  holiday_notice: ['{parent}', '{name}'],
+};
+
+const TEMPLATE_LABELS = {
+  absence_alert:  'Absence Alert',
+  fee_reminder:   'Fee Reminder',
+  class_update:   'Class Update',
+  thank_you:      'Thank You',
+  holiday_notice: 'Holiday Notice',
+};
 
 export default function Messages() {
   const confirm = useConfirm();
@@ -29,6 +80,17 @@ export default function Messages() {
   const [filter, setFilter] = useState('all');
   const [generating, setGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+
+  // Customizable templates (admin-editable). Bootstrapped to defaults so the
+  // page works on first render before /api/settings/templates returns.
+  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templatesDraft, setTemplatesDraft] = useState(DEFAULT_TEMPLATES);
+  const [savingTemplates, setSavingTemplates] = useState(false);
+  const templateTextareaRefs = useRef({});
+
+  // Bulk WhatsApp send progress state
+  const [bulkSending, setBulkSending] = useState(false);
 
   // Month/year picker for the "Generate Fee Reminders" action.
   // Defaults to current month.
@@ -45,26 +107,17 @@ export default function Messages() {
   });
   const [sending, setSending] = useState(false);
 
-  // Message templates
+  // Resolve a template by type + substitute {name}/{parent}. Other placeholders
+  // ({amount}, {month}, {year}, {count}) stay literal in the manual-compose
+  // flow so the teacher can fill them in before sending. Returns '' for
+  // 'custom' or unknown types.
   const getTemplate = (type, studentName, parentName) => {
-    const sName = studentName || '[Student Name]';
-    const pName = parentName || '[Parent Name]';
-    switch (type) {
-      case 'absence_alert':
-        return `Dear ${pName},\n\nThis is to inform you that ${sName} has been absent for the last 3 consecutive classes. Kindly ensure regular attendance for better progress.\n\nPlease reach out if there are any concerns.\n\nRegards,\nVeena Dhwani Academy`;
-      case 'fee_reminder':
-        // Manual-compose version. Teacher fills in ____ amounts before sending.
-        // Matches the auto-generated reminder's structure so both look the same.
-        return `Dear ${pName},\n\nThis is a gentle reminder regarding the [month] [year] fee payment for ${sName}.\n\nFees for ${sName} — [month] [year]: ₹____\n  • Class fees: ₹____\n  • Additional: ₹____\n\nKindly do the needful. Thank you.\n\nVeena Dhwani Academy`;
-      case 'class_update':
-        return `Dear ${pName},\n\nThis is to inform you about an update regarding ${sName}'s music class schedule. Please check with us for the revised timings.\n\nRegards,\nVeena Dhwani Academy`;
-      case 'thank_you':
-        return `Dear ${pName},\n\nThank you for your continued support and for ensuring ${sName}'s regular attendance at Veena Dhwani Academy. We truly appreciate it.\n\nRegards,\nVeena Dhwani Academy`;
-      case 'holiday_notice':
-        return `Dear ${pName},\n\nThis is to inform you that Veena Dhwani Academy will remain closed on account of the upcoming holiday. ${sName}'s classes will resume as per the regular schedule after the break.\n\nRegards,\nVeena Dhwani Academy`;
-      default:
-        return '';
-    }
+    if (!type || type === 'custom') return '';
+    const text = (templates && templates[type]) || DEFAULT_TEMPLATES[type] || '';
+    return substituteTemplate(text, {
+      name:   studentName || '[Student Name]',
+      parent: parentName  || '[Parent Name]',
+    });
   };
 
   // Quick template chips configuration
@@ -115,16 +168,115 @@ export default function Messages() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [messagesData, studentsData] = await Promise.all([
+      const [messagesData, studentsData, templatesData] = await Promise.all([
         api.get('/messages'),
         api.get('/students'),
+        // Templates fetch must not break the page — fall back to defaults
+        // if the Settings table doesn't exist yet or the call fails.
+        api.get('/settings/templates').catch(() => ({ templates: DEFAULT_TEMPLATES })),
       ]);
       setMessages(messagesData.messages || []);
       setStudents((studentsData.students || []).filter((s) => s.status === 'active'));
+      const t = { ...DEFAULT_TEMPLATES, ...(templatesData?.templates || {}) };
+      setTemplates(t);
     } catch (err) {
       toast.error('Failed to load data: ' + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Open the Edit Templates modal seeded with the latest fetched values.
+  const openTemplatesEditor = () => {
+    setTemplatesDraft({ ...DEFAULT_TEMPLATES, ...templates });
+    setTemplatesOpen(true);
+  };
+
+  // Insert a placeholder at the textarea's current cursor position.
+  // Keeps focus + restores caret after the inserted token.
+  const insertPlaceholder = (type, placeholder) => {
+    const ta = templateTextareaRefs.current[type];
+    if (!ta) return;
+    const start = ta.selectionStart ?? ta.value.length;
+    const end   = ta.selectionEnd   ?? ta.value.length;
+    const before = ta.value.slice(0, start);
+    const after  = ta.value.slice(end);
+    const next   = before + placeholder + after;
+    setTemplatesDraft((prev) => ({ ...prev, [type]: next }));
+    // Restore cursor after the inserted token on next tick.
+    requestAnimationFrame(() => {
+      ta.focus();
+      const caret = start + placeholder.length;
+      try { ta.setSelectionRange(caret, caret); } catch {}
+    });
+  };
+
+  const saveTemplates = async () => {
+    try {
+      setSavingTemplates(true);
+      const result = await api.put('/settings/templates', { templates: templatesDraft });
+      const t = { ...DEFAULT_TEMPLATES, ...(result?.templates || templatesDraft) };
+      setTemplates(t);
+      toast.success('Templates saved');
+      setTemplatesOpen(false);
+    } catch (err) {
+      toast.error('Failed to save templates: ' + err.message);
+    } finally {
+      setSavingTemplates(false);
+    }
+  };
+
+  const resetTemplateToDefault = (type) => {
+    setTemplatesDraft((prev) => ({ ...prev, [type]: DEFAULT_TEMPLATES[type] }));
+  };
+
+  // ----- Bulk WhatsApp "Send All Pending" -----
+  // Opens one wa.me tab per pending message (~300 ms apart so Chrome doesn't
+  // treat the burst as popup spam). Each opened message is marked is_sent=1
+  // immediately — the teacher still has to tap Send in each tab, but the
+  // UI no longer pesters them about pending drafts.
+  const pendingSendable = useMemo(() =>
+    messages.filter((m) =>
+      !(m.is_sent === 1 || m.is_sent === true) &&
+      normalizeMobileForWhatsApp(m.mobile_number)
+    ), [messages]);
+
+  const sendAllPending = async () => {
+    const list = pendingSendable;
+    if (list.length === 0) return;
+    const ok = await confirm({
+      title: `Open ${list.length} WhatsApp tab${list.length === 1 ? '' : 's'}?`,
+      message:
+        `This will open ${list.length} new browser tab${list.length === 1 ? '' : 's'} — one per pending message — with the text pre-filled. ` +
+        `You will need to tap "Send" in each tab.\n\n` +
+        `If your browser blocks popups, look for the popup-blocker icon in the address bar and allow popups for this site, then try again.`,
+      confirmText: `Open ${list.length} tab${list.length === 1 ? '' : 's'}`,
+    });
+    if (!ok) return;
+    try {
+      setBulkSending(true);
+      let opened = 0;
+      for (const m of list) {
+        const num = normalizeMobileForWhatsApp(m.mobile_number);
+        if (!num) continue;
+        const url = `https://wa.me/${num}?text=${encodeURIComponent(m.message || '')}`;
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (win) opened++;
+        // Flip the local row's status optimistically + server-side.
+        try { await api.put(`/messages/${m.id}`, { is_sent: true }); } catch {}
+        setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, is_sent: 1 } : x)));
+        // Pacing — Chrome blocks rapid-fire window.open as popup spam.
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (opened === list.length) {
+        toast.success(`Opened ${opened} WhatsApp tab${opened === 1 ? '' : 's'} — tap Send in each.`);
+      } else if (opened > 0) {
+        toast(`Opened ${opened} of ${list.length} tabs — allow popups for this site to open the rest.`, { icon: 'ℹ️' });
+      } else {
+        toast.error('Browser blocked all popups. Allow popups for this site and try again.');
+      }
+    } finally {
+      setBulkSending(false);
     }
   };
 
@@ -302,6 +454,25 @@ export default function Messages() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Messages</h2>
         <div className="flex items-center gap-2 flex-wrap">
+          {pendingSendable.length > 0 && (
+            <button
+              onClick={sendAllPending}
+              disabled={bulkSending}
+              className="btn-sm rounded-lg bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+              title={`Open WhatsApp for all ${pendingSendable.length} pending message(s)`}
+            >
+              <Rocket className="w-4 h-4" />
+              {bulkSending ? 'Opening tabs...' : `Send All Pending (${pendingSendable.length})`}
+            </button>
+          )}
+          <button
+            onClick={openTemplatesEditor}
+            className="btn-secondary btn-sm"
+            title="Customize message wording"
+          >
+            <SettingsIcon className="w-4 h-4" />
+            Edit Templates
+          </button>
           <button
             onClick={generateAbsenceAlerts}
             disabled={generating}
@@ -576,6 +747,86 @@ export default function Messages() {
           })}
         </div>
       )}
+
+      {/* Edit Templates modal */}
+      <Modal
+        isOpen={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        title="Edit message templates"
+        size="lg"
+      >
+        <div className="space-y-5">
+          <p className="text-sm text-gray-600">
+            Customize the wording of automated and quick-template messages.
+            Use the chip buttons below each field to insert placeholders that
+            get replaced with student details when the message is generated.
+          </p>
+          {Object.keys(DEFAULT_TEMPLATES).map((type) => {
+            const placeholders = TEMPLATE_PLACEHOLDERS[type] || [];
+            return (
+              <div key={type} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-gray-800">
+                    {TEMPLATE_LABELS[type]}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => resetTemplateToDefault(type)}
+                    className="text-xs text-gray-500 hover:text-indigo-600 hover:underline"
+                    title="Restore the original wording"
+                  >
+                    Reset to default
+                  </button>
+                </div>
+                <textarea
+                  ref={(el) => { templateTextareaRefs.current[type] = el; }}
+                  value={templatesDraft[type] ?? ''}
+                  onChange={(e) =>
+                    setTemplatesDraft((prev) => ({ ...prev, [type]: e.target.value }))
+                  }
+                  rows={6}
+                  className="input-field font-mono text-sm"
+                  spellCheck={false}
+                />
+                {placeholders.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-gray-500">Insert:</span>
+                    {placeholders.map((ph) => (
+                      <button
+                        key={ph}
+                        type="button"
+                        onClick={() => insertPlaceholder(type, ph)}
+                        className="px-2 py-0.5 rounded-full text-xs font-mono bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                        title={`Insert ${ph} at cursor`}
+                      >
+                        {ph}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setTemplatesOpen(false)}
+              className="btn-secondary btn-sm"
+              disabled={savingTemplates}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveTemplates}
+              className="btn-primary btn-sm"
+              disabled={savingTemplates}
+            >
+              {savingTemplates ? 'Saving...' : 'Save templates'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

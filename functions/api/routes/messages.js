@@ -2,26 +2,43 @@
 
 const router = require('express').Router();
 const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { loadTemplates, DEFAULT_TEMPLATES } = require('./settings');
 
-const TEMPLATES = {
-  fee_reminder: (s, ctx) => {
-    // Opening: gentle reminder for previous month's fee.
-    // Body: fee total + breakdown when additional fees > 0 (discount hidden — internal).
-    // Close: "Kindly do the needful. Thank you." + signature.
-    let msg = `Dear ${s.parent_name},\n\nThis is a gentle reminder regarding the ${ctx.month} ${ctx.year} fee payment for ${s.name}.`;
-    msg += `\n\nFees for ${s.name} — ${ctx.month} ${ctx.year}: ₹${ctx.amount}`;
-    if (Number(ctx.additional_fees) > 0) {
-      msg += `\n  • Class fees: ₹${ctx.class_fees}`;
-      msg += `\n  • Additional: ₹${ctx.additional_fees}`;
+// Substitute {placeholder} tokens with values from ctx.
+// Unknown placeholders are left literal so the teacher can fill them
+// manually (e.g. when composing a one-off message without a known amount).
+function substituteTemplate(text, ctx) {
+  if (!text || typeof text !== 'string') return '';
+  return text.replace(/\{(\w+)\}/g, (match, key) => {
+    if (ctx && Object.prototype.hasOwnProperty.call(ctx, key) && ctx[key] !== undefined && ctx[key] !== null) {
+      return String(ctx[key]);
     }
-    msg += `\n\nKindly do the needful. Thank you.\n\nVeena Dhwani Academy`;
-    return msg;
-  },
-  absence_alert: (s, ctx) => `Dear ${s.parent_name}, ${s.name} has been absent for ${ctx.count} consecutive classes. Please let us know if everything is okay.`,
-  general_reminder: (s) => `Dear ${s.parent_name}, a reminder regarding ${s.name}'s classes.`,
-  class_schedule: (s) => `Dear ${s.parent_name}, this is a reminder about ${s.name}'s upcoming class.`,
-  custom: () => '',
-};
+    return match;
+  });
+}
+
+// Look up a template by type, falling back to the hard-coded default
+// when the Settings row is missing or empty.
+function pickTemplate(templates, type) {
+  return (templates && templates[type]) || DEFAULT_TEMPLATES[type] || '';
+}
+
+// Build the conditional fee_reminder body. Mirrors the original logic:
+// only show the breakdown bullet block when there are positive additional
+// fees — otherwise the lone "₹{amount}" total is cleaner. We do this by
+// stripping the breakdown lines from the template post-substitution when
+// additional_fees === 0. Lines starting with "  • Class fees:" or
+// "  • Additional:" are removed.
+function applyFeeReminderConditionalBlock(text, additionalFees) {
+  if (Number(additionalFees) > 0) return text;
+  return text
+    .split('\n')
+    .filter((ln) => {
+      const t = ln.trim();
+      return !(t.startsWith('• Class fees:') || t.startsWith('• Additional:'));
+    })
+    .join('\n');
+}
 
 // GET /api/messages
 router.get('/', async (req, res) => {
@@ -61,6 +78,8 @@ router.post('/', async (req, res) => {
 // POST /api/messages/generate-absence-alert
 router.post('/generate-absence-alert', async (req, res) => {
   try {
+    // Fetch templates once per request (single ZCQL query — fine at our scale).
+    const templates = await loadTemplates(req).catch(() => DEFAULT_TEMPLATES);
     // Reuse the same absent-streak logic
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active'`);
     const students = unwrap(studentRows, 'Students');
@@ -72,7 +91,11 @@ router.post('/generate-absence-alert', async (req, res) => {
         let streak = 0;
         for (const r of records) { if (r.status === 'absent') streak++; else break; }
         if (streak >= 2) {
-          const text = TEMPLATES.absence_alert(s, { count: streak });
+          const text = substituteTemplate(pickTemplate(templates, 'absence_alert'), {
+            name: s.name,
+            parent: s.parent_name,
+            count: streak,
+          });
           await insert(req, 'Messages', {
             student_id: String(s.ROWID),
             parent_name: s.parent_name || '',
@@ -105,6 +128,9 @@ router.post('/generate-fee-reminder', async (req, res) => {
     const dateTo = `${year}-${monthStr}-31`;
     const monthName = ['January','February','March','April','May','June','July','August','September','October','November','December'][month - 1];
 
+    // Fetch templates once per request.
+    const templates = await loadTemplates(req).catch(() => DEFAULT_TEMPLATES);
+
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active'`);
     const students = unwrap(studentRows, 'Students');
     const reminders = [];
@@ -136,15 +162,22 @@ router.post('/generate-fee-reminder', async (req, res) => {
         const total = classFees + additionalTotal;
 
         if (total > 0) {
-          const text = TEMPLATES.fee_reminder(s, {
+          const positiveAdditionalRounded = positiveAdditional.toFixed(0);
+          let text = substituteTemplate(pickTemplate(templates, 'fee_reminder'), {
+            name: s.name,
+            parent: s.parent_name,
             amount: total.toFixed(0),
             class_fees: classFees.toFixed(0),
             // IMPORTANT: pass only positive additional fees to the template.
             // Discount is internal and stays out of the parent-facing message.
-            additional_fees: positiveAdditional.toFixed(0),
+            additional_fees: positiveAdditionalRounded,
             month: monthName,
             year,
           });
+          // Hide the breakdown bullets when there are no additional fees —
+          // matches the pre-templates behaviour where the bullets only appeared
+          // for nonzero additional charges.
+          text = applyFeeReminderConditionalBlock(text, positiveAdditionalRounded);
           const inserted = await insert(req, 'Messages', {
             student_id: String(s.ROWID),
             parent_name: s.parent_name || '',

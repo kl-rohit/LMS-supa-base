@@ -31,6 +31,7 @@ app.get('/', (_req, res) => {
       '/api/courses (admin)',
       '/api/lessons (admin)',
       '/api/enrollments (admin)',
+      '/api/settings (admin)',
       '/api/portal (parent)',
     ],
   });
@@ -61,5 +62,6 @@ app.use('/api/student-logins', require('./routes/student-logins'));
 app.use('/api/courses',        require('./routes/courses'));
 app.use('/api/lessons',        require('./routes/lessons'));
 app.use('/api/enrollments',    require('./routes/enrollments'));
+app.use('/api/settings',       require('./routes/settings'));
 
 module.exports = app;

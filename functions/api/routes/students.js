@@ -26,7 +26,7 @@ router.get('/debug/tables', async (req, res) => {
       }
     }
   }
-  for (const t of ['Students', 'Groups', 'GroupStudents', 'Classes', 'ClassStudents', 'Attendance', 'AdditionalFees', 'Messages']) {
+  for (const t of ['Students', 'Groups', 'GroupStudents', 'Classes', 'ClassStudents', 'Attendance', 'AdditionalFees', 'Messages', 'Settings']) {
     try {
       const rows = await ds.table(t).getAllRows();
       result.probe[t] = { exists: true, count: rows.length };

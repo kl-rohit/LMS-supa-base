@@ -336,11 +336,11 @@ const PORTAL_EDITABLE_FIELDS = [
 
 // Stratus bucket used for student photos. Create in console:
 //   Catalyst Console → Cloud Scale → Stratus → Create Bucket
-//   • Bucket Name:  student-photos
+//   • Bucket Name:  student-photos-profile
 //   • Permission:   Authenticated
 //   • Encryption:   ON
 //   • Versioning:   OFF
-const PHOTO_BUCKET = 'student-photos';
+const PHOTO_BUCKET = 'student-photos-profile';
 
 // GET /api/portal/profile — returns just the fields shown on the parent form.
 // Email is sourced from the Catalyst login (not the Students.email column)

@@ -440,11 +440,11 @@ router.put('/profile', async (req, res) => {
 
 // POST /api/portal/photo
 // Body: { data: 'data:image/jpeg;base64,...', filename?: 'me.jpg' }
-// Decodes the base64 image, uploads it to the Stratus 'student-photos'
-// bucket under  student-<id>/<timestamp>-<filename> , then writes the
-// resulting URL to Students.photo_url. The same key is overwritten on
-// subsequent uploads via a per-student prefix + timestamp, so prior
-// photos don't pollute the bucket but versioning is not relied on.
+// Decodes the base64 image, uploads it to the Stratus photo bucket at a
+// flat per-student key (`student-<id>.jpg`), then writes that key to
+// Students.photo_url. Each upload overwrites the previous photo so the
+// bucket stays one-object-per-student; the signed URL we sign on read
+// is unique per request so browser caches stay fresh.
 router.post('/photo', async (req, res) => {
   try {
     const { data, filename } = req.body || {};
@@ -464,12 +464,14 @@ router.post('/photo', async (req, res) => {
       return res.status(413).json({ error: 'Image must be 5MB or smaller' });
     }
 
-    // Object key — namespaced by student so different students never
-    // collide, and timestamped so we get a unique URL per upload (the
-    // browser would otherwise cache the old image at the same URL).
-    const ext = mime.split('/')[1].replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'jpg';
-    const safeName = (filename || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40);
-    const objectKey = `student-${req.studentId}/${Date.now()}-${safeName}.${ext}`;
+    // Object key — flat layout, one object per student. Stable name so
+    // every upload overwrites the previous (overwrite:true below). The
+    // signed URL we hand back is unique per request, so browser caching
+    // isn't a concern even though the underlying object key is stable.
+    // Extension is always .jpg for visual consistency in the bucket
+    // browser; the real MIME is set via the Content-Type metadata and
+    // honoured by browsers regardless of the .jpg suffix.
+    const objectKey = `student-${req.studentId}.jpg`;
 
     const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
     // SDK v3.4 API: putObject(key, body, options) — body can be Buffer.

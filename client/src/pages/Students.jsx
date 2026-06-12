@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
+  Camera,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
@@ -75,6 +76,10 @@ export default function Students() {
   const [editingStudent, setEditingStudent] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  // Pending photo (data URL) selected via the modal file picker — not yet
+  // uploaded to Stratus. handleSubmit POSTs it on save.
+  const [photoPending, setPhotoPending] = useState('');
+  const photoFileRef = useRef(null);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, student: null });
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -132,23 +137,64 @@ export default function Students() {
         min_classes_per_month: form.min_classes_per_month ? Number(form.min_classes_per_month) : 0,
         // Trim empty DOB so backend doesn't reject empty string on Date column
         date_of_birth: form.date_of_birth || null,
+        // Don't send the photo_url here — it's either a transient signed URL
+        // (from the list batch) or an object key. The dedicated /photo
+        // endpoint is the only writer.
+        photo_url: undefined,
       };
+      let studentId;
       if (editingStudent) {
         await api.put(`/students/${editingStudent.id}`, payload);
+        studentId = editingStudent.id;
         toast.success('Student updated');
       } else {
-        await api.post('/students', payload);
+        const created = await api.post('/students', payload);
+        studentId = created?.student?.id;
         toast.success('Student added');
+      }
+      // If the admin picked a new photo in the modal, upload it now that we
+      // know the student id (covers both create + edit).
+      if (photoPending && studentId) {
+        try {
+          await api.post(`/students/${studentId}/photo`, { data: photoPending });
+        } catch (err) {
+          toast.error('Photo upload failed: ' + err.message);
+        }
       }
       setModalOpen(false);
       setEditingStudent(null);
       setForm(emptyForm);
+      setPhotoPending('');
+      if (photoFileRef.current) photoFileRef.current.value = '';
       fetchStudents();
     } catch (err) {
       toast.error(err.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  // File picker → base64 preview → stored in photoPending until Save.
+  const handlePickPhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please pick an image file');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error('Photo must be 8MB or smaller');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setPhotoPending(String(reader.result || ''));
+    reader.onerror = () => toast.error('Could not read the file');
+    reader.readAsDataURL(file);
+  };
+
+  const clearPickedPhoto = () => {
+    setPhotoPending('');
+    if (photoFileRef.current) photoFileRef.current.value = '';
   };
 
   const openEdit = (student) => {
@@ -170,12 +216,16 @@ export default function Students() {
       mother_name: student.mother_name || '',
       photo_url: student.photo_url || '',
     });
+    setPhotoPending('');
+    if (photoFileRef.current) photoFileRef.current.value = '';
     setModalOpen(true);
   };
 
   const openAdd = () => {
     setEditingStudent(null);
     setForm(emptyForm);
+    setPhotoPending('');
+    if (photoFileRef.current) photoFileRef.current.value = '';
     setModalOpen(true);
   };
 
@@ -735,21 +785,51 @@ export default function Students() {
           {/* Parent-managed Grade-exam details. The parent edits these via the
               portal; admin can view + override here. */}
           <div className="border-t border-gray-200 pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              {form.photo_url ? (
+            <div className="flex items-start gap-3 mb-4">
+              {(photoPending || form.photo_url) ? (
                 <img
-                  src={form.photo_url}
+                  src={photoPending || form.photo_url}
                   alt=""
-                  className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                  className="w-16 h-16 rounded-lg object-cover border-2 border-indigo-100 flex-shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                <div className="w-16 h-16 rounded-lg bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-xs text-center flex-shrink-0">
                   No photo
                 </div>
               )}
-              <div>
+              <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-semibold text-gray-800">Grade exam details</h4>
-                <p className="text-xs text-gray-400">Filled by the parent via the portal — editable here.</p>
+                <p className="text-xs text-gray-400 mb-2">
+                  Filled by the parent via the portal — admin can override here.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={photoFileRef}
+                    onChange={handlePickPhoto}
+                    className="hidden"
+                    id="admin-photo-input"
+                  />
+                  <label htmlFor="admin-photo-input" className="btn-secondary btn-sm cursor-pointer">
+                    <Camera className="w-3.5 h-3.5" />
+                    {form.photo_url || photoPending ? 'Change photo' : 'Upload photo'}
+                  </label>
+                  {photoPending && (
+                    <>
+                      <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                        Will upload on save
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearPickedPhoto}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

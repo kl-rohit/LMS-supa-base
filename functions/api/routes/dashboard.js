@@ -1,7 +1,7 @@
 // /api/dashboard — aggregated stats for the home screen.
 
 const router = require('express').Router();
-const { getById, getAll, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { getById, getAll, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
 
 router.get('/', async (req, res) => {
   try {
@@ -54,7 +54,8 @@ router.get('/', async (req, res) => {
     const alerts = [];
     for (const s of activeStudents) {
       try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`);
+        // Per-student all-time — paginate.
+        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`, 'Attendance');
         const recs = unwrap(aRows, 'Attendance');
         let streak = 0;
         for (const r of recs) { if (r.status === 'absent') streak++; else break; }

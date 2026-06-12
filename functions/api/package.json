@@ -4,8 +4,9 @@
   "description": "Veena monolith API on Catalyst AdvancedIO + Data Store",
   "main": "index.js",
   "dependencies": {
-    "express": "^4.21.1",
     "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "jimp": "^1.6.1",
     "zcatalyst-sdk-node": "^3.4.0"
   }
 }

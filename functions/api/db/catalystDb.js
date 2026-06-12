@@ -84,7 +84,17 @@ async function getById(req, table, id) {
 }
 
 async function getAll(req, table) {
-  const rows = await appFor(req).datastore().table(table).getAllRows();
+  // getAllRows() is deprecated by the SDK + caps at the same 300-row ZCQL
+  // ceiling. Drain via the async iterator so we get everything regardless
+  // of table size.
+  const tbl = appFor(req).datastore().table(table);
+  if (typeof tbl.getIterableRows === 'function') {
+    const out = [];
+    for await (const row of tbl.getIterableRows()) out.push(plain(row));
+    return out;
+  }
+  // Fallback for older SDK versions
+  const rows = await tbl.getAllRows();
   return rows.map(plain);
 }
 
@@ -101,6 +111,36 @@ async function remove(req, table, id) {
 // Flatten if there's only one table referenced.
 async function zcql(req, query) {
   return appFor(req).zcql().executeZCQLQuery(query);
+}
+
+// Paginate a SELECT until the table is exhausted.
+//
+// IMPORTANT: ZCQL silently caps SELECT at 300 rows per call. A bare
+// `SELECT * FROM Attendance` on a 312-row table returns 300 with no error
+// and no signal — your downstream filters silently miss rows.
+//
+// Use this helper for any SELECT that could plausibly exceed 300 rows:
+// Attendance, AdditionalFees, LessonProgress, Messages, Payments. Pass
+// the query WITHOUT a LIMIT/OFFSET clause; this helper appends them and
+// drains the table page-by-page.
+//
+// Returns the same nested shape as zcql() — caller still uses unwrap().
+async function zcqlAll(req, baseQuery, table) {
+  const PAGE_SIZE = 300;
+  const all = [];
+  let offset = 0;
+  // Guard against runaway loops if Catalyst ever returns >PAGE_SIZE rows.
+  let safety = 200; // up to 60k rows
+  while (safety-- > 0) {
+    // ZCQL LIMIT syntax: "LIMIT offset, count" — same as MySQL.
+    const pageQuery = `${baseQuery} LIMIT ${offset}, ${PAGE_SIZE}`;
+    const page = await appFor(req).zcql().executeZCQLQuery(pageQuery);
+    if (!page || page.length === 0) break;
+    all.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
 }
 
 // Unwrap a ZCQL result for a single-table query.
@@ -121,5 +161,6 @@ module.exports = {
   update,
   remove,
   zcql,
+  zcqlAll,
   unwrap,
 };

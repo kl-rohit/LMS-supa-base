@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import {
@@ -19,20 +19,26 @@ import {
   Video,
 } from 'lucide-react';
 
-import Dashboard from './pages/Dashboard';
-import Students from './pages/Students';
-import Groups from './pages/Groups';
-import Classes from './pages/Classes';
-import Attendance from './pages/Attendance';
-import Fees from './pages/Fees';
-import Messages from './pages/Messages';
-import Reports from './pages/Reports';
-import Settings from './pages/Settings';
+// Eagerly load only Login (everyone needs it immediately) and ParentLayout
+// (it has its own lazy routes underneath). All other top-level routes are
+// code-split via React.lazy → webpack emits a separate chunk per page, so
+// first-load JS is the small shell + the destination route.
 import Login from './pages/Login';
-import StudentLogins from './pages/StudentLogins';
-import Lessons from './pages/Lessons';
 import ParentLayout from './layouts/ParentLayout';
 
+const Dashboard      = lazy(() => import('./pages/Dashboard'));
+const Students       = lazy(() => import('./pages/Students'));
+const Groups         = lazy(() => import('./pages/Groups'));
+const Classes        = lazy(() => import('./pages/Classes'));
+const Attendance     = lazy(() => import('./pages/Attendance'));
+const Fees           = lazy(() => import('./pages/Fees'));
+const Messages       = lazy(() => import('./pages/Messages'));
+const Reports        = lazy(() => import('./pages/Reports'));
+const Settings       = lazy(() => import('./pages/Settings'));
+const StudentLogins  = lazy(() => import('./pages/StudentLogins'));
+const Lessons        = lazy(() => import('./pages/Lessons'));
+
+import Loader from './components/Loader';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
@@ -143,20 +149,25 @@ function TeacherLayout() {
         </header>
 
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/students" element={<Students />} />
-            <Route path="/groups" element={<Groups />} />
-            <Route path="/classes" element={<Classes />} />
-            <Route path="/attendance" element={<Attendance />} />
-            <Route path="/fees" element={<Fees />} />
-            <Route path="/messages" element={<Messages />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/lessons" element={<Lessons />} />
-            <Route path="/student-logins" element={<StudentLogins />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+          {/* Suspense boundary catches each lazy route's loading state.
+              Loader has a short delay so the spinner doesn't flash on a
+              fast network — feels instant when the chunk is small. */}
+          <Suspense fallback={<Loader text="Loading..." />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/students" element={<Students />} />
+              <Route path="/groups" element={<Groups />} />
+              <Route path="/classes" element={<Classes />} />
+              <Route path="/attendance" element={<Attendance />} />
+              <Route path="/fees" element={<Fees />} />
+              <Route path="/messages" element={<Messages />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/lessons" element={<Lessons />} />
+              <Route path="/student-logins" element={<StudentLogins />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>

@@ -1,7 +1,7 @@
 // /api/attendance — Catalyst Data Store "Attendance" + absent-streak logic.
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, q, safeId } = require('../db/catalystDb');
+const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
 
 function calcFee(student, classType, durationHours) {
   let perHour = 0;
@@ -41,7 +41,8 @@ router.get('/', async (req, res) => {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     let list;
     if (whereSql) {
-      const rows = await zcql(req, `SELECT * FROM Attendance ${whereSql} ORDER BY Attendance.class_date DESC`);
+      // Attendance is one of the fastest-growing tables — paginate.
+      const rows = await zcqlAll(req, `SELECT * FROM Attendance ${whereSql} ORDER BY Attendance.class_date DESC`, 'Attendance');
       list = unwrap(rows, 'Attendance');
     } else {
       list = (await getAll(req, 'Attendance')).sort((a, b) => String(b.class_date).localeCompare(String(a.class_date)));
@@ -69,7 +70,9 @@ router.get('/by-student/:studentId', async (req, res) => {
   try {
     const sid = safeId(req.params.studentId);
     if (!sid) return res.status(400).json({ error: 'Invalid student id' });
-    const rows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid} ORDER BY Attendance.class_date DESC`);
+    // Per-student all-time history — a student attending 2-3x/week for a few
+    // years will exceed 300 rows. Paginate.
+    const rows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const decorated = await Promise.all(unwrap(rows, 'Attendance').map((a) => decorate(req, a)));
     res.json({ attendance: decorated });
   } catch (e) {
@@ -86,7 +89,10 @@ router.get('/absent-streaks/all', async (req, res) => {
     const alerts = [];
     for (const s of students) {
       try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`);
+        // Streak detection only needs the leading "absent" run, but we don't
+        // know its length ahead of time. Pull all + scan in code. Per-student
+        // history can exceed 300 rows over years → paginate.
+        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`, 'Attendance');
         const records = unwrap(aRows, 'Attendance');
         let streak = 0;
         for (const r of records) {

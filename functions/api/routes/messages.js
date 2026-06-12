@@ -1,7 +1,7 @@
 // /api/messages — Messages CRUD + auto-generate (absence/fee reminder).
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
 
@@ -51,7 +51,9 @@ router.post('/generate-absence-alert', async (req, res) => {
     let created = 0;
     for (const s of students) {
       try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`);
+        // Per-student all-time history — paginate (could exceed 300 rows
+        // for long-standing students).
+        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`, 'Attendance');
         const records = unwrap(aRows, 'Attendance');
         let streak = 0;
         for (const r of records) { if (r.status === 'absent') streak++; else break; }

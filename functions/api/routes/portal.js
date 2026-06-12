@@ -3,7 +3,8 @@
 // Every query is scoped to that student_id — no cross-student access.
 
 const router = require('express').Router();
-const { getById, zcql, unwrap, normalize, q, safeId, insert, update, appFor } = require('../db/catalystDb');
+const { getById, zcql, zcqlAll, unwrap, normalize, q, safeId, insert, update, appFor } = require('../db/catalystDb');
+const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 
 // GET /api/portal/me — info about the linked student
 router.get('/me', async (req, res) => {
@@ -33,7 +34,9 @@ router.get('/attendance', async (req, res) => {
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       where += ` AND Attendance.class_date >= ${q(`${month}-01`)} AND Attendance.class_date <= ${q(`${month}-31`)}`;
     }
-    const rows = await zcql(req, `SELECT * FROM Attendance WHERE ${where} ORDER BY Attendance.class_date DESC`);
+    // Paginate — when no month filter, this returns the student's entire
+    // attendance history which can exceed 300 rows over years.
+    const rows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where} ORDER BY Attendance.class_date DESC`, 'Attendance');
     // Decorate with class_name
     const records = await Promise.all(unwrap(rows, 'Attendance').map(async (a) => {
       const out = normalize(a);
@@ -59,8 +62,9 @@ router.get('/fees', async (req, res) => {
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       monthClause = ` AND Attendance.class_date >= ${q(`${month}-01`)} AND Attendance.class_date <= ${q(`${month}-31`)}`;
     }
-    // Class fees (from attendance) for the requested month (or all-time)
-    const attRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid}${monthClause}`);
+    // Class fees (from attendance) for the requested month (or all-time —
+    // which can exceed 300 rows for long-standing students; paginate).
+    const attRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid}${monthClause}`, 'Attendance');
     const attendance = unwrap(attRows, 'Attendance');
     const classFees = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
 
@@ -334,13 +338,8 @@ const PORTAL_EDITABLE_FIELDS = [
   'mother_name',
 ];
 
-// Stratus bucket used for student photos. Create in console:
-//   Catalyst Console → Cloud Scale → Stratus → Create Bucket
-//   • Bucket Name:  student-photos-profile
-//   • Permission:   Authenticated
-//   • Encryption:   ON
-//   • Versioning:   OFF
-const PHOTO_BUCKET = 'student-photos-profile';
+// Stratus bucket name + upload pipeline live in lib/photoUpload — both this
+// route and the admin /api/students/:id/photo route call the same helper.
 
 // GET /api/portal/profile — returns just the fields shown on the parent form.
 // Email is sourced from the Catalyst login (not the Students.email column)
@@ -439,94 +438,26 @@ router.put('/profile', async (req, res) => {
 });
 
 // POST /api/portal/photo
-// Body: { data: 'data:image/jpeg;base64,...', filename?: 'me.jpg' }
-// Decodes the base64 image, uploads it to the Stratus photo bucket at a
-// flat per-student key (`student-<id>.jpg`), then writes that key to
-// Students.photo_url. Each upload overwrites the previous photo so the
-// bucket stays one-object-per-student; the signed URL we sign on read
-// is unique per request so browser caches stay fresh.
+// Body: { data: 'data:image/jpeg;base64,...' }
+// Decodes, resizes to ≤ 800px JPEG, uploads to Stratus, returns a 1-hour
+// signed URL for the immediate preview. See lib/photoUpload.js.
 router.post('/photo', async (req, res) => {
   try {
-    const { data, filename } = req.body || {};
-    if (!data || typeof data !== 'string') {
-      return res.status(400).json({ error: 'data (base64 image) is required' });
-    }
-
-    // Accept both `data:image/...;base64,xxx` and raw base64 strings.
-    const m = data.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-    let mime, b64;
-    if (m) { mime = m[1]; b64 = m[2]; }
-    else   { mime = 'image/jpeg'; b64 = data; }
-
-    const buffer = Buffer.from(b64, 'base64');
-    if (buffer.length === 0) return res.status(400).json({ error: 'Empty image payload' });
-    if (buffer.length > 5 * 1024 * 1024) {
-      return res.status(413).json({ error: 'Image must be 5MB or smaller' });
-    }
-
-    // Object key — flat layout, one object per student. Stable name so
-    // every upload overwrites the previous (overwrite:true below). The
-    // signed URL we hand back is unique per request, so browser caching
-    // isn't a concern even though the underlying object key is stable.
-    // Extension is always .jpg for visual consistency in the bucket
-    // browser; the real MIME is set via the Content-Type metadata and
-    // honoured by browsers regardless of the .jpg suffix.
-    const objectKey = `student-${req.studentId}.jpg`;
-
-    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-    // SDK v3.4 API: putObject(key, body, options) — body can be Buffer.
-    // overwrite:true is defensive — keys are timestamp-prefixed so collisions
-    // shouldn't happen, but a parent who hits Save twice in 1ms would otherwise
-    // get a 409 from Stratus.
-    await bucket.putObject(objectKey, buffer, {
-      contentType: mime,
-      overwrite: true,
-    });
-
-    // Pre-signed URL for the Authenticated bucket. We persist the OBJECT KEY
-    // (not the URL) in Students.photo_url, and sign on-demand whenever a
-    // client needs to render the photo — see GET /api/portal/photo-url and
-    // GET /api/students/:id/photo-url. This avoids any signed-URL expiry
-    // surprises (Catalyst caps these; the long-lived URL we used previously
-    // would intermittently 403).
-    //
-    // For the immediate response we still sign once so the client can show
-    // the just-uploaded photo without a follow-up round-trip. Short expiry
-    // (1 hour) — the client just needs it for a moment.
-    let signedNow = '';
-    try {
-      const r = await bucket.generatePreSignedUrl(objectKey, 'GET', { expiryIn: '3600' });
-      signedNow = r?.signature || '';
-    } catch (err) {
-      // Non-fatal — the upload succeeded; the client can re-fetch via
-      // /portal/photo-url. Still log so we can spot expiry-cap issues.
-      console.error('generatePreSignedUrl failed', err.message);
-    }
-
-    await update(req, 'Students', req.studentId, { photo_url: objectKey });
-    res.json({ photo_url: signedNow, object_key: objectKey });
+    const result = await uploadStudentPhoto(req, req.studentId, req.body);
+    res.status(result.status).json(result.json);
   } catch (e) {
     res.status(500).json({ error: 'Failed to upload photo', detail: e.message });
   }
 });
 
-// GET /api/portal/photo-url — returns a fresh 1-hour signed URL for the
-// linked student's photo. Frontend calls this to render <img src> after
-// loading the profile (Students.photo_url stores the object key, not a
-// signed URL — see comment in POST /photo).
+// GET /api/portal/photo-url — returns a fresh signed URL for the linked
+// student's photo. Frontend calls this on profile load.
 router.get('/photo-url', async (req, res) => {
   try {
     const s = await getById(req, 'Students', req.studentId);
     if (!s) return res.status(404).json({ error: 'Linked student not found' });
-    const key = String(s.photo_url || '').trim();
-    if (!key || key.startsWith('http') || key.startsWith('stratus://')) {
-      // Either no photo at all, or a legacy full-URL value from before the
-      // sign-on-demand refactor. Return as-is — frontend renders directly.
-      return res.json({ photo_url: key || '' });
-    }
-    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-    const r = await bucket.generatePreSignedUrl(key, 'GET', { expiryIn: '3600' });
-    res.json({ photo_url: r?.signature || '' });
+    const photo_url = await signStoredPhoto(req, s.photo_url);
+    res.json({ photo_url });
   } catch (e) {
     res.status(500).json({ error: 'Failed to sign photo URL', detail: e.message });
   }

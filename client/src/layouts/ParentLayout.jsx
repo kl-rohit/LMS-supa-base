@@ -1,7 +1,7 @@
 // Parent portal shell — simpler nav than the teacher app, read-only everywhere.
 // Shows the linked student's name in the header.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -16,13 +16,15 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
+import Loader from '../components/Loader';
 
-import PortalDashboard from '../pages/portal/Dashboard';
-import PortalAttendance from '../pages/portal/Attendance';
-import PortalFees from '../pages/portal/Fees';
-import PortalCourses from '../pages/portal/Courses';
-import PortalProfile from '../pages/portal/Profile';
-import CoursePlayer from '../pages/portal/CoursePlayer';
+// Lazy-load each portal route so parents only download what they visit.
+const PortalDashboard  = lazy(() => import('../pages/portal/Dashboard'));
+const PortalAttendance = lazy(() => import('../pages/portal/Attendance'));
+const PortalFees       = lazy(() => import('../pages/portal/Fees'));
+const PortalCourses    = lazy(() => import('../pages/portal/Courses'));
+const PortalProfile    = lazy(() => import('../pages/portal/Profile'));
+const CoursePlayer     = lazy(() => import('../pages/portal/CoursePlayer'));
 
 const navItems = [
   { to: '/portal/dashboard',  label: 'Overview',      icon: LayoutDashboard },
@@ -144,15 +146,17 @@ export default function ParentLayout() {
         </header>
 
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          <Routes>
-            <Route path="/" element={<Navigate to="/portal/dashboard" replace />} />
-            <Route path="dashboard" element={<PortalDashboard />} />
-            <Route path="lessons" element={<PortalCourses />} />
-            <Route path="lessons/:courseId" element={<CoursePlayer />} />
-            <Route path="attendance" element={<PortalAttendance />} />
-            <Route path="fees" element={<PortalFees />} />
-            <Route path="profile" element={<PortalProfile />} />
-          </Routes>
+          <Suspense fallback={<Loader text="Loading..." />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/portal/dashboard" replace />} />
+              <Route path="dashboard" element={<PortalDashboard />} />
+              <Route path="lessons" element={<PortalCourses />} />
+              <Route path="lessons/:courseId" element={<CoursePlayer />} />
+              <Route path="attendance" element={<PortalAttendance />} />
+              <Route path="fees" element={<PortalFees />} />
+              <Route path="profile" element={<PortalProfile />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>

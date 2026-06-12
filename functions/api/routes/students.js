@@ -2,10 +2,7 @@
 
 const router = require('express').Router();
 const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, q, appFor, safeId } = require('../db/catalystDb');
-
-// Matches the bucket in portal.js. Photos live in this Stratus bucket and
-// Students.photo_url stores the object key; we sign on-demand for display.
-const PHOTO_BUCKET = 'student-photos-profile';
+const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 
 // IMPORTANT: declare specific paths (debug/tables, inactive) BEFORE the /:id
 // catch-all so Express routes them correctly.
@@ -214,32 +211,49 @@ router.post('/photo-urls', async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     if (ids.length === 0) return res.json({ urls: {} });
 
-    // Pull only the rows we need
     const sids = ids.map((id) => safeId(id)).filter(Boolean);
     if (sids.length === 0) return res.json({ urls: {} });
     const rows = await zcql(req, `SELECT ROWID, photo_url FROM Students WHERE ROWID IN (${sids.join(',')})`);
     const students = unwrap(rows, 'Students');
 
-    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
     const urls = {};
     await Promise.all(students.map(async (s) => {
-      const key = String(s.photo_url || '').trim();
-      if (!key) return;
-      // Legacy full-URL values (before the sign-on-demand refactor)
-      if (key.startsWith('http')) { urls[String(s.ROWID)] = key; return; }
-      // Bogus stratus:// fallback strings from the old code — treat as missing
-      if (key.startsWith('stratus://')) return;
-      try {
-        const r = await bucket.generatePreSignedUrl(key, 'GET', { expiryIn: '3600' });
-        if (r?.signature) urls[String(s.ROWID)] = r.signature;
-      } catch (err) {
-        console.error('sign URL failed for', s.ROWID, err.message);
-      }
+      const signed = await signStoredPhoto(req, s.photo_url);
+      if (signed) urls[String(s.ROWID)] = signed;
     }));
 
     res.json({ urls });
   } catch (e) {
     res.status(500).json({ error: 'Failed to sign photo URLs', detail: e.message });
+  }
+});
+
+// POST /api/students/:id/photo — admin uploads a photo on behalf of a
+// student (for parents who don't use the portal). Same pipeline as the
+// portal: resize → upload → patch Students.photo_url with the object key.
+// Body: { data: 'data:image/jpeg;base64,...' }
+router.post('/:id/photo', async (req, res) => {
+  try {
+    const existing = await getById(req, 'Students', req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Student not found' });
+    const result = await uploadStudentPhoto(req, req.params.id, req.body);
+    res.status(result.status).json(result.json);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to upload photo', detail: e.message });
+  }
+});
+
+// GET /api/students/:id/photo-url — single-student signed URL.
+// Used by the admin Students modal so the current photo renders when
+// editing.
+router.get('/:id/photo-url', async (req, res) => {
+  try {
+    const s = await getById(req, 'Students', req.params.id);
+    if (!s) return res.status(404).json({ error: 'Student not found' });
+    const photo_url = await signStoredPhoto(req, s.photo_url);
+    res.json({ photo_url });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to sign photo URL', detail: e.message });
   }
 });
 

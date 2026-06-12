@@ -1,7 +1,7 @@
 // /api/lessons — Admin CRUD for Lessons. Each Lesson belongs to a Course.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 
 // GET /api/lessons?course_id=X
 router.get('/', async (req, res) => {
@@ -25,12 +25,14 @@ router.get('/activity', async (req, res) => {
     const sidFilter = safeId(req.query.student_id);
     const cidFilter = safeId(req.query.course_id);
 
-    // Pull everything in parallel. LessonProgress may exceed 300 rows at scale;
-    // we'd paginate then. For now this is fine for a small academy.
+    // Pull everything in parallel. LessonProgress + Attendance scale fastest,
+    // so use zcqlAll (paginated) for the tables that grow with usage. The
+    // smaller bounded tables (Courses, Students) still go through plain zcql
+    // — they're capped well below 300 in practice.
     const [enrollRows, lessonRows, progressRows, courseRows, studentRows] = await Promise.all([
-      zcql(req, `SELECT * FROM CourseEnrollments`),
-      zcql(req, `SELECT * FROM Lessons`),
-      zcql(req, `SELECT * FROM LessonProgress`),
+      zcqlAll(req, `SELECT * FROM CourseEnrollments`, 'CourseEnrollments'),
+      zcqlAll(req, `SELECT * FROM Lessons`, 'Lessons'),
+      zcqlAll(req, `SELECT * FROM LessonProgress`, 'LessonProgress'),
       zcql(req, `SELECT * FROM Courses`),
       zcql(req, `SELECT * FROM Students`),
     ]);

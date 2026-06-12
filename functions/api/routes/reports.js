@@ -1,7 +1,7 @@
 // /api/reports — read-only aggregations matching the Reports page shape.
 
 const router = require('express').Router();
-const { getById, getAll, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { getById, getAll, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -18,7 +18,8 @@ router.get('/student/:id', async (req, res) => {
     const where = [`Attendance.student_id = ${req.params.id}`];
     if (from) where.push(`Attendance.class_date >= ${q(from)}`);
     if (to) where.push(`Attendance.class_date <= ${q(to)}`);
-    const aRows = await zcql(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`);
+    // Per-student report can span years — paginate.
+    const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const attendance = unwrap(aRows, 'Attendance').map(normalize);
 
     const present = attendance.filter((a) => a.status === 'present').length;

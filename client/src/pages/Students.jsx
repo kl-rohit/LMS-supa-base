@@ -15,6 +15,8 @@ import {
   Eye,
   EyeOff,
   Camera,
+  Columns3,
+  ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
@@ -28,6 +30,41 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import StudentDetailPanel from '../components/StudentDetailPanel';
+
+// Toggleable columns on the Students table. Name + Status are always
+// visible (they're how you identify a row); Actions column auto-hides
+// when the detail panel handles those interactions instead.
+const TOGGLE_COLUMNS = [
+  { key: 'parent_name',       label: 'Parent' },
+  { key: 'mobile_number',     label: 'Mobile' },
+  { key: 'fee_online',        label: 'Online ₹/hr' },
+  { key: 'fee_offline',       label: 'Offline ₹/hr' },
+  { key: 'fee_offline_group', label: 'Group ₹/hr' },
+];
+const DEFAULT_VISIBLE_COLS = {
+  parent_name: true,
+  mobile_number: true,
+  fee_online: false,
+  fee_offline: false,
+  fee_offline_group: false,
+};
+const COLS_STORAGE_KEY = 'veena_students_visible_cols';
+
+function loadVisibleCols() {
+  try {
+    const raw = localStorage.getItem(COLS_STORAGE_KEY);
+    if (!raw) return DEFAULT_VISIBLE_COLS;
+    const parsed = JSON.parse(raw);
+    // Merge over defaults so newly-introduced columns get their default state
+    return { ...DEFAULT_VISIBLE_COLS, ...parsed };
+  } catch {
+    return DEFAULT_VISIBLE_COLS;
+  }
+}
+function saveVisibleCols(v) {
+  try { localStorage.setItem(COLS_STORAGE_KEY, JSON.stringify(v)); } catch {}
+}
 
 const emptyForm = {
   name: '',
@@ -80,6 +117,30 @@ export default function Students() {
   // uploaded to Stratus. handleSubmit POSTs it on save.
   const [photoPending, setPhotoPending] = useState('');
   const photoFileRef = useRef(null);
+
+  // Column visibility (persisted to localStorage). Name/Status always show.
+  const [visibleCols, setVisibleCols] = useState(loadVisibleCols);
+  const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const colsMenuRef = useRef(null);
+  useEffect(() => {
+    if (!colsMenuOpen) return;
+    const onClick = (e) => {
+      if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) setColsMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onClick);
+    return () => window.removeEventListener('mousedown', onClick);
+  }, [colsMenuOpen]);
+  const toggleCol = (key) => {
+    setVisibleCols((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveVisibleCols(next);
+      return next;
+    });
+  };
+
+  // Detail panel — null when closed, otherwise the student object.
+  const [detailStudent, setDetailStudent] = useState(null);
+  const isDetailOpen = detailStudent !== null;
   const [deleteDialog, setDeleteDialog] = useState({ open: false, student: null });
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -435,7 +496,7 @@ export default function Students() {
   if (loading) return <Loader text="Loading students..." />;
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 transition-all duration-200 ${isDetailOpen ? 'lg:mr-[30rem]' : ''}`}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Students</h2>
@@ -458,6 +519,42 @@ export default function Students() {
             {phoneReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             {phoneReveal.revealed ? 'Hide' : 'Show'} phones
           </button>
+
+          {/* Columns visibility dropdown */}
+          <div className="relative" ref={colsMenuRef}>
+            <button
+              onClick={() => setColsMenuOpen((v) => !v)}
+              className="btn-secondary btn-sm"
+              title="Show or hide table columns"
+            >
+              <Columns3 className="w-4 h-4" /> Columns
+            </button>
+            {colsMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1.5">
+                <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                  Show columns
+                </div>
+                {TOGGLE_COLUMNS.map((c) => (
+                  <label
+                    key={c.key}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!visibleCols[c.key]}
+                      onChange={() => toggleCol(c.key)}
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                    />
+                    <span className="text-gray-700">{c.label}</span>
+                  </label>
+                ))}
+                <div className="px-3 py-1.5 text-xs text-gray-400 border-t border-gray-100">
+                  Name + Status always visible.
+                </div>
+              </div>
+            )}
+          </div>
+
           <button onClick={() => setImportModalOpen(true)} className="btn-secondary btn-sm">
             <Upload className="w-4 h-4" /> Import
           </button>
@@ -553,98 +650,104 @@ export default function Students() {
                   <th className="table-header cursor-pointer" onClick={() => handleSort('name')}>
                     <div className="flex items-center gap-1">Name <SortIcon column="name" /></div>
                   </th>
-                  <th className="table-header cursor-pointer" onClick={() => handleSort('parent_name')}>
-                    <div className="flex items-center gap-1">Parent <SortIcon column="parent_name" /></div>
-                  </th>
-                  <th className="table-header">Mobile</th>
-                  <th className="table-header cursor-pointer text-right" onClick={() => handleSort('fee_online')}>
-                    <div className="flex items-center justify-end gap-1">Online ₹/hr <SortIcon column="fee_online" /></div>
-                  </th>
-                  <th className="table-header cursor-pointer text-right" onClick={() => handleSort('fee_offline')}>
-                    <div className="flex items-center justify-end gap-1">Offline ₹/hr <SortIcon column="fee_offline" /></div>
-                  </th>
-                  <th className="table-header cursor-pointer text-right" onClick={() => handleSort('fee_offline_group')}>
-                    <div className="flex items-center justify-end gap-1">Group ₹/hr <SortIcon column="fee_offline_group" /></div>
-                  </th>
+                  {!isDetailOpen && visibleCols.parent_name && (
+                    <th className="table-header cursor-pointer" onClick={() => handleSort('parent_name')}>
+                      <div className="flex items-center gap-1">Parent <SortIcon column="parent_name" /></div>
+                    </th>
+                  )}
+                  {!isDetailOpen && visibleCols.mobile_number && (
+                    <th className="table-header">Mobile</th>
+                  )}
+                  {!isDetailOpen && visibleCols.fee_online && (
+                    <th className="table-header cursor-pointer text-right" onClick={() => handleSort('fee_online')}>
+                      <div className="flex items-center justify-end gap-1">Online ₹/hr <SortIcon column="fee_online" /></div>
+                    </th>
+                  )}
+                  {!isDetailOpen && visibleCols.fee_offline && (
+                    <th className="table-header cursor-pointer text-right" onClick={() => handleSort('fee_offline')}>
+                      <div className="flex items-center justify-end gap-1">Offline ₹/hr <SortIcon column="fee_offline" /></div>
+                    </th>
+                  )}
+                  {!isDetailOpen && visibleCols.fee_offline_group && (
+                    <th className="table-header cursor-pointer text-right" onClick={() => handleSort('fee_offline_group')}>
+                      <div className="flex items-center justify-end gap-1">Group ₹/hr <SortIcon column="fee_offline_group" /></div>
+                    </th>
+                  )}
                   <th className="table-header">Status</th>
-                  <th className="table-header text-right">Actions</th>
+                  <th className="table-header w-10" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredStudents.map((student) => (
-                  <tr
-                    key={student.id}
-                    className={`hover:bg-gray-50 transition-colors ${selectedIds.has(String(student.id)) ? 'bg-indigo-50/40' : ''}`}
-                  >
-                    <td className="table-cell">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(String(student.id))}
-                        onChange={() => toggleSelect(student.id)}
-                        className="w-4 h-4 text-indigo-600 rounded border-gray-300"
-                      />
-                    </td>
-                    <td className="table-cell font-medium text-gray-900">
-                      <div className="flex items-center gap-2">
-                        {student.photo_url ? (
-                          <img
-                            src={student.photo_url}
-                            alt=""
-                            className="w-7 h-7 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                            // Hide silently if the signed URL has expired / Stratus is unreachable.
-                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                          />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-400 flex-shrink-0">
-                            {(student.name || '?').slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
-                        <span className="truncate">{student.name}</span>
-                      </div>
-                    </td>
-                    <td className="table-cell">{student.parent_name || '-'}</td>
-                    <td className="table-cell font-mono">
-                      {student.mobile_number
-                        ? (phoneReveal.revealed ? formatMobileDisplay(student.mobile_number) : maskPhone(student.mobile_number))
-                        : '-'}
-                    </td>
-                    <td className="table-cell text-right">{student.fee_online ? `\u20B9${student.fee_online}/hr` : '-'}</td>
-                    <td className="table-cell text-right">{student.fee_offline ? `\u20B9${student.fee_offline}/hr` : '-'}</td>
-                    <td className="table-cell text-right">{student.fee_offline_group ? `\u20B9${student.fee_offline_group}/hr` : '-'}</td>
-                    <td className="table-cell">
-                      <span className={student.status === 'active' ? 'badge-active' : 'badge-inactive'}>
-                        {student.status}
-                      </span>
-                    </td>
-                    <td className="table-cell text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {student.status === 'inactive' && (
-                          <button
-                            onClick={() => handleReactivate(student)}
-                            className="p-1.5 rounded-md hover:bg-green-50 text-gray-400 hover:text-green-600 transition-colors"
-                            title="Reactivate student"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => openEdit(student)}
-                          className="p-1.5 rounded-md hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteDialog({ open: true, student })}
-                          className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
-                          title={student.status === 'inactive' ? 'Delete permanently' : 'Deactivate'}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredStudents.map((student) => {
+                  const isOpenRow = detailStudent && String(detailStudent.id) === String(student.id);
+                  return (
+                    <tr
+                      key={student.id}
+                      onClick={() => setDetailStudent(student)}
+                      className={`cursor-pointer transition-colors ${
+                        isOpenRow
+                          ? 'bg-indigo-50'
+                          : selectedIds.has(String(student.id))
+                            ? 'bg-indigo-50/40 hover:bg-indigo-50/60'
+                            : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      {/* Checkbox click shouldn't open the detail panel */}
+                      <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(String(student.id))}
+                          onChange={() => toggleSelect(student.id)}
+                          className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                        />
+                      </td>
+                      <td className="table-cell font-medium text-gray-900">
+                        <div className="flex items-center gap-2">
+                          {student.photo_url ? (
+                            <img
+                              src={student.photo_url}
+                              alt=""
+                              className="w-7 h-7 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-400 flex-shrink-0">
+                              {(student.name || '?').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">{student.name}</span>
+                        </div>
+                      </td>
+                      {!isDetailOpen && visibleCols.parent_name && (
+                        <td className="table-cell">{student.parent_name || '-'}</td>
+                      )}
+                      {!isDetailOpen && visibleCols.mobile_number && (
+                        <td className="table-cell font-mono">
+                          {student.mobile_number
+                            ? (phoneReveal.revealed ? formatMobileDisplay(student.mobile_number) : maskPhone(student.mobile_number))
+                            : '-'}
+                        </td>
+                      )}
+                      {!isDetailOpen && visibleCols.fee_online && (
+                        <td className="table-cell text-right">{student.fee_online ? `\u20B9${student.fee_online}/hr` : '-'}</td>
+                      )}
+                      {!isDetailOpen && visibleCols.fee_offline && (
+                        <td className="table-cell text-right">{student.fee_offline ? `\u20B9${student.fee_offline}/hr` : '-'}</td>
+                      )}
+                      {!isDetailOpen && visibleCols.fee_offline_group && (
+                        <td className="table-cell text-right">{student.fee_offline_group ? `\u20B9${student.fee_offline_group}/hr` : '-'}</td>
+                      )}
+                      <td className="table-cell">
+                        <span className={student.status === 'active' ? 'badge-active' : 'badge-inactive'}>
+                          {student.status}
+                        </span>
+                      </td>
+                      <td className="table-cell text-right text-gray-300">
+                        <ChevronRight className="w-4 h-4 inline-block" />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1005,6 +1108,17 @@ export default function Students() {
             : `Are you sure you want to remove "${deleteDialog.student?.name}"? This will mark them as inactive.`
         }
         confirmText={deleteDialog.student?.status === 'inactive' ? 'Delete permanently' : 'Remove'}
+      />
+
+      {/* Slide-in detail panel */}
+      <StudentDetailPanel
+        student={detailStudent}
+        onClose={() => setDetailStudent(null)}
+        onEdit={(s) => { setDetailStudent(null); openEdit(s); }}
+        onDelete={(s) => { setDetailStudent(null); setDeleteDialog({ open: true, student: s }); }}
+        onReactivate={(s) => { setDetailStudent(null); handleReactivate(s); }}
+        formatMobile={formatMobileDisplay}
+        phoneRevealed={phoneReveal.revealed}
       />
     </div>
   );

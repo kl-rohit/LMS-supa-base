@@ -1,16 +1,20 @@
-// /api/settings — generic key/value store backed by the Catalyst Settings
-// table. Today it powers customizable message templates; future settings
-// (school name, signature, working hours, etc.) would live here too.
+// /api/settings — Settings-related routes. Today only message templates
+// live here; the broader Settings module (school name, signature, working
+// hours, etc.) will mount additional sub-routes on this same prefix later.
 //
-// Table schema (manage in Catalyst console):
-//   Settings { key (Text, unique), value (Text — long) }
+// Templates are stored in a dedicated Catalyst Data Store table so they
+// don't get tangled with future generic key/value settings:
 //
-// Templates are stored as rows keyed `template_<type>` so they live in the
-// same flat table as any other setting. Templates support these placeholders
-// (substituted at send time — see messages.js + Messages.jsx):
+//   MessageTemplates { type (Text, unique), body (Multi-line Text) }
+//
+// Each row's `type` is the template key (absence_alert, fee_reminder,
+// class_update, thank_you, holiday_notice) and `body` is the template
+// text. Templates support these placeholders (substituted at send time —
+// see messages.js + Messages.jsx):
+//
 //   {name}    student name
 //   {parent}  parent name
-//   {amount}  total monthly fee (auto-fee-reminder only)
+//   {amount}  total monthly fee   (auto-fee-reminder only)
 //   {month}   month name (e.g. "March")
 //   {year}    year (e.g. 2026)
 //   {count}   consecutive absences (auto-absence-alert only)
@@ -19,9 +23,11 @@
 const router = require('express').Router();
 const { insert, update, zcql, unwrap, normalize } = require('../db/catalystDb');
 
+const TABLE = 'MessageTemplates';
+
 // Default templates. These match the wording that was hard-coded in
 // messages.js + Messages.jsx before this feature shipped — so an empty
-// Settings table behaves identically to the pre-templates version.
+// MessageTemplates table behaves identically to the pre-templates version.
 const DEFAULT_TEMPLATES = {
   absence_alert:
     `Dear {parent},\n\nThis is to inform you that {name} has been absent for the last {count} consecutive classes. Kindly ensure regular attendance for better progress.\n\nPlease reach out if there are any concerns.\n\nRegards,\nVeena Dhwani Academy`,
@@ -35,19 +41,18 @@ const DEFAULT_TEMPLATES = {
     `Dear {parent},\n\nThis is to inform you that Veena Dhwani Academy will remain closed on account of the upcoming holiday. {name}'s classes will resume as per the regular schedule after the break.\n\nRegards,\nVeena Dhwani Academy`,
 };
 
-const TEMPLATE_KEYS = Object.keys(DEFAULT_TEMPLATES);
-const ROW_KEY = (type) => `template_${type}`;
+const TEMPLATE_TYPES = Object.keys(DEFAULT_TEMPLATES);
 
 // Fetch all template rows in one query and return a complete templates map
 // (default-padded). Shared by the GET route and any other module that wants
 // templates server-side (messages.js).
 async function loadTemplates(req) {
-  const rows = await zcql(req, `SELECT * FROM Settings`);
-  const all = unwrap(rows, 'Settings').map(normalize);
-  const byKey = new Map(all.map((r) => [r.key, r.value]));
+  const rows = await zcql(req, `SELECT * FROM ${TABLE}`);
+  const all = unwrap(rows, TABLE).map(normalize);
+  const byType = new Map(all.map((r) => [r.type, r.body]));
   const out = {};
-  for (const t of TEMPLATE_KEYS) {
-    out[t] = byKey.has(ROW_KEY(t)) ? byKey.get(ROW_KEY(t)) : DEFAULT_TEMPLATES[t];
+  for (const t of TEMPLATE_TYPES) {
+    out[t] = byType.has(t) ? byType.get(t) : DEFAULT_TEMPLATES[t];
   }
   return out;
 }
@@ -64,27 +69,26 @@ router.get('/templates', async (req, res) => {
 
 // PUT /api/settings/templates
 // Body: { templates: { absence_alert?, fee_reminder?, class_update?, thank_you?, holiday_notice? } }
-// Upserts each provided template into the Settings table (insert if missing,
+// Upserts each provided template into MessageTemplates (insert if missing,
 // update if existing). Ignores unknown keys.
 router.put('/templates', async (req, res) => {
   try {
     const incoming = req.body?.templates || {};
-    // Index existing rows by key so we know whether to insert or update.
-    const rows = await zcql(req, `SELECT * FROM Settings`);
-    const existing = unwrap(rows, 'Settings').map(normalize);
-    const byKey = new Map(existing.map((r) => [r.key, r]));
+    // Index existing rows by type so we know whether to insert or update.
+    const rows = await zcql(req, `SELECT * FROM ${TABLE}`);
+    const existing = unwrap(rows, TABLE).map(normalize);
+    const byType = new Map(existing.map((r) => [r.type, r]));
 
     let updated = 0;
-    for (const type of TEMPLATE_KEYS) {
+    for (const type of TEMPLATE_TYPES) {
       if (incoming[type] === undefined) continue;
-      const key = ROW_KEY(type);
-      const value = String(incoming[type] ?? '');
-      const row = byKey.get(key);
+      const body = String(incoming[type] ?? '');
+      const row = byType.get(type);
       try {
         if (row) {
-          await update(req, 'Settings', row.id, { value });
+          await update(req, TABLE, row.id, { body });
         } else {
-          await insert(req, 'Settings', { key, value });
+          await insert(req, TABLE, { type, body });
         }
         updated++;
       } catch (err) {

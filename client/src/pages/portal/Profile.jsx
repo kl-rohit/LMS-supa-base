@@ -110,11 +110,12 @@ export default function PortalProfile() {
         clearPickedPhoto();
       }
       // 2. PUT the rest of the fields. Server whitelists which keys it accepts.
+      // email is intentionally omitted — it's sourced from the login on the
+      // server and rendered read-only here.
       const { profile } = await api.put('/portal/profile', {
         name: form.name,
         mobile_number: form.mobile_number,
         date_of_birth: form.date_of_birth || null,
-        email: form.email,
         address: form.address,
         father_name: form.father_name,
         mother_name: form.mother_name,
@@ -233,10 +234,14 @@ export default function PortalProfile() {
               <input
                 type="email"
                 value={form.email}
-                onChange={change('email')}
-                className="input-field"
-                placeholder="you@example.com"
+                readOnly
+                disabled
+                className="input-field bg-gray-50 text-gray-500 cursor-not-allowed"
+                title="This is your sign-in email and cannot be changed here."
               />
+              <p className="text-xs text-gray-400 mt-1">
+                From your sign-in account. Used for exam paperwork.
+              </p>
             </Field>
             <div className="sm:col-span-2">
               <Field label="Address" icon={MapPin}>

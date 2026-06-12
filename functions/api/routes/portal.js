@@ -320,11 +320,15 @@ router.post('/lessons/:id/progress', async (req, res) => {
 // Fields the portal allows the parent to edit. Anything not in this list
 // (status, group_id, fee_offline, ROWID, etc.) is admin-only and ignored
 // on PUT to prevent privilege escalation via crafted requests.
+//
+// NOTE: `email` is intentionally NOT in this list. The parent's email is
+// their Catalyst login email and is auto-synced into Students.email on
+// every profile save — see the PUT handler below. The frontend renders
+// it as a disabled field.
 const PORTAL_EDITABLE_FIELDS = [
   'name',
   'mobile_number',
   'date_of_birth',
-  'email',
   'address',
   'father_name',
   'mother_name',
@@ -338,19 +342,23 @@ const PORTAL_EDITABLE_FIELDS = [
 //   • Versioning:   OFF
 const PHOTO_BUCKET = 'student-photos';
 
-// GET /api/portal/profile — returns just the fields shown on the parent form
+// GET /api/portal/profile — returns just the fields shown on the parent form.
+// Email is sourced from the Catalyst login (not the Students.email column)
+// so it's always the address the parent uses to sign in.
 router.get('/profile', async (req, res) => {
   try {
     const s = await getById(req, 'Students', req.studentId);
     if (!s) return res.status(404).json({ error: 'Linked student not found' });
     const n = normalize(s);
+    const loginEmail = req.studentLogin?.email || n.email || '';
     res.json({
       profile: {
         id: n.id,
         name: n.name || '',
         mobile_number: n.mobile_number || '',
         date_of_birth: n.date_of_birth || '',
-        email: n.email || '',
+        email: loginEmail,
+        email_readonly: true,
         address: n.address || '',
         father_name: n.father_name || '',
         mother_name: n.mother_name || '',
@@ -384,6 +392,15 @@ router.put('/profile', async (req, res) => {
       }
     }
 
+    // Always sync Students.email to the Catalyst login email so the admin
+    // views (Students list, exam paperwork pull, etc.) reflect the address
+    // the parent actually uses. The portal form renders email as disabled,
+    // so this is the only path that writes the column for portal users.
+    const loginEmail = req.studentLogin?.email || '';
+    if (loginEmail && loginEmail !== existing.email) {
+      patch.email = loginEmail;
+    }
+
     // Keep parent_name in sync for backward compat with admin views that
     // still read it (Students list, fee reminder generator, etc.). Prefer
     // father, fall back to mother, fall back to whatever was there before.
@@ -394,7 +411,11 @@ router.put('/profile', async (req, res) => {
       if (combined) patch.parent_name = combined;
     }
 
-    const updated = await update(req, 'Students', req.studentId, patch);
+    // If nothing actually changed (parent hit Save with no edits), skip the
+    // write — Catalyst's updateRow is fine with empty patches but no point.
+    const updated = Object.keys(patch).length > 0
+      ? await update(req, 'Students', req.studentId, patch)
+      : existing;
     const n = normalize(updated);
     res.json({
       profile: {
@@ -402,7 +423,8 @@ router.put('/profile', async (req, res) => {
         name: n.name || '',
         mobile_number: n.mobile_number || '',
         date_of_birth: n.date_of_birth || '',
-        email: n.email || '',
+        email: loginEmail || n.email || '',
+        email_readonly: true,
         address: n.address || '',
         father_name: n.father_name || '',
         mother_name: n.mother_name || '',

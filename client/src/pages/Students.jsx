@@ -89,7 +89,26 @@ export default function Students() {
     try {
       setLoading(true);
       const result = await api.get('/students');
-      setStudents(result.students || []);
+      const rows = result.students || [];
+      setStudents(rows);
+
+      // Photo URLs in Students.photo_url are Stratus object keys (not
+      // loadable URLs). Batch-sign them in one round-trip and patch each
+      // row's photo_url with the signed URL. Legacy http(s) values and
+      // empty values are returned as-is by the backend.
+      const idsWithPhotos = rows.filter((s) => s.photo_url).map((s) => s.id);
+      if (idsWithPhotos.length > 0) {
+        try {
+          const { urls } = await api.post('/students/photo-urls', { ids: idsWithPhotos });
+          setStudents((prev) => prev.map((s) => urls?.[String(s.id)]
+            ? { ...s, photo_url: urls[String(s.id)] }
+            : (s.photo_url && !/^https?:/.test(s.photo_url) ? { ...s, photo_url: '' } : s)
+          ));
+        } catch (e) {
+          // Non-fatal — list still renders, just without photos
+          console.error('photo-urls batch failed', e.message);
+        }
+      }
     } catch (err) {
       toast.error('Failed to load students: ' + err.message);
     } finally {

@@ -51,9 +51,23 @@ export default function PortalProfile() {
     let cancelled = false;
     (async () => {
       try {
-        const { profile } = await api.get('/portal/profile');
-        if (cancelled || !profile) return;
-        setForm({ ...EMPTY, ...profile });
+        // Pull profile + a fresh signed photo URL in parallel. The profile
+        // row stores the Stratus object key in photo_url; the signed URL
+        // we actually render comes from /portal/photo-url.
+        const [profileRes, urlRes] = await Promise.all([
+          api.get('/portal/profile'),
+          api.get('/portal/photo-url').catch(() => ({ photo_url: '' })),
+        ]);
+        if (cancelled) return;
+        const merged = { ...EMPTY, ...(profileRes?.profile || {}) };
+        // Override the photo_url with the signed URL (the raw object key
+        // isn't loadable in an <img> tag).
+        if (urlRes?.photo_url) merged.photo_url = urlRes.photo_url;
+        else if (merged.photo_url && !/^https?:/.test(merged.photo_url)) {
+          // It's a raw key with no signed URL — hide it rather than render broken.
+          merged.photo_url = '';
+        }
+        setForm(merged);
       } catch (e) {
         toast.error('Failed to load profile: ' + e.message);
       } finally {

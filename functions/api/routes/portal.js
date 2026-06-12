@@ -481,26 +481,52 @@ router.post('/photo', async (req, res) => {
       overwrite: true,
     });
 
-    // Pre-signed URL for the Authenticated bucket. 1-year expiry (in
-    // seconds) — admin views need to load these much later. When/if photos
-    // start expiring in production, switch this to a per-request signing
-    // endpoint: store only the object_key in Students.photo_url and have
-    // the frontend ask for a fresh signed URL each session.
-    let url = '';
+    // Pre-signed URL for the Authenticated bucket. We persist the OBJECT KEY
+    // (not the URL) in Students.photo_url, and sign on-demand whenever a
+    // client needs to render the photo — see GET /api/portal/photo-url and
+    // GET /api/students/:id/photo-url. This avoids any signed-URL expiry
+    // surprises (Catalyst caps these; the long-lived URL we used previously
+    // would intermittently 403).
+    //
+    // For the immediate response we still sign once so the client can show
+    // the just-uploaded photo without a follow-up round-trip. Short expiry
+    // (1 hour) — the client just needs it for a moment.
+    let signedNow = '';
     try {
-      const res2 = await bucket.generatePreSignedUrl(objectKey, 'GET', {
-        expiryIn: String(60 * 60 * 24 * 365), // 1 year
-      });
-      url = res2?.signature || '';
+      const r = await bucket.generatePreSignedUrl(objectKey, 'GET', { expiryIn: '3600' });
+      signedNow = r?.signature || '';
     } catch (err) {
+      // Non-fatal — the upload succeeded; the client can re-fetch via
+      // /portal/photo-url. Still log so we can spot expiry-cap issues.
       console.error('generatePreSignedUrl failed', err.message);
-      url = `stratus://${PHOTO_BUCKET}/${objectKey}`;
     }
 
-    await update(req, 'Students', req.studentId, { photo_url: url });
-    res.json({ photo_url: url, object_key: objectKey });
+    await update(req, 'Students', req.studentId, { photo_url: objectKey });
+    res.json({ photo_url: signedNow, object_key: objectKey });
   } catch (e) {
     res.status(500).json({ error: 'Failed to upload photo', detail: e.message });
+  }
+});
+
+// GET /api/portal/photo-url — returns a fresh 1-hour signed URL for the
+// linked student's photo. Frontend calls this to render <img src> after
+// loading the profile (Students.photo_url stores the object key, not a
+// signed URL — see comment in POST /photo).
+router.get('/photo-url', async (req, res) => {
+  try {
+    const s = await getById(req, 'Students', req.studentId);
+    if (!s) return res.status(404).json({ error: 'Linked student not found' });
+    const key = String(s.photo_url || '').trim();
+    if (!key || key.startsWith('http') || key.startsWith('stratus://')) {
+      // Either no photo at all, or a legacy full-URL value from before the
+      // sign-on-demand refactor. Return as-is — frontend renders directly.
+      return res.json({ photo_url: key || '' });
+    }
+    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
+    const r = await bucket.generatePreSignedUrl(key, 'GET', { expiryIn: '3600' });
+    res.json({ photo_url: r?.signature || '' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to sign photo URL', detail: e.message });
   }
 });
 

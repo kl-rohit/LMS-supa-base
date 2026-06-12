@@ -472,18 +472,28 @@ router.post('/photo', async (req, res) => {
     const objectKey = `student-${req.studentId}/${Date.now()}-${safeName}.${ext}`;
 
     const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-    await bucket.uploadObject({ objectName: objectKey, content: buffer });
+    // SDK v3.4 API: putObject(key, body, options) — body can be Buffer.
+    // overwrite:true is defensive — keys are timestamp-prefixed so collisions
+    // shouldn't happen, but a parent who hits Save twice in 1ms would otherwise
+    // get a 409 from Stratus.
+    await bucket.putObject(objectKey, buffer, {
+      contentType: mime,
+      overwrite: true,
+    });
 
-    // Signed URL — works for Authenticated buckets. Default expiry from
-    // Catalyst is enough for the admin to view it on the Students page.
+    // Pre-signed URL for the Authenticated bucket. 1-year expiry (in
+    // seconds) — admin views need to load these much later. When/if photos
+    // start expiring in production, switch this to a per-request signing
+    // endpoint: store only the object_key in Students.photo_url and have
+    // the frontend ask for a fresh signed URL each session.
     let url = '';
     try {
-      url = await bucket.getSignedURL(objectKey);
+      const res2 = await bucket.generatePreSignedUrl(objectKey, 'GET', {
+        expiryIn: String(60 * 60 * 24 * 365), // 1 year
+      });
+      url = res2?.signature || '';
     } catch (err) {
-      // Fall back to storing just the object key; the admin client can
-      // re-sign on demand if needed. Still better than failing the whole
-      // upload over a signed-URL hiccup.
-      console.error('getSignedURL failed', err.message);
+      console.error('generatePreSignedUrl failed', err.message);
       url = `stratus://${PHOTO_BUCKET}/${objectKey}`;
     }
 

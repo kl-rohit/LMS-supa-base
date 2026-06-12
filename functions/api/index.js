@@ -33,6 +33,7 @@ app.get('/', (_req, res) => {
       '/api/enrollments (admin)',
       '/api/settings (admin)',
       '/api/portal (parent)',
+      '/api/internal (cron, shared-secret)',
     ],
   });
 });
@@ -40,6 +41,11 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, function: 'api' }));
 
 // /api/auth — public; /me returns 401 itself when logged out.
 app.use('/api/auth', require('./routes/auth'));
+
+// /api/internal/* — unattended jobs (Catalyst cron). Protected by a shared
+// secret header (X-Cron-Secret), NOT by the user-session middleware below.
+// Must be mounted before requireAuth so the cron can reach it without a login.
+app.use('/api/internal', require('./routes/internal'));
 
 // /api/portal/* — any logged-in parent; scoped to their student_id.
 app.use('/api/portal', requireAuth, requireParent, require('./routes/portal'));

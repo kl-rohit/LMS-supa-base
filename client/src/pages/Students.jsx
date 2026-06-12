@@ -38,6 +38,13 @@ const emptyForm = {
   min_classes_per_month: '',
   date_of_birth: '',
   notes: '',
+  // Self-service / Grade exam fields — usually populated by the parent
+  // via the portal, but admin can view + edit here for completeness.
+  email: '',
+  address: '',
+  father_name: '',
+  mother_name: '',
+  photo_url: '',
 };
 
 export default function Students() {
@@ -138,6 +145,11 @@ export default function Students() {
       // Catalyst Date columns come back as ISO timestamp; slice to YYYY-MM-DD
       date_of_birth: student.date_of_birth ? String(student.date_of_birth).slice(0, 10) : '',
       notes: student.notes || '',
+      email: student.email || '',
+      address: student.address || '',
+      father_name: student.father_name || '',
+      mother_name: student.mother_name || '',
+      photo_url: student.photo_url || '',
     });
     setModalOpen(true);
   };
@@ -503,7 +515,24 @@ export default function Students() {
                         className="w-4 h-4 text-indigo-600 rounded border-gray-300"
                       />
                     </td>
-                    <td className="table-cell font-medium text-gray-900">{student.name}</td>
+                    <td className="table-cell font-medium text-gray-900">
+                      <div className="flex items-center gap-2">
+                        {student.photo_url ? (
+                          <img
+                            src={student.photo_url}
+                            alt=""
+                            className="w-7 h-7 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                            // Hide silently if the signed URL has expired / Stratus is unreachable.
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-400 flex-shrink-0">
+                            {(student.name || '?').slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="truncate">{student.name}</span>
+                      </div>
+                    </td>
                     <td className="table-cell">{student.parent_name || '-'}</td>
                     <td className="table-cell font-mono">
                       {student.mobile_number
@@ -683,6 +712,67 @@ export default function Students() {
             <p className="text-xs text-gray-400 mt-1">
               Fees page will flag students who attend fewer than this each month. Leave blank or 0 for no minimum.
             </p>
+          </div>
+          {/* Parent-managed Grade-exam details. The parent edits these via the
+              portal; admin can view + override here. */}
+          <div className="border-t border-gray-200 pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              {form.photo_url ? (
+                <img
+                  src={form.photo_url}
+                  alt=""
+                  className="w-10 h-10 rounded-full object-cover border border-gray-200"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                  No photo
+                </div>
+              )}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-800">Grade exam details</h4>
+                <p className="text-xs text-gray-400">Filled by the parent via the portal — editable here.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="input-field"
+                  placeholder="parent@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Father's name</label>
+                <input
+                  type="text"
+                  value={form.father_name}
+                  onChange={(e) => setForm({ ...form, father_name: e.target.value })}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mother's name</label>
+                <input
+                  type="text"
+                  value={form.mother_name}
+                  onChange={(e) => setForm({ ...form, mother_name: e.target.value })}
+                  className="input-field"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                <textarea
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  rows={2}
+                  className="input-field"
+                  placeholder="Street, City, State, PIN"
+                />
+              </div>
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>

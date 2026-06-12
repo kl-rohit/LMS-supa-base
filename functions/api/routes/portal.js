@@ -3,7 +3,7 @@
 // Every query is scoped to that student_id — no cross-student access.
 
 const router = require('express').Router();
-const { getById, zcql, unwrap, normalize, q, safeId, insert, update } = require('../db/catalystDb');
+const { getById, zcql, unwrap, normalize, q, safeId, insert, update, appFor } = require('../db/catalystDb');
 
 // GET /api/portal/me — info about the linked student
 router.get('/me', async (req, res) => {
@@ -309,6 +309,166 @@ router.post('/lessons/:id/progress', async (req, res) => {
     res.json({ progress: normalize(row) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update progress', detail: e.message });
+  }
+});
+
+// ---------- Self-service profile ----------
+// Parents can edit a whitelisted set of their Students row fields and upload
+// a passport-style photo (stored in Catalyst Stratus). Used to collect Grade
+// exam paperwork data without the teacher having to re-enter it.
+
+// Fields the portal allows the parent to edit. Anything not in this list
+// (status, group_id, fee_offline, ROWID, etc.) is admin-only and ignored
+// on PUT to prevent privilege escalation via crafted requests.
+const PORTAL_EDITABLE_FIELDS = [
+  'name',
+  'mobile_number',
+  'date_of_birth',
+  'email',
+  'address',
+  'father_name',
+  'mother_name',
+];
+
+// Stratus bucket used for student photos. Create in console:
+//   Catalyst Console → Cloud Scale → Stratus → Create Bucket
+//   • Bucket Name:  student-photos
+//   • Permission:   Authenticated
+//   • Encryption:   ON
+//   • Versioning:   OFF
+const PHOTO_BUCKET = 'student-photos';
+
+// GET /api/portal/profile — returns just the fields shown on the parent form
+router.get('/profile', async (req, res) => {
+  try {
+    const s = await getById(req, 'Students', req.studentId);
+    if (!s) return res.status(404).json({ error: 'Linked student not found' });
+    const n = normalize(s);
+    res.json({
+      profile: {
+        id: n.id,
+        name: n.name || '',
+        mobile_number: n.mobile_number || '',
+        date_of_birth: n.date_of_birth || '',
+        email: n.email || '',
+        address: n.address || '',
+        father_name: n.father_name || '',
+        mother_name: n.mother_name || '',
+        photo_url: n.photo_url || '',
+        // Read-only fields the parent might want to see but can't edit
+        parent_name: n.parent_name || '',
+        status: n.status || '',
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch profile', detail: e.message });
+  }
+});
+
+// PUT /api/portal/profile — whitelist-update. Anything outside
+// PORTAL_EDITABLE_FIELDS is silently ignored.
+router.put('/profile', async (req, res) => {
+  try {
+    const existing = await getById(req, 'Students', req.studentId);
+    if (!existing) return res.status(404).json({ error: 'Linked student not found' });
+
+    const patch = {};
+    for (const f of PORTAL_EDITABLE_FIELDS) {
+      if (req.body[f] === undefined) continue;
+      const v = req.body[f];
+      if (f === 'date_of_birth') {
+        // Catalyst Date columns reject empty strings — pass null instead.
+        patch[f] = v ? String(v) : null;
+      } else {
+        patch[f] = (v === null || v === undefined) ? '' : String(v).trim();
+      }
+    }
+
+    // Keep parent_name in sync for backward compat with admin views that
+    // still read it (Students list, fee reminder generator, etc.). Prefer
+    // father, fall back to mother, fall back to whatever was there before.
+    const father = patch.father_name !== undefined ? patch.father_name : existing.father_name;
+    const mother = patch.mother_name !== undefined ? patch.mother_name : existing.mother_name;
+    if (patch.father_name !== undefined || patch.mother_name !== undefined) {
+      const combined = [father, mother].filter(Boolean).join(' / ');
+      if (combined) patch.parent_name = combined;
+    }
+
+    const updated = await update(req, 'Students', req.studentId, patch);
+    const n = normalize(updated);
+    res.json({
+      profile: {
+        id: n.id,
+        name: n.name || '',
+        mobile_number: n.mobile_number || '',
+        date_of_birth: n.date_of_birth || '',
+        email: n.email || '',
+        address: n.address || '',
+        father_name: n.father_name || '',
+        mother_name: n.mother_name || '',
+        photo_url: n.photo_url || '',
+        parent_name: n.parent_name || '',
+        status: n.status || '',
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update profile', detail: e.message });
+  }
+});
+
+// POST /api/portal/photo
+// Body: { data: 'data:image/jpeg;base64,...', filename?: 'me.jpg' }
+// Decodes the base64 image, uploads it to the Stratus 'student-photos'
+// bucket under  student-<id>/<timestamp>-<filename> , then writes the
+// resulting URL to Students.photo_url. The same key is overwritten on
+// subsequent uploads via a per-student prefix + timestamp, so prior
+// photos don't pollute the bucket but versioning is not relied on.
+router.post('/photo', async (req, res) => {
+  try {
+    const { data, filename } = req.body || {};
+    if (!data || typeof data !== 'string') {
+      return res.status(400).json({ error: 'data (base64 image) is required' });
+    }
+
+    // Accept both `data:image/...;base64,xxx` and raw base64 strings.
+    const m = data.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    let mime, b64;
+    if (m) { mime = m[1]; b64 = m[2]; }
+    else   { mime = 'image/jpeg'; b64 = data; }
+
+    const buffer = Buffer.from(b64, 'base64');
+    if (buffer.length === 0) return res.status(400).json({ error: 'Empty image payload' });
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image must be 5MB or smaller' });
+    }
+
+    // Object key — namespaced by student so different students never
+    // collide, and timestamped so we get a unique URL per upload (the
+    // browser would otherwise cache the old image at the same URL).
+    const ext = mime.split('/')[1].replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'jpg';
+    const safeName = (filename || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40);
+    const objectKey = `student-${req.studentId}/${Date.now()}-${safeName}.${ext}`;
+
+    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
+    await bucket.uploadObject({ objectName: objectKey, content: buffer });
+
+    // Signed URL — works for Authenticated buckets. Default expiry from
+    // Catalyst is enough for the admin to view it on the Students page.
+    let url = '';
+    try {
+      url = await bucket.getSignedURL(objectKey);
+    } catch (err) {
+      // Fall back to storing just the object key; the admin client can
+      // re-sign on demand if needed. Still better than failing the whole
+      // upload over a signed-URL hiccup.
+      console.error('getSignedURL failed', err.message);
+      url = `stratus://${PHOTO_BUCKET}/${objectKey}`;
+    }
+
+    await update(req, 'Students', req.studentId, { photo_url: url });
+    res.json({ photo_url: url, object_key: objectKey });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to upload photo', detail: e.message });
   }
 });
 

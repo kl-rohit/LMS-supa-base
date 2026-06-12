@@ -117,7 +117,14 @@ router.get('/:id', async (req, res) => {
 // POST /api/students
 router.post('/', async (req, res) => {
   try {
-    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes, date_of_birth } = req.body;
+    const {
+      name, parent_name, mobile_number,
+      fee_online, fee_offline, fee_offline_group, min_classes_per_month,
+      status, notes, date_of_birth,
+      // Self-service / Grade exam fields. Admin can set these too — they're
+      // mirrored from what the parent edits in the portal.
+      email, address, father_name, mother_name, photo_url,
+    } = req.body;
     if (!name || !parent_name || !mobile_number) {
       return res.status(400).json({ error: 'name, parent_name, and mobile_number are required' });
     }
@@ -129,6 +136,11 @@ router.post('/', async (req, res) => {
       min_classes_per_month: min_classes_per_month || 0,
       status: status || 'active',
       notes: notes || '',
+      email: email || '',
+      address: address || '',
+      father_name: father_name || '',
+      mother_name: mother_name || '',
+      photo_url: photo_url || '',
     };
     // Only set date_of_birth if provided — Catalyst rejects empty strings on Date columns
     if (date_of_birth) payload.date_of_birth = date_of_birth;
@@ -144,7 +156,12 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Student not found' });
-    const { name, parent_name, mobile_number, fee_online, fee_offline, fee_offline_group, min_classes_per_month, status, notes, date_of_birth } = req.body;
+    const {
+      name, parent_name, mobile_number,
+      fee_online, fee_offline, fee_offline_group, min_classes_per_month,
+      status, notes, date_of_birth,
+      email, address, father_name, mother_name, photo_url,
+    } = req.body;
     const patch = {};
     if (name !== undefined)                  patch.name                  = name;
     if (parent_name !== undefined)           patch.parent_name           = parent_name;
@@ -156,6 +173,11 @@ router.put('/:id', async (req, res) => {
     if (status !== undefined)                patch.status                = status;
     if (notes !== undefined)                 patch.notes                 = notes;
     if (date_of_birth !== undefined)         patch.date_of_birth         = date_of_birth || null;
+    if (email !== undefined)                 patch.email                 = email || '';
+    if (address !== undefined)               patch.address               = address || '';
+    if (father_name !== undefined)           patch.father_name           = father_name || '';
+    if (mother_name !== undefined)           patch.mother_name           = mother_name || '';
+    if (photo_url !== undefined)             patch.photo_url             = photo_url || '';
     const updated = await update(req, 'Students', req.params.id, patch);
     res.json({ student: normalize(updated) });
   } catch (e) {

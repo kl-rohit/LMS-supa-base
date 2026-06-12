@@ -12,6 +12,7 @@ import {
   X,
   Music2,
   LogOut,
+  UserCircle2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
@@ -20,13 +21,15 @@ import PortalDashboard from '../pages/portal/Dashboard';
 import PortalAttendance from '../pages/portal/Attendance';
 import PortalFees from '../pages/portal/Fees';
 import PortalCourses from '../pages/portal/Courses';
+import PortalProfile from '../pages/portal/Profile';
 import CoursePlayer from '../pages/portal/CoursePlayer';
 
 const navItems = [
-  { to: '/portal/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { to: '/portal/lessons', label: 'My Lessons', icon: Video },
+  { to: '/portal/dashboard',  label: 'Overview',      icon: LayoutDashboard },
+  { to: '/portal/lessons',    label: 'My Lessons',    icon: Video },
   { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck },
-  { to: '/portal/fees', label: 'Fees', icon: IndianRupee },
+  { to: '/portal/fees',       label: 'Fees',          icon: IndianRupee },
+  { to: '/portal/profile',    label: 'My Profile',    icon: UserCircle2 },
 ];
 
 export default function ParentLayout() {
@@ -148,6 +151,7 @@ export default function ParentLayout() {
             <Route path="lessons/:courseId" element={<CoursePlayer />} />
             <Route path="attendance" element={<PortalAttendance />} />
             <Route path="fees" element={<PortalFees />} />
+            <Route path="profile" element={<PortalProfile />} />
           </Routes>
         </main>
       </div>

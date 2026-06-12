@@ -149,17 +149,24 @@ export default function Dashboard() {
                     {b.name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900">
+                    <p className="text-sm font-semibold text-gray-900 leading-tight">
                       {b.name}
                       {/* React renders the number 0 as visible text — so we
                           must guard with > 0 (not just truthy). turning_age
                           can be 0 when the DOB year is missing or equals the
-                          current year, which would otherwise paint "Name0". */}
+                          current year, which would otherwise paint "Name0".
+                          The {' '} keeps whitespace between name and chip
+                          even if Tailwind's ml-3 ever changes. */}
                       {b.turning_age > 0 && (
-                        <span className="text-xs font-normal text-gray-400 ml-2">turning {b.turning_age}</span>
+                        <>
+                          {' '}
+                          <span className="text-xs font-normal text-gray-400 ml-1">
+                            · turning {b.turning_age}
+                          </span>
+                        </>
                       )}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <p className="text-xs text-gray-500 mt-1">
                       {dobDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', weekday: 'short' })}
                       {' · '}
                       {isToday ? <span className="font-semibold text-pink-600">TODAY 🎉</span>

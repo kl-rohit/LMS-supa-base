@@ -32,6 +32,7 @@ app.get('/', (_req, res) => {
       '/api/lessons (admin)',
       '/api/enrollments (admin)',
       '/api/settings (admin)',
+      '/api/platform (platform admin — multi-tenancy)',
       '/api/portal (parent)',
       '/api/internal (cron, shared-secret)',
     ],
@@ -54,6 +55,7 @@ app.use('/api/portal', requireAuth, requireParent, require('./routes/portal'));
 app.use('/api', requireAuth, requireAdmin);
 
 // Resource routers (admin scope)
+app.use('/api/platform',       require('./routes/platform'));
 app.use('/api/students',       require('./routes/students'));
 app.use('/api/groups',         require('./routes/groups'));
 app.use('/api/classes',        require('./routes/classes'));

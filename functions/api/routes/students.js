@@ -7,7 +7,9 @@ const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 // IMPORTANT: declare specific paths (debug/tables, inactive) BEFORE the /:id
 // catch-all so Express routes them correctly.
 
-// GET /api/students/debug/tables — diagnostic: which tables exist?
+// GET /api/students/debug/tables — diagnostic: which tables exist + do they
+// have the org_id column. Used to verify Phase A schema before running the
+// /api/platform/bootstrap migration.
 router.get('/debug/tables', async (req, res) => {
   const result = { tried: [], tables: null, probe: {} };
   const ds = appFor(req).datastore();
@@ -27,10 +29,27 @@ router.get('/debug/tables', async (req, res) => {
       }
     }
   }
-  for (const t of ['Students', 'Groups', 'GroupStudents', 'Classes', 'ClassStudents', 'Attendance', 'AdditionalFees', 'Messages', 'MessageTemplates']) {
+
+  // Tables that should have org_id for multi-tenancy
+  const TENANT_TABLES = [
+    'Students', 'Groups', 'GroupStudents', 'Classes', 'ClassStudents',
+    'Attendance', 'AdditionalFees', 'Payments',
+    'Messages', 'MessageTemplates', 'AppSettings',
+    'Courses', 'Lessons', 'LessonProgress', 'CourseEnrollments',
+    'Camps', 'CampDays',
+  ];
+  // Multi-tenancy infra tables
+  const META_TABLES = ['Organizations', 'OrgMemberships'];
+
+  for (const t of [...META_TABLES, ...TENANT_TABLES]) {
     try {
       const rows = await ds.table(t).getAllRows();
-      result.probe[t] = { exists: true, count: rows.length };
+      const info = { exists: true, count: rows.length };
+      // Sniff one row for org_id presence (skip META tables — they don't have it)
+      if (TENANT_TABLES.includes(t) && rows.length > 0) {
+        info.has_org_id = Object.prototype.hasOwnProperty.call(rows[0], 'org_id');
+      }
+      result.probe[t] = info;
     } catch (e) {
       result.probe[t] = { exists: false, error: e.message };
     }

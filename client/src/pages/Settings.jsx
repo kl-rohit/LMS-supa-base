@@ -15,6 +15,8 @@ import {
   Type,
   PenLine,
   CheckCircle2,
+  ToggleLeft,
+  Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -33,11 +35,23 @@ const EMPTY_SETTINGS = {
   'billing.default_offline_fee': '',
   'billing.default_group_fee': '',
   'billing.default_min_classes': '',
+  // Modules — string-encoded booleans ('true' / 'false').
+  'modules.lessons':        'true',
+  'modules.fees':           'true',
+  'modules.messages':       'true',
+  'modules.reports':        'true',
+  'modules.camps':          'false',
+  'modules.groups':         'true',
+  'modules.student_photos': 'true',
+  'portal.show_lessons':       'true',
+  'portal.show_fees':          'true',
+  'portal.allow_profile_edit': 'true',
 };
 
 const TABS = [
   { id: 'school',    label: 'School',    icon: School },
   { id: 'billing',   label: 'Billing',   icon: IndianRupee },
+  { id: 'modules',   label: 'Modules',   icon: ToggleLeft },
   { id: 'templates', label: 'Templates', icon: MessageSquare },
 ];
 
@@ -124,6 +138,7 @@ export default function Settings() {
       {/* Tab content */}
       {activeTab === 'school'    && <SchoolTab form={form} set={set} />}
       {activeTab === 'billing'   && <BillingTab form={form} set={set} />}
+      {activeTab === 'modules'   && <ModulesTab form={form} set={set} />}
       {activeTab === 'templates' && <TemplatesTab />}
 
       {/* Save bar (sticky bottom) — visible for School + Billing tabs only */}
@@ -275,6 +290,68 @@ function BillingTab({ form, set }) {
 
 function TemplatesTab() {
   return <TemplatesEditor />;
+}
+
+function ModulesTab({ form, set }) {
+  // Boolean-as-string helper — settings come back as 'true' / 'false'.
+  const isOn = (k) => form[k] === 'true' || form[k] === true;
+  const toggle = (k) => () => set(k)({ target: { value: isOn(k) ? 'false' : 'true' } });
+
+  return (
+    <div className="space-y-5">
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <ToggleLeft className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Modules enabled for this academy</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Switch off the features you don't use. Disabled modules hide from the sidebar — students/parents won't see them either.
+        </p>
+        <div className="space-y-1">
+          <ModuleToggle label="Groups"           hint="Group classes + bulk membership management" on={isOn('modules.groups')}         onClick={toggle('modules.groups')} />
+          <ModuleToggle label="Fees"             hint="Monthly fee aggregation + payments + additional fees" on={isOn('modules.fees')}           onClick={toggle('modules.fees')} />
+          <ModuleToggle label="Messages"         hint="WhatsApp message drafts + auto-reminders + templates" on={isOn('modules.messages')}       onClick={toggle('modules.messages')} />
+          <ModuleToggle label="Reports"          hint="Attendance + fee summaries" on={isOn('modules.reports')}        onClick={toggle('modules.reports')} />
+          <ModuleToggle label="Lessons"          hint="Udemy-style video courses for students" on={isOn('modules.lessons')}        onClick={toggle('modules.lessons')} />
+          <ModuleToggle label="Camps"            hint="Time-bounded special programs (workshops, intensives)" on={isOn('modules.camps')}          onClick={toggle('modules.camps')} />
+          <ModuleToggle label="Student photos"   hint="Photo uploads in profile + avatar on Students list" on={isOn('modules.student_photos')} onClick={toggle('modules.student_photos')} />
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <Eye className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Parent portal visibility</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Choose what parents see when they log in. Class History is always visible.
+        </p>
+        <div className="space-y-1">
+          <ModuleToggle label="My Lessons"        hint="Parents see enrolled courses + watch lessons" on={isOn('portal.show_lessons')}       onClick={toggle('portal.show_lessons')} />
+          <ModuleToggle label="Fees tab"          hint="Parents can see their fee breakdown by month" on={isOn('portal.show_fees')}          onClick={toggle('portal.show_fees')} />
+          <ModuleToggle label="Profile editing"   hint="Parents can edit name, DOB, address, photo. Disable to lock the profile." on={isOn('portal.allow_profile_edit')} onClick={toggle('portal.allow_profile_edit')} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModuleToggle({ label, hint, on, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center justify-between gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-gray-900">{label}</div>
+        <div className="text-xs text-gray-500 mt-0.5">{hint}</div>
+      </div>
+      <span className={`flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors ${on ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      </span>
+    </button>
+  );
 }
 
 // ----- Field row ------------------------------------------------------------

@@ -45,27 +45,31 @@ import Loader from './components/Loader';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
+import { useModuleFlags } from './hooks/useModuleFlags';
 
+// Every nav item gets a `flag` key — the name of the AppSettings toggle
+// that gates it. Items with flag: null are always visible (foundational).
 const BASE_NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/students', label: 'Students', icon: Users },
-  { to: '/groups', label: 'Groups', icon: UsersRound },
-  { to: '/classes', label: 'Classes', icon: Calendar },
-  { to: '/attendance', label: 'Attendance', icon: ClipboardCheck },
-  { to: '/fees', label: 'Fees', icon: IndianRupee },
-  { to: '/messages', label: 'Messages', icon: MessageSquare },
-  { to: '/reports', label: 'Reports', icon: BarChart3 },
-  { to: '/lessons', label: 'Lessons', icon: Video },
-  { to: '/student-logins', label: 'Parent Logins', icon: KeyRound },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/dashboard',      label: 'Dashboard',     icon: LayoutDashboard, flag: null },
+  { to: '/students',       label: 'Students',      icon: Users,           flag: null },
+  { to: '/groups',         label: 'Groups',        icon: UsersRound,      flag: 'modules.groups' },
+  { to: '/classes',        label: 'Classes',       icon: Calendar,        flag: null },
+  { to: '/attendance',     label: 'Attendance',    icon: ClipboardCheck,  flag: null },
+  { to: '/fees',           label: 'Fees',          icon: IndianRupee,     flag: 'modules.fees' },
+  { to: '/messages',       label: 'Messages',      icon: MessageSquare,   flag: 'modules.messages' },
+  { to: '/reports',        label: 'Reports',       icon: BarChart3,       flag: 'modules.reports' },
+  { to: '/lessons',        label: 'Lessons',       icon: Video,           flag: 'modules.lessons' },
+  { to: '/student-logins', label: 'Parent Logins', icon: KeyRound,        flag: null },
+  { to: '/settings',       label: 'Settings',      icon: SettingsIcon,    flag: null },
 ];
-// Platform admin link only shows for Catalyst "App Administrator" users —
-// i.e. the platform owner (Rohit), not academy owners.
-const PLATFORM_NAV = { to: '/platform', label: 'Platform Admin', icon: Shield };
+const PLATFORM_NAV = { to: '/platform', label: 'Platform Admin', icon: Shield, flag: null };
 
-function navItemsFor(user) {
-  if (user?.role === 'App Administrator') return [...BASE_NAV, PLATFORM_NAV];
-  return BASE_NAV;
+function navItemsFor(user, flags) {
+  const base = BASE_NAV.filter((item) => !item.flag || flags[item.flag] !== false);
+  // Camps is also a module — but we don't have a top-level Camps nav item,
+  // so no filtering needed here. (Camps live inside Attendance flows today.)
+  if (user?.role === 'App Administrator') return [...base, PLATFORM_NAV];
+  return base;
 }
 
 // Teacher app shell: sidebar + main content.
@@ -73,6 +77,7 @@ function TeacherLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { flags } = useModuleFlags();
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -104,7 +109,7 @@ function TeacherLayout() {
         </div>
 
         <nav className="mt-4 px-3 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
-          {navItemsFor(user).map((item) => {
+          {navItemsFor(user, flags).map((item) => {
             const Icon = item.icon;
             return (
               <NavLink

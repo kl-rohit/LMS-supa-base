@@ -31,6 +31,7 @@ import Select from '../components/Select';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import StudentDetailPanel from '../components/StudentDetailPanel';
+import { readPhotoCache, writePhotoCache, invalidatePhotoCache } from '../utils/photoCache';
 
 // Toggleable columns on the Students table. Name + Status are always
 // visible (they're how you identify a row); Actions column auto-hides
@@ -187,20 +188,30 @@ export default function Students() {
       setStudents(rows);
 
       // Photo URLs in Students.photo_url are Stratus object keys (not
-      // loadable URLs). Batch-sign them in one round-trip and patch each
-      // row's photo_url with the signed URL. Legacy http(s) values and
-      // empty values are returned as-is by the backend.
+      // loadable URLs). Step 1: serve cached signed URLs immediately.
+      // Step 2: only sign the ids the cache doesn't have. Saves a network
+      // round-trip on repeat visits within the cache TTL.
       const idsWithPhotos = rows.filter((s) => s.photo_url).map((s) => s.id);
       if (idsWithPhotos.length > 0) {
-        try {
-          const { urls } = await api.post('/students/photo-urls', { ids: idsWithPhotos });
-          setStudents((prev) => prev.map((s) => urls?.[String(s.id)]
-            ? { ...s, photo_url: urls[String(s.id)] }
-            : (s.photo_url && !/^https?:/.test(s.photo_url) ? { ...s, photo_url: '' } : s)
-          ));
-        } catch (e) {
-          // Non-fatal — list still renders, just without photos
-          console.error('photo-urls batch failed', e.message);
+        const { fresh, stale } = readPhotoCache(idsWithPhotos);
+        // Apply cached URLs right away
+        if (Object.keys(fresh).length > 0) {
+          setStudents((prev) => prev.map((s) => fresh[String(s.id)]
+            ? { ...s, photo_url: fresh[String(s.id)] }
+            : s));
+        }
+        // Sign anything not in the cache
+        if (stale.length > 0) {
+          try {
+            const { urls } = await api.post('/students/photo-urls', { ids: stale });
+            writePhotoCache(urls);
+            setStudents((prev) => prev.map((s) => urls?.[String(s.id)]
+              ? { ...s, photo_url: urls[String(s.id)] }
+              : (s.photo_url && !/^https?:/.test(s.photo_url) ? { ...s, photo_url: '' } : s)
+            ));
+          } catch (e) {
+            console.error('photo-urls batch failed', e.message);
+          }
         }
       }
     } catch (err) {
@@ -242,10 +253,13 @@ export default function Students() {
         toast.success('Student added');
       }
       // If the admin picked a new photo in the modal, upload it now that we
-      // know the student id (covers both create + edit).
+      // know the student id (covers both create + edit). Invalidate the
+      // photo cache afterwards so the next fetchStudents() pulls a fresh
+      // signed URL instead of serving a stale one for the overwritten object.
       if (photoPending && studentId) {
         try {
           await api.post(`/students/${studentId}/photo`, { data: photoPending });
+          invalidatePhotoCache(studentId);
         } catch (err) {
           toast.error('Photo upload failed: ' + err.message);
         }

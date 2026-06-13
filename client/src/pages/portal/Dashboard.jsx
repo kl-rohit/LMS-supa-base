@@ -112,7 +112,9 @@ export default function PortalDashboard() {
             to={`/portal/lessons/${course.id}`}
             className="card flex items-center gap-4 hover:border-indigo-300 hover:shadow-md transition-all group"
           >
-            <div className="relative flex-shrink-0">
+            {/* Thumbnail hidden on mobile — the title + progress bar
+                below are enough for a compact card. */}
+            <div className="relative flex-shrink-0 hidden sm:block">
               {ytId ? (
                 <img
                   src={ytThumbnail(ytId, 'mqdefault')}

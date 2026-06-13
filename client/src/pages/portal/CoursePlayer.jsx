@@ -852,8 +852,10 @@ export default function CoursePlayer() {
                           className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${active ? 'bg-indigo-50' : ''}`}
                         >
                           <div className="flex items-start gap-3">
-                            {/* Thumbnail with status icon overlay */}
-                            <div className="flex-shrink-0 relative">
+                            {/* Thumbnail with status icon overlay.
+                                Hidden below sm — mobile shows just the
+                                title for a cleaner list. */}
+                            <div className="flex-shrink-0 relative hidden sm:block">
                               {ytId ? (
                                 <img
                                   src={ytThumbnail(ytId, 'default')}
@@ -877,6 +879,14 @@ export default function CoursePlayer() {
                                   <PlayCircle className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
                                 )}
                               </div>
+                            </div>
+                            {/* Compact status dot for mobile — replaces the thumbnail */}
+                            <div className="sm:hidden flex-shrink-0 mt-1">
+                              {done ? (
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              ) : (
+                                <PlayCircle className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
+                              )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className={`text-sm font-medium ${active ? 'text-indigo-700' : 'text-gray-800'} truncate`}>

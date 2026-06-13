@@ -15,6 +15,7 @@ import {
   UserCircle2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useModuleFlags } from '../hooks/useModuleFlags';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 
@@ -26,18 +27,26 @@ const PortalCourses    = lazy(() => import('../pages/portal/Courses'));
 const PortalProfile    = lazy(() => import('../pages/portal/Profile'));
 const CoursePlayer     = lazy(() => import('../pages/portal/CoursePlayer'));
 
-const navItems = [
-  { to: '/portal/dashboard',  label: 'Overview',      icon: LayoutDashboard },
-  { to: '/portal/lessons',    label: 'My Lessons',    icon: Video },
-  { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck },
-  { to: '/portal/fees',       label: 'Fees',          icon: IndianRupee },
-  { to: '/portal/profile',    label: 'My Profile',    icon: UserCircle2 },
+// Each nav item has a `flag` — the AppSettings toggle that gates it. The
+// portal nav respects the academy's per-org visibility choices.
+const ALL_NAV = [
+  { to: '/portal/dashboard',  label: 'Overview',      icon: LayoutDashboard, flag: null },
+  { to: '/portal/lessons',    label: 'My Lessons',    icon: Video,           flag: 'portal.show_lessons' },
+  { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck,  flag: null },
+  { to: '/portal/fees',       label: 'Fees',          icon: IndianRupee,     flag: 'portal.show_fees' },
+  { to: '/portal/profile',    label: 'My Profile',    icon: UserCircle2,     flag: null },
 ];
+
+function visibleNav(flags) {
+  return ALL_NAV.filter((item) => !item.flag || flags[item.flag] !== false);
+}
 
 export default function ParentLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { flags } = useModuleFlags();
+  const navItems = visibleNav(flags);
   const [studentName, setStudentName] = useState('');
   const isAdmin = user?.role === 'App Administrator';
 

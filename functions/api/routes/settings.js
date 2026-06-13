@@ -130,6 +130,25 @@ const APP_SETTINGS_DEFAULTS = {
   'billing.default_offline_fee': '',
   'billing.default_group_fee':   '',
   'billing.default_min_classes': '',
+
+  // ---- Modules (Phase 3) -----------------------------------------------
+  // Per-org module enable/disable. Stored as 'true'/'false' strings so the
+  // JSON column doesn't need to handle bool serialisation. Empty value
+  // falls back to defaults below.
+  'modules.lessons':        'true',
+  'modules.fees':           'true',
+  'modules.messages':       'true',
+  'modules.reports':        'true',
+  'modules.camps':          'false', // off by default — not everyone runs camps
+  'modules.groups':         'true',
+  'modules.student_photos': 'true',
+
+  // ---- Parent portal visibility (Phase 3) ------------------------------
+  // What parents see in their portal. attendance is always visible — that's
+  // the foundation of the relationship.
+  'portal.show_lessons':      'true',
+  'portal.show_fees':         'true',
+  'portal.allow_profile_edit':'true',
 };
 
 const APP_SETTINGS_KEYS = Object.keys(APP_SETTINGS_DEFAULTS);

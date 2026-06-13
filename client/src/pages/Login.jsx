@@ -6,7 +6,7 @@
 import { useEffect } from 'react';
 import { Music2, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { roleHome } from '../components/RequireAuth';
 
 function hostedLoginUrl(target) {
@@ -59,8 +59,14 @@ export default function Login() {
           </p>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          For access, contact your teacher.
+        <p className="text-center text-sm text-gray-600 mt-6">
+          New here?{' '}
+          <Link to="/signup" className="text-indigo-600 hover:text-indigo-700 font-medium">
+            Create a new academy
+          </Link>
+        </p>
+        <p className="text-center text-xs text-gray-400 mt-2">
+          Parents: contact your teacher for access.
         </p>
       </div>
     </div>

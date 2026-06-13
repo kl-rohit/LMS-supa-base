@@ -25,6 +25,7 @@ import {
 // code-split via React.lazy → webpack emits a separate chunk per page, so
 // first-load JS is the small shell + the destination route.
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 import ParentLayout from './layouts/ParentLayout';
 
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
@@ -198,6 +199,7 @@ export default function App() {
       />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
         <Route
           path="/portal/*"
           element={

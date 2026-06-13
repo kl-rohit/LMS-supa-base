@@ -100,9 +100,14 @@ router.put('/templates', async (req, res) => {
 
 // =============================================================================
 // AppSettings — generic key/value store
+//
+// The columns are named `setting_key` + `setting_value` (not plain key/value)
+// because Catalyst rejects `key` / `value` as reserved column names.
 // =============================================================================
 
 const APP_TABLE = 'AppSettings';
+const APP_KEY_COL = 'setting_key';
+const APP_VAL_COL = 'setting_value';
 
 // Whitelist of recognised keys. Anything not in this map is rejected on PUT
 // to prevent the table getting littered with typos. To add a new setting,
@@ -139,7 +144,7 @@ async function loadAppSettings(req) {
     return { ...APP_SETTINGS_DEFAULTS };
   }
   const all = unwrap(rows, APP_TABLE).map(normalize);
-  const byKey = new Map(all.map((r) => [r.key, r.value]));
+  const byKey = new Map(all.map((r) => [r[APP_KEY_COL], r[APP_VAL_COL]]));
   const out = {};
   for (const k of APP_SETTINGS_KEYS) {
     out[k] = byKey.has(k) ? byKey.get(k) : APP_SETTINGS_DEFAULTS[k];
@@ -175,7 +180,7 @@ router.put('/app', async (req, res) => {
       });
     }
     const existing = unwrap(rows, APP_TABLE).map(normalize);
-    const byKey = new Map(existing.map((r) => [r.key, r]));
+    const byKey = new Map(existing.map((r) => [r[APP_KEY_COL], r]));
 
     let upserted = 0;
     for (const key of APP_SETTINGS_KEYS) {
@@ -186,12 +191,12 @@ router.put('/app', async (req, res) => {
         if (row) {
           // Skip the write if the value didn't actually change — saves a
           // round-trip on the common "Save with no edits" case.
-          if (row.value !== value) {
-            await update(req, APP_TABLE, row.id, { value });
+          if (row[APP_VAL_COL] !== value) {
+            await update(req, APP_TABLE, row.id, { [APP_VAL_COL]: value });
             upserted++;
           }
         } else {
-          await insert(req, APP_TABLE, { key, value });
+          await insert(req, APP_TABLE, { [APP_KEY_COL]: key, [APP_VAL_COL]: value });
           upserted++;
         }
       } catch (err) {

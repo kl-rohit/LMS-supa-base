@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const { requireAuth, requireAdmin } = require('./middleware/auth');
 const { requireParent } = require('./middleware/parent');
+const { resolveOrg, requireOrgId } = require('./middleware/org');
 
 const app = express();
 app.use(cors());
@@ -51,25 +52,29 @@ app.use('/api/internal', require('./routes/internal'));
 // /api/portal/* — any logged-in parent; scoped to their student_id.
 app.use('/api/portal', requireAuth, requireParent, require('./routes/portal'));
 
-// Everything else requires App Administrator (teacher).
-app.use('/api', requireAuth, requireAdmin);
+// /api/platform/* — Catalyst App Administrators only (Rohit, the platform
+// owner). Sees cross-org data. NO resolveOrg here — these endpoints
+// operate above the tenant boundary.
+app.use('/api/platform', requireAuth, requireAdmin, require('./routes/platform'));
 
-// Resource routers (admin scope)
-app.use('/api/platform',       require('./routes/platform'));
-app.use('/api/students',       require('./routes/students'));
-app.use('/api/groups',         require('./routes/groups'));
-app.use('/api/classes',        require('./routes/classes'));
-app.use('/api/attendance',     require('./routes/attendance'));
-app.use('/api/fees',           require('./routes/fees'));
-app.use('/api/messages',       require('./routes/messages'));
-app.use('/api/reports',        require('./routes/reports'));
-app.use('/api/dashboard',      require('./routes/dashboard'));
-app.use('/api/import',         require('./routes/import'));
-app.use('/api/camps',          require('./routes/camps'));
-app.use('/api/student-logins', require('./routes/student-logins'));
-app.use('/api/courses',        require('./routes/courses'));
-app.use('/api/lessons',        require('./routes/lessons'));
-app.use('/api/enrollments',    require('./routes/enrollments'));
-app.use('/api/settings',       require('./routes/settings'));
+// Tenant-scoped routes — any authenticated user with an active
+// OrgMembership (or Catalyst App Administrator acting on a specific org).
+// resolveOrg attaches req.orgId + req.orgRole; each route uses those to
+// filter SELECTs and stamp INSERTs.
+app.use('/api/students',       requireAuth, resolveOrg, requireOrgId, require('./routes/students'));
+app.use('/api/groups',         requireAuth, resolveOrg, requireOrgId, require('./routes/groups'));
+app.use('/api/classes',        requireAuth, resolveOrg, requireOrgId, require('./routes/classes'));
+app.use('/api/attendance',     requireAuth, resolveOrg, requireOrgId, require('./routes/attendance'));
+app.use('/api/fees',           requireAuth, resolveOrg, requireOrgId, require('./routes/fees'));
+app.use('/api/messages',       requireAuth, resolveOrg, requireOrgId, require('./routes/messages'));
+app.use('/api/reports',        requireAuth, resolveOrg, requireOrgId, require('./routes/reports'));
+app.use('/api/dashboard',      requireAuth, resolveOrg, requireOrgId, require('./routes/dashboard'));
+app.use('/api/import',         requireAuth, resolveOrg, requireOrgId, require('./routes/import'));
+app.use('/api/camps',          requireAuth, resolveOrg, requireOrgId, require('./routes/camps'));
+app.use('/api/student-logins', requireAuth, resolveOrg, requireOrgId, require('./routes/student-logins'));
+app.use('/api/courses',        requireAuth, resolveOrg, requireOrgId, require('./routes/courses'));
+app.use('/api/lessons',        requireAuth, resolveOrg, requireOrgId, require('./routes/lessons'));
+app.use('/api/enrollments',    requireAuth, resolveOrg, requireOrgId, require('./routes/enrollments'));
+app.use('/api/settings',       requireAuth, resolveOrg, requireOrgId, require('./routes/settings'));
 
 module.exports = app;

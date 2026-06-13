@@ -57,10 +57,10 @@ router.get('/debug/tables', async (req, res) => {
   res.json(result);
 });
 
-// DELETE /api/students/inactive — bulk hard-delete
+// DELETE /api/students/inactive — bulk hard-delete (scoped to caller's org)
 router.delete('/inactive', async (req, res) => {
   try {
-    const rows = await zcql(req, `SELECT ROWID FROM Students WHERE Students.status = 'inactive'`);
+    const rows = await zcql(req, `SELECT ROWID FROM Students WHERE Students.status = 'inactive' AND Students.org_id = ${Number(req.orgId)}`);
     const ids = unwrap(rows, 'Students').map((r) => r.ROWID);
     let deleted = 0;
     for (const id of ids) {
@@ -76,18 +76,19 @@ router.delete('/inactive', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { search, status, page, limit } = req.query;
+    const orgFilter = `Students.org_id = ${Number(req.orgId)}`;
     if (!search && !status && !limit) {
-      const rows = await getAll(req, 'Students');
-      rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-      return res.json({ students: rows.map(normalize) });
+      // Avoid getAll() (table-wide) — it'd return other orgs' rows.
+      const rows = await zcql(req, `SELECT * FROM Students WHERE ${orgFilter} ORDER BY Students.name ASC`);
+      return res.json({ students: unwrap(rows, 'Students').map(normalize) });
     }
-    const where = [];
+    const where = [orgFilter];
     if (status) where.push(`Students.status = ${q(status)}`);
     if (search) {
       const s = q(`%${search}%`);
       where.push(`(Students.name LIKE ${s} OR Students.parent_name LIKE ${s} OR Students.mobile_number LIKE ${s})`);
     }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const whereSql = `WHERE ${where.join(' AND ')}`;
     if (limit) {
       const pageNum = parseInt(page) || 1;
       const limitNum = parseInt(limit);
@@ -112,12 +113,16 @@ router.get('/:id', async (req, res) => {
   try {
     const student = await getById(req, 'Students', req.params.id);
     if (!student) return res.status(404).json({ error: 'Student not found' });
+    // Cross-org protection: row exists, but does it belong to the caller's org?
+    if (Number(student.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
     let groups = []; let groupIds = [];
     try {
-      const links = await zcql(req, `SELECT GroupStudents.group_id FROM GroupStudents WHERE GroupStudents.student_id = ${req.params.id}`);
+      const links = await zcql(req, `SELECT GroupStudents.group_id FROM GroupStudents WHERE GroupStudents.student_id = ${req.params.id} AND GroupStudents.org_id = ${Number(req.orgId)}`);
       groupIds = unwrap(links, 'GroupStudents').map((l) => l.group_id).filter(Boolean);
       if (groupIds.length) {
-        const gRows = await zcql(req, `SELECT * FROM Groups WHERE ROWID IN (${groupIds.join(',')})`);
+        const gRows = await zcql(req, `SELECT * FROM Groups WHERE ROWID IN (${groupIds.join(',')}) AND Groups.org_id = ${Number(req.orgId)}`);
         groups = unwrap(gRows, 'Groups').map(normalize);
       }
     } catch {}
@@ -125,7 +130,7 @@ router.get('/:id', async (req, res) => {
     try {
       const orParts = [`Classes.student_id = ${req.params.id}`];
       if (groupIds.length) orParts.push(`Classes.group_id IN (${groupIds.join(',')})`);
-      const cRows = await zcql(req, `SELECT * FROM Classes WHERE ${orParts.join(' OR ')}`);
+      const cRows = await zcql(req, `SELECT * FROM Classes WHERE (${orParts.join(' OR ')}) AND Classes.org_id = ${Number(req.orgId)}`);
       classes = unwrap(cRows, 'Classes').map(normalize);
     } catch {}
     res.json({ student: normalize(student), groups, classes });
@@ -161,6 +166,7 @@ router.post('/', async (req, res) => {
       father_name: father_name || '',
       mother_name: mother_name || '',
       photo_url: photo_url || '',
+      org_id: Number(req.orgId),
     };
     // Only set date_of_birth if provided — Catalyst rejects empty strings on Date columns
     if (date_of_birth) payload.date_of_birth = date_of_birth;
@@ -176,6 +182,10 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Student not found' });
+    // Cross-org protection — never let one org modify another's row.
+    if (Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
     const {
       name, parent_name, mobile_number,
       fee_online, fee_offline, fee_offline_group, min_classes_per_month,
@@ -210,6 +220,9 @@ router.delete('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Student not found' });
+    if (Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
     const force = req.query.force === 'true' || req.query.force === '1';
     if (force) {
       await remove(req, 'Students', req.params.id);
@@ -224,7 +237,7 @@ router.delete('/:id', async (req, res) => {
 
 // POST /api/students/photo-urls — batch-sign photo URLs for the Students list.
 // Body: { ids: [...] }  →  { urls: { '<id>': 'https://...' } }
-// One round-trip refreshes every avatar in the table instead of N requests.
+// Org-scoped — only signs URLs for students that belong to the caller's org.
 router.post('/photo-urls', async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
@@ -232,7 +245,7 @@ router.post('/photo-urls', async (req, res) => {
 
     const sids = ids.map((id) => safeId(id)).filter(Boolean);
     if (sids.length === 0) return res.json({ urls: {} });
-    const rows = await zcql(req, `SELECT ROWID, photo_url FROM Students WHERE ROWID IN (${sids.join(',')})`);
+    const rows = await zcql(req, `SELECT ROWID, photo_url FROM Students WHERE ROWID IN (${sids.join(',')}) AND Students.org_id = ${Number(req.orgId)}`);
     const students = unwrap(rows, 'Students');
 
     const urls = {};
@@ -247,14 +260,14 @@ router.post('/photo-urls', async (req, res) => {
   }
 });
 
-// POST /api/students/:id/photo — admin uploads a photo on behalf of a
-// student (for parents who don't use the portal). Same pipeline as the
-// portal: resize → upload → patch Students.photo_url with the object key.
-// Body: { data: 'data:image/jpeg;base64,...' }
+// POST /api/students/:id/photo — admin uploads a photo on behalf of a student.
 router.post('/:id/photo', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
     if (!existing) return res.status(404).json({ error: 'Student not found' });
+    if (Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
     const result = await uploadStudentPhoto(req, req.params.id, req.body);
     res.status(result.status).json(result.json);
   } catch (e) {
@@ -263,12 +276,13 @@ router.post('/:id/photo', async (req, res) => {
 });
 
 // GET /api/students/:id/photo-url — single-student signed URL.
-// Used by the admin Students modal so the current photo renders when
-// editing.
 router.get('/:id/photo-url', async (req, res) => {
   try {
     const s = await getById(req, 'Students', req.params.id);
     if (!s) return res.status(404).json({ error: 'Student not found' });
+    if (Number(s.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
     const photo_url = await signStoredPhoto(req, s.photo_url);
     res.json({ photo_url });
   } catch (e) {

@@ -1,10 +1,7 @@
-// /api/camps — Special Camps: a time-bounded mini-program for an existing group.
-// Tables: Camps (the camp metadata) + CampDays (one row per scheduled day).
-// Attendance rows are tagged with `camp_id` so they show on camp dashboards
-// while still rolling into the monthly fee calculation.
+// /api/camps — Camps + CampDays. Org-scoped via resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
 
 function calcDuration(start, end) {
   if (!start || !end) return 1;
@@ -14,10 +11,6 @@ function calcDuration(start, end) {
   return diff > 0 ? diff / 60 : 1;
 }
 
-// Add n days to a YYYY-MM-DD date, staying entirely in local-time arithmetic.
-// (Using `new Date(s + 'T00:00:00').toISOString()` shifts the date by the
-// server's UTC offset — e.g. IST midnight becomes 18:30 UTC the previous day,
-// so toISOString returns the WRONG calendar date. This avoids that trap.)
 function addDays(yyyymmdd, n) {
   const [y, m, d] = yyyymmdd.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
@@ -28,20 +21,17 @@ function addDays(yyyymmdd, n) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Hydrate a camp row with its days, group, and per-day attendance summary.
 async function decorate(req, camp) {
   const out = normalize(camp);
-  // Group
   if (camp.group_id) {
     try {
       const g = await getById(req, 'Groups', camp.group_id);
-      if (g) {
+      if (g && Number(g.org_id) === Number(req.orgId)) {
         out.group_name = g.name;
-        // Members for convenience
-        const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${camp.group_id}`);
+        const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${camp.group_id} AND GroupStudents.org_id = ${Number(req.orgId)}`);
         const sids = unwrap(links, 'GroupStudents').map((l) => l.student_id).filter(Boolean);
         if (sids.length) {
-          const sRows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${sids.join(',')})`);
+          const sRows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${sids.join(',')}) AND Students.org_id = ${Number(req.orgId)}`);
           out.members = unwrap(sRows, 'Students').map(normalize);
         } else {
           out.members = [];
@@ -49,9 +39,8 @@ async function decorate(req, camp) {
       }
     } catch {}
   }
-  // Days
   try {
-    const dRows = await zcql(req, `SELECT * FROM CampDays WHERE CampDays.camp_id = ${camp.ROWID} ORDER BY CampDays.day_date ASC`);
+    const dRows = await zcql(req, `SELECT * FROM CampDays WHERE CampDays.camp_id = ${camp.ROWID} AND CampDays.org_id = ${Number(req.orgId)} ORDER BY CampDays.day_date ASC`);
     out.days = unwrap(dRows, 'CampDays').map(normalize);
   } catch {
     out.days = [];
@@ -59,15 +48,13 @@ async function decorate(req, camp) {
   return out;
 }
 
-// ----- Specific paths BEFORE /:id ------------------------------------------
-
-// GET /api/camps/by-date/:date — camps where start_date <= date <= end_date
+// GET /api/camps/by-date/:date
 router.get('/by-date/:date', async (req, res) => {
   try {
     const date = req.params.date;
     const rows = await zcql(
       req,
-      `SELECT * FROM Camps WHERE Camps.start_date <= ${q(date)} AND Camps.end_date >= ${q(date)} AND Camps.status = 'active'`
+      `SELECT * FROM Camps WHERE Camps.start_date <= ${q(date)} AND Camps.end_date >= ${q(date)} AND Camps.status = 'active' AND Camps.org_id = ${Number(req.orgId)}`
     );
     const camps = await Promise.all(unwrap(rows, 'Camps').map((c) => decorate(req, c)));
     res.json({ camps });
@@ -76,30 +63,27 @@ router.get('/by-date/:date', async (req, res) => {
   }
 });
 
-// GET /api/camps/days/by-date/:date — flat list of CampDays for the date,
-// with parent camp metadata so the Attendance page can render them as cards.
+// GET /api/camps/days/by-date/:date
 router.get('/days/by-date/:date', async (req, res) => {
   try {
     const date = req.params.date;
     const dayRows = await zcql(
       req,
-      `SELECT * FROM CampDays WHERE CampDays.day_date = ${q(date)}`
+      `SELECT * FROM CampDays WHERE CampDays.day_date = ${q(date)} AND CampDays.org_id = ${Number(req.orgId)}`
     );
     const days = unwrap(dayRows, 'CampDays').map(normalize);
-    // Attach parent camp + group info to each
     const out = await Promise.all(days.map(async (d) => {
       try {
         const camp = await getById(req, 'Camps', d.camp_id);
-        if (camp && camp.status === 'active') {
+        if (camp && camp.status === 'active' && Number(camp.org_id) === Number(req.orgId)) {
           d.camp_name = camp.name;
           d.camp_status = camp.status;
           d.group_id = camp.group_id;
           d.daily_fee = camp.daily_fee || 0;
-          // Members
-          const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${camp.group_id}`);
+          const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${camp.group_id} AND GroupStudents.org_id = ${Number(req.orgId)}`);
           const sids = unwrap(links, 'GroupStudents').map((l) => l.student_id).filter(Boolean);
           if (sids.length) {
-            const sRows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${sids.join(',')})`);
+            const sRows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${sids.join(',')}) AND Students.org_id = ${Number(req.orgId)}`);
             d.members = unwrap(sRows, 'Students').map(normalize);
           } else {
             d.members = [];
@@ -117,14 +101,13 @@ router.get('/days/by-date/:date', async (req, res) => {
   }
 });
 
-// POST /api/camps/days/:dayId/attendance — mark attendance for a specific camp day.
-// Body: { records: [{ student_id, status, topic?, fee_charged? }] }
+// POST /api/camps/days/:dayId/attendance
 router.post('/days/:dayId/attendance', async (req, res) => {
   try {
     const day = await getById(req, 'CampDays', req.params.dayId);
-    if (!day) return res.status(404).json({ error: 'Camp day not found' });
+    if (!day || Number(day.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp day not found' });
     const camp = await getById(req, 'Camps', day.camp_id);
-    if (!camp) return res.status(404).json({ error: 'Parent camp not found' });
+    if (!camp || Number(camp.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Parent camp not found' });
 
     const { records } = req.body;
     if (!Array.isArray(records) || !records.length) {
@@ -136,12 +119,17 @@ router.post('/days/:dayId/attendance', async (req, res) => {
     const results = [];
     for (const r of records) {
       try {
-        // De-dupe: if a record already exists for this student/camp_id/day_date, update it.
+        // Verify student belongs to org.
+        const s = await getById(req, 'Students', r.student_id);
+        if (!s || Number(s.org_id) !== Number(req.orgId)) {
+          results.push({ ok: false, student_id: r.student_id, error: 'Student not in this org' });
+          continue;
+        }
         let existingId = null;
         try {
           const existing = await zcql(
             req,
-            `SELECT ROWID FROM Attendance WHERE Attendance.student_id = ${r.student_id} AND Attendance.camp_id = ${day.camp_id} AND Attendance.class_date = ${q(day.day_date)}`
+            `SELECT ROWID FROM Attendance WHERE Attendance.student_id = ${r.student_id} AND Attendance.camp_id = ${day.camp_id} AND Attendance.class_date = ${q(day.day_date)} AND Attendance.org_id = ${Number(req.orgId)}`
           );
           const found = unwrap(existing, 'Attendance');
           if (found.length) existingId = found[0].ROWID;
@@ -149,17 +137,11 @@ router.post('/days/:dayId/attendance', async (req, res) => {
 
         let fee = r.fee_charged;
         if (fee === undefined) {
-          // Default to daily_fee if camp specifies one; else compute from student's group rate.
           if (dailyFee) {
             fee = dailyFee;
           } else if (r.status === 'present' || r.status === 'late') {
-            try {
-              const s = await getById(req, 'Students', r.student_id);
-              if (s) {
-                const rate = s.fee_offline_group || 0;
-                fee = rate * dur;
-              }
-            } catch {}
+            const rate = s.fee_offline_group || 0;
+            fee = rate * dur;
           }
         }
         if (r.status === 'absent') fee = 0;
@@ -176,6 +158,7 @@ router.post('/days/:dayId/attendance', async (req, res) => {
           topic: r.topic || '',
           notes: r.notes || '',
           recording_url: r.recording_url || '',
+          org_id: Number(req.orgId),
         };
         if (existingId) {
           const updated = await update(req, 'Attendance', existingId, payload);
@@ -194,14 +177,13 @@ router.post('/days/:dayId/attendance', async (req, res) => {
   }
 });
 
-// ----- Collection + items --------------------------------------------------
-
-// GET /api/camps?status=active|completed|archived
+// GET /api/camps
 router.get('/', async (req, res) => {
   try {
     const { status } = req.query;
-    const whereSql = status ? `WHERE Camps.status = ${q(status)}` : '';
-    const rows = await zcql(req, `SELECT * FROM Camps ${whereSql} ORDER BY Camps.start_date DESC`);
+    const where = [`Camps.org_id = ${Number(req.orgId)}`];
+    if (status) where.push(`Camps.status = ${q(status)}`);
+    const rows = await zcql(req, `SELECT * FROM Camps WHERE ${where.join(' AND ')} ORDER BY Camps.start_date DESC`);
     const camps = await Promise.all(unwrap(rows, 'Camps').map((c) => decorate(req, c)));
     res.json({ camps });
   } catch (e) {
@@ -213,12 +195,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const camp = await getById(req, 'Camps', req.params.id);
-    if (!camp) return res.status(404).json({ error: 'Camp not found' });
+    if (!camp || Number(camp.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp not found' });
     const decorated = await decorate(req, camp);
 
-    // Attendance counts per day
     try {
-      const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.camp_id = ${req.params.id}`);
+      const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.camp_id = ${req.params.id} AND Attendance.org_id = ${Number(req.orgId)}`);
       const attendance = unwrap(aRows, 'Attendance').map(normalize);
       const byDay = {};
       for (const a of attendance) {
@@ -242,8 +223,6 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/camps
-// Body: { name, group_id, start_date, total_days, daily_fee?, status?, notes?,
-//         schedule: [{ day_date, start_time, end_time, class_type, duration_hours? }, ...] }
 router.post('/', async (req, res) => {
   try {
     const { name, group_id, start_date, total_days, daily_fee, notes, schedule } = req.body;
@@ -254,10 +233,12 @@ router.post('/', async (req, res) => {
     if (!total_days) missing.push('total_days');
     if (!Array.isArray(schedule) || !schedule.length) missing.push('schedule[]');
     if (missing.length) {
-      return res.status(400).json({
-        error: `Missing required fields: ${missing.join(', ')}`,
-        received: { name, group_id, start_date, total_days, schedule_length: Array.isArray(schedule) ? schedule.length : null },
-      });
+      return res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` });
+    }
+    // Verify group is in caller's org.
+    const g = await getById(req, 'Groups', group_id);
+    if (!g || Number(g.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
     }
     const days = parseInt(total_days);
     const end_date = addDays(start_date, days - 1);
@@ -271,6 +252,7 @@ router.post('/', async (req, res) => {
       daily_fee: Number(daily_fee) || 0,
       status: 'active',
       notes: notes || '',
+      org_id: Number(req.orgId),
     });
 
     const insertedDays = [];
@@ -284,6 +266,7 @@ router.post('/', async (req, res) => {
           end_time: s.end_time,
           class_type: s.class_type || 'offline_group',
           duration_hours: Number(s.duration_hours) || calcDuration(s.start_time, s.end_time),
+          org_id: Number(req.orgId),
         });
         insertedDays.push(normalize(inserted));
       } catch (err) {
@@ -299,11 +282,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/camps/:id — patch fields (mostly used for status flip)
+// PUT /api/camps/:id
 router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Camps', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Camp not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp not found' });
     const patch = {};
     const allow = ['name', 'group_id', 'start_date', 'end_date', 'total_days', 'daily_fee', 'status', 'notes'];
     for (const k of allow) {
@@ -320,15 +303,13 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/camps/:id — hard delete + cascade delete CampDays.
-// Attendance rows keep their (now-dangling) camp_id. That's intentional —
-// we never want to lose attendance / fee history when a camp is deleted.
+// DELETE /api/camps/:id
 router.delete('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Camps', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Camp not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp not found' });
     try {
-      const dayRows = await zcql(req, `SELECT ROWID FROM CampDays WHERE CampDays.camp_id = ${req.params.id}`);
+      const dayRows = await zcql(req, `SELECT ROWID FROM CampDays WHERE CampDays.camp_id = ${req.params.id} AND CampDays.org_id = ${Number(req.orgId)}`);
       for (const d of unwrap(dayRows, 'CampDays')) {
         try { await remove(req, 'CampDays', d.ROWID); } catch {}
       }

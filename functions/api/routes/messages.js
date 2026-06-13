@@ -1,12 +1,12 @@
 // /api/messages — Messages CRUD + auto-generate (absence/fee reminder).
+// Org-scoped via middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
 
-// Mirror of the fee-reminder generator — read school identity once per
-// request so absence alerts substitute {school} / {signature} consistently.
+// School identity for {school} / {signature} substitution.
 async function loadSchoolCtx(req) {
   try {
     const s = await loadAppSettings(req);
@@ -22,9 +22,8 @@ async function loadSchoolCtx(req) {
 // GET /api/messages
 router.get('/', async (req, res) => {
   try {
-    const rows = (await getAll(req, 'Messages'))
-      .sort((a, b) => String(b.CREATEDTIME || '').localeCompare(String(a.CREATEDTIME || '')));
-    res.json({ messages: rows.map(normalize) });
+    const rows = await zcqlAll(req, `SELECT * FROM Messages WHERE Messages.org_id = ${Number(req.orgId)} ORDER BY Messages.CREATEDTIME DESC`, 'Messages');
+    res.json({ messages: unwrap(rows, 'Messages').map(normalize) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch messages', detail: e.message });
   }
@@ -38,7 +37,10 @@ router.post('/', async (req, res) => {
     let pName = parent_name, mNum = mobile_number;
     if (student_id) {
       const s = await getById(req, 'Students', student_id);
-      if (s) { pName = pName || s.parent_name; mNum = mNum || s.mobile_number; }
+      if (!s || Number(s.org_id) !== Number(req.orgId)) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+      pName = pName || s.parent_name; mNum = mNum || s.mobile_number;
     }
     const row = await insert(req, 'Messages', {
       student_id: student_id ? String(student_id) : null,
@@ -47,6 +49,7 @@ router.post('/', async (req, res) => {
       message,
       message_type: message_type || 'custom',
       is_sent: 0,
+      org_id: Number(req.orgId),
     });
     res.status(201).json({ message: normalize(row) });
   } catch (e) {
@@ -57,20 +60,16 @@ router.post('/', async (req, res) => {
 // POST /api/messages/generate-absence-alert
 router.post('/generate-absence-alert', async (req, res) => {
   try {
-    // Fetch templates + school identity once per request.
     const [templates, schoolCtx] = await Promise.all([
       loadTemplates(req).catch(() => DEFAULT_TEMPLATES),
       loadSchoolCtx(req),
     ]);
-    // Reuse the same absent-streak logic
-    const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active'`);
+    const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${Number(req.orgId)}`);
     const students = unwrap(studentRows, 'Students');
     let created = 0;
     for (const s of students) {
       try {
-        // Per-student all-time history — paginate (could exceed 300 rows
-        // for long-standing students).
-        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} ORDER BY Attendance.class_date DESC`, 'Attendance');
+        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
         const records = unwrap(aRows, 'Attendance');
         let streak = 0;
         for (const r of records) { if (r.status === 'absent') streak++; else break; }
@@ -88,6 +87,7 @@ router.post('/generate-absence-alert', async (req, res) => {
             message: text,
             message_type: 'absence_alert',
             is_sent: 0,
+            org_id: Number(req.orgId),
           });
           created++;
         }
@@ -100,17 +100,13 @@ router.post('/generate-absence-alert', async (req, res) => {
 });
 
 // POST /api/messages/generate-fee-reminder
-// Body: { month?, year? }  — defaults to current month
-// Generates one draft Messages row per student with a positive monthly total
-// (class fees + additional fees for the month). Active students only.
-// The actual logic lives in lib/feeReminder.js so the monthly cron can
-// reuse it without going through this auth-gated HTTP route.
 router.post('/generate-fee-reminder', async (req, res) => {
   try {
     const now = new Date();
     const month = parseInt(req.body?.month) || (now.getMonth() + 1);
     const year = parseInt(req.body?.year) || now.getFullYear();
-    const result = await generateFeeReminders(req, { month, year });
+    // generateFeeReminders reads req.orgId internally — see lib/feeReminder.js.
+    const result = await generateFeeReminders(req, { month, year, orgId: Number(req.orgId) });
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: 'Failed to generate fee reminders', detail: e.message });
@@ -121,7 +117,9 @@ router.post('/generate-fee-reminder', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Messages', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Message not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
     const patch = {};
     const allow = ['message', 'message_type', 'is_sent', 'parent_name', 'mobile_number'];
     for (const k of allow) if (req.body[k] !== undefined) {
@@ -138,7 +136,9 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Messages', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Message not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
     await remove(req, 'Messages', req.params.id);
     res.json({ message: 'Message deleted' });
   } catch (e) {

@@ -51,7 +51,11 @@ const DEFAULT_TEMPLATES = {
 const TEMPLATE_TYPES = Object.keys(DEFAULT_TEMPLATES);
 
 async function loadTemplates(req) {
-  const rows = await zcql(req, `SELECT * FROM ${TEMPLATES_TABLE}`);
+  // req.orgId is set by middleware/org.resolveOrg on tenant routes; the
+  // shared cron driver and fee-reminder lib also set it explicitly before
+  // calling. Anything calling loadTemplates without orgId returns defaults.
+  if (!req.orgId) return { ...DEFAULT_TEMPLATES };
+  const rows = await zcql(req, `SELECT * FROM ${TEMPLATES_TABLE} WHERE ${TEMPLATES_TABLE}.org_id = ${Number(req.orgId)}`);
   const all = unwrap(rows, TEMPLATES_TABLE).map(normalize);
   const byType = new Map(all.map((r) => [r.type, r.body]));
   const out = {};
@@ -73,7 +77,7 @@ router.get('/templates', async (req, res) => {
 router.put('/templates', async (req, res) => {
   try {
     const incoming = req.body?.templates || {};
-    const rows = await zcql(req, `SELECT * FROM ${TEMPLATES_TABLE}`);
+    const rows = await zcql(req, `SELECT * FROM ${TEMPLATES_TABLE} WHERE ${TEMPLATES_TABLE}.org_id = ${Number(req.orgId)}`);
     const existing = unwrap(rows, TEMPLATES_TABLE).map(normalize);
     const byType = new Map(existing.map((r) => [r.type, r]));
 
@@ -84,7 +88,7 @@ router.put('/templates', async (req, res) => {
       const row = byType.get(type);
       try {
         if (row) await update(req, TEMPLATES_TABLE, row.id, { body });
-        else      await insert(req, TEMPLATES_TABLE, { type, body });
+        else      await insert(req, TEMPLATES_TABLE, { type, body, org_id: Number(req.orgId) });
         updated++;
       } catch (err) {
         console.error('template upsert failed for', type, err.message);
@@ -134,12 +138,13 @@ const APP_SETTINGS_KEYS = Object.keys(APP_SETTINGS_DEFAULTS);
 // Missing keys are filled from APP_SETTINGS_DEFAULTS so the caller always
 // gets a complete map.
 async function loadAppSettings(req) {
+  // Same orgId precondition as loadTemplates — callers without org context
+  // (e.g. cron driver before it picks an org) get defaults.
+  if (!req.orgId) return { ...APP_SETTINGS_DEFAULTS };
   let rows;
   try {
-    rows = await zcql(req, `SELECT * FROM ${APP_TABLE}`);
+    rows = await zcql(req, `SELECT * FROM ${APP_TABLE} WHERE ${APP_TABLE}.org_id = ${Number(req.orgId)}`);
   } catch (e) {
-    // Table doesn't exist yet (admin hasn't created it in console) — return
-    // defaults so the rest of the app still works.
     console.error('AppSettings unavailable; using defaults.', e.message);
     return { ...APP_SETTINGS_DEFAULTS };
   }
@@ -169,14 +174,13 @@ router.put('/app', async (req, res) => {
   try {
     const incoming = req.body?.settings || {};
 
-    // Index existing rows by key
     let rows;
     try {
-      rows = await zcql(req, `SELECT * FROM ${APP_TABLE}`);
+      rows = await zcql(req, `SELECT * FROM ${APP_TABLE} WHERE ${APP_TABLE}.org_id = ${Number(req.orgId)}`);
     } catch (e) {
       return res.status(503).json({
         error: 'AppSettings table not available',
-        detail: 'Create the AppSettings table in Catalyst console (key Text 100 unique, value Text 4000).',
+        detail: 'Create the AppSettings table in Catalyst console (setting_key Text 100 unique, setting_value Text 4000, org_id Bigint).',
       });
     }
     const existing = unwrap(rows, APP_TABLE).map(normalize);
@@ -189,14 +193,16 @@ router.put('/app', async (req, res) => {
       const row = byKey.get(key);
       try {
         if (row) {
-          // Skip the write if the value didn't actually change — saves a
-          // round-trip on the common "Save with no edits" case.
           if (row[APP_VAL_COL] !== value) {
             await update(req, APP_TABLE, row.id, { [APP_VAL_COL]: value });
             upserted++;
           }
         } else {
-          await insert(req, APP_TABLE, { [APP_KEY_COL]: key, [APP_VAL_COL]: value });
+          await insert(req, APP_TABLE, {
+            [APP_KEY_COL]: key,
+            [APP_VAL_COL]: value,
+            org_id: Number(req.orgId),
+          });
           upserted++;
         }
       } catch (err) {

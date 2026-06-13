@@ -22,6 +22,11 @@ async function requireParent(req, res, next) {
       return res.status(403).json({ error: 'This login has been disabled' });
     }
     req.studentId = student.ROWID;
+    // The student's org_id implicitly scopes every portal route. Set req.orgId
+    // here so portal route handlers can apply the same `WHERE org_id = X`
+    // pattern as admin routes — defence in depth in case a portal endpoint
+    // ever wanders outside its student_id filter.
+    req.orgId = Number(student.org_id) || null;
     req.studentLogin = {
       email: student.login_email,
       user_id: student.login_user_id,

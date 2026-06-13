@@ -1,11 +1,10 @@
-// /api/fees — monthly aggregation + AdditionalFees CRUD.
+// /api/fees — monthly aggregation + AdditionalFees CRUD + Payments.
+// Org-scoped via middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, q, safeId } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
 
 // GET /api/fees/monthly/:year/:month
-// For each active student: classes_taken, class_fees_total, additional_fees_total,
-// grand_total, paid (bool), payment (the Payment row if paid).
 router.get('/monthly/:year/:month', async (req, res) => {
   try {
     const year = parseInt(req.params.year);
@@ -13,36 +12,34 @@ router.get('/monthly/:year/:month', async (req, res) => {
     const monthStr = String(month).padStart(2, '0');
     const dateFrom = `${year}-${monthStr}-01`;
     const dateTo = `${year}-${monthStr}-31`;
-    const students = await getAll(req, 'Students');
+    const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
+    const students = unwrap(studentRows, 'Students');
 
-    // Pull all Payments for this month/year in one query (faster than per-student).
+    // Payments for this month/year, scoped to org.
     let paymentsByStudent = {};
     try {
-      const pRows = await zcql(req, `SELECT * FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year}`);
+      const pRows = await zcql(req, `SELECT * FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year} AND Payments.org_id = ${Number(req.orgId)}`);
       for (const p of unwrap(pRows, 'Payments')) {
         paymentsByStudent[String(p.student_id)] = normalize(p);
       }
-    } catch {} // Payments table may not exist yet — graceful fallback
+    } catch {}
 
     const results = [];
     for (const s of students) {
       try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)}`);
+        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`);
         const attendance = unwrap(aRows, 'Attendance');
         const presentCount = attendance.filter((a) => a.status === 'present').length;
         const lateCount    = attendance.filter((a) => a.status === 'late').length;
         const absentCount  = attendance.filter((a) => a.status === 'absent').length;
         const attended = attendance.filter((a) => a.status === 'present' || a.status === 'late');
         const classFees = attended.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
-        const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year}`);
+        const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`);
         const additional = unwrap(afRows, 'AdditionalFees');
         const additionalTotal = additional.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
         const grandTotal = classFees + additionalTotal;
         const payment = paymentsByStudent[String(s.ROWID)];
-        // Compute shortfall (when below minimum) so the frontend can offer
-        // a "charge for the missed classes" action. Avg fee comes from
-        // actual attended classes, falling back to the student's standard
-        // rate if they attended zero.
+
         const minClasses = Number(s.min_classes_per_month) || 0;
         const attendedCount = presentCount + lateCount;
         let shortfallAmount = 0;
@@ -62,7 +59,7 @@ router.get('/monthly/:year/:month', async (req, res) => {
           shortfall_classes: shortfallClasses,
           shortfall_amount: shortfallAmount,
           class_fees: {
-            total_classes: attended.length,    // attended = present + late (legacy)
+            total_classes: attended.length,
             present: presentCount,
             late: lateCount,
             absent: absentCount,
@@ -83,22 +80,19 @@ router.get('/monthly/:year/:month', async (req, res) => {
   }
 });
 
-// GET /api/fees/payments?month&year&student_id
+// GET /api/fees/payments
 router.get('/payments', async (req, res) => {
   try {
     const { month, year, student_id } = req.query;
-    const where = [];
+    const where = [`Payments.org_id = ${Number(req.orgId)}`];
     if (month) where.push(`Payments.fee_month = ${parseInt(month)}`);
     if (year) where.push(`Payments.fee_year = ${parseInt(year)}`);
     const psid = safeId(student_id);
     if (psid) where.push(`Payments.student_id = ${psid}`);
-    const sql = where.length
-      ? `SELECT * FROM Payments WHERE ${where.join(' AND ')} ORDER BY Payments.payment_date DESC`
-      : `SELECT * FROM Payments ORDER BY Payments.payment_date DESC`;
+    const sql = `SELECT * FROM Payments WHERE ${where.join(' AND ')} ORDER BY Payments.payment_date DESC`;
     const rows = unwrap(await zcql(req, sql), 'Payments').map(normalize);
-    // Attach student_name
     const decorated = await Promise.all(rows.map(async (r) => {
-      try { const s = await getById(req, 'Students', r.student_id); if (s) r.student_name = s.name; } catch {}
+      try { const s = await getById(req, 'Students', r.student_id); if (s && Number(s.org_id) === Number(req.orgId)) r.student_name = s.name; } catch {}
       return r;
     }));
     res.json({ payments: decorated });
@@ -107,9 +101,7 @@ router.get('/payments', async (req, res) => {
   }
 });
 
-// POST /api/fees/payments — record a payment
-// Body: { student_id, fee_month, fee_year, paid_amount, payment_date?, notes? }
-// (Frontend may also send `month`/`year` — we accept either.)
+// POST /api/fees/payments
 router.post('/payments', async (req, res) => {
   try {
     const student_id = req.body.student_id;
@@ -120,10 +112,15 @@ router.post('/payments', async (req, res) => {
     if (!student_id || !fee_month || !fee_year || !Number.isFinite(paid_amount)) {
       return res.status(400).json({ error: 'student_id, fee_month, fee_year, paid_amount required' });
     }
-    // Check for existing payment — one per student per month
+    // Verify student is in caller's org.
+    const stu = await getById(req, 'Students', student_id);
+    if (!stu || Number(stu.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    // Dup check, org-scoped.
     const existing = await zcql(
       req,
-      `SELECT ROWID FROM Payments WHERE Payments.student_id = ${student_id} AND Payments.fee_month = ${fee_month} AND Payments.fee_year = ${fee_year}`
+      `SELECT ROWID FROM Payments WHERE Payments.student_id = ${student_id} AND Payments.fee_month = ${fee_month} AND Payments.fee_year = ${fee_year} AND Payments.org_id = ${Number(req.orgId)}`
     );
     const dup = unwrap(existing, 'Payments');
     if (dup.length) {
@@ -136,6 +133,7 @@ router.post('/payments', async (req, res) => {
       paid_amount,
       payment_date,
       notes: req.body.notes || '',
+      org_id: Number(req.orgId),
     });
     res.status(201).json({ payment: normalize(row) });
   } catch (e) {
@@ -143,11 +141,13 @@ router.post('/payments', async (req, res) => {
   }
 });
 
-// DELETE /api/fees/payments/:id — undo a payment
+// DELETE /api/fees/payments/:id
 router.delete('/payments/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Payments', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Payment not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
     await remove(req, 'Payments', req.params.id);
     res.json({ message: 'Payment deleted' });
   } catch (e) {
@@ -155,14 +155,14 @@ router.delete('/payments/:id', async (req, res) => {
   }
 });
 
-// GET /api/fees/student/:id  query: ?from, ?to
+// GET /api/fees/student/:id
 router.get('/student/:id', async (req, res) => {
   try {
     const { from, to } = req.query;
-    const where = [`Attendance.student_id = ${req.params.id}`];
+    const where = [`Attendance.student_id = ${req.params.id}`, `Attendance.org_id = ${Number(req.orgId)}`];
     if (from) where.push(`Attendance.class_date >= ${q(from)}`);
     if (to) where.push(`Attendance.class_date <= ${q(to)}`);
-    const aRows = await zcql(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`);
+    const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const attendance = unwrap(aRows, 'Attendance').map(normalize);
     const total = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
     res.json({ attendance, total });
@@ -171,36 +171,35 @@ router.get('/student/:id', async (req, res) => {
   }
 });
 
-// GET /api/fees/overall
+// GET /api/fees/overall — org-scoped totals
 router.get('/overall', async (req, res) => {
   try {
-    const aRows = await getAll(req, 'Attendance');
-    const afRows = await getAll(req, 'AdditionalFees');
-    const classTotal = aRows.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
-    const addTotal = afRows.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.org_id = ${Number(req.orgId)}`, 'Attendance');
+    const afRows = await zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees');
+    const att = unwrap(aRows, 'Attendance');
+    const adf = unwrap(afRows, 'AdditionalFees');
+    const classTotal = att.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
+    const addTotal = adf.reduce((s, a) => s + (Number(a.amount) || 0), 0);
     res.json({ class_fees_total: classTotal, additional_fees_total: addTotal, grand_total: classTotal + addTotal });
   } catch (e) {
     res.status(500).json({ error: 'Failed to compute overall fees', detail: e.message });
   }
 });
 
-// GET /api/fees/additional  query: ?month, ?year, ?student_id
+// GET /api/fees/additional
 router.get('/additional', async (req, res) => {
   try {
     const { month, year, student_id } = req.query;
-    const where = [];
+    const where = [`AdditionalFees.org_id = ${Number(req.orgId)}`];
     if (month) where.push(`AdditionalFees.fee_month = ${parseInt(month)}`);
     if (year) where.push(`AdditionalFees.fee_year = ${parseInt(year)}`);
     const asid = safeId(student_id);
     if (asid) where.push(`AdditionalFees.student_id = ${asid}`);
-    const sql = where.length
-      ? `SELECT * FROM AdditionalFees WHERE ${where.join(' AND ')} ORDER BY AdditionalFees.fee_date DESC`
-      : null;
-    const rows = sql ? unwrap(await zcql(req, sql), 'AdditionalFees') : await getAll(req, 'AdditionalFees');
-    // Attach student_name
+    const sql = `SELECT * FROM AdditionalFees WHERE ${where.join(' AND ')} ORDER BY AdditionalFees.fee_date DESC`;
+    const rows = unwrap(await zcql(req, sql), 'AdditionalFees');
     const decorated = await Promise.all(rows.map(async (r) => {
       const out = normalize(r);
-      try { const s = await getById(req, 'Students', r.student_id); if (s) out.student_name = s.name; } catch {}
+      try { const s = await getById(req, 'Students', r.student_id); if (s && Number(s.org_id) === Number(req.orgId)) out.student_name = s.name; } catch {}
       return out;
     }));
     res.json({ additional_fees: decorated });
@@ -209,7 +208,7 @@ router.get('/additional', async (req, res) => {
   }
 });
 
-// POST /api/fees/additional  — supports student_ids[] (multi-student) or single student_id
+// POST /api/fees/additional
 router.post('/additional', async (req, res) => {
   try {
     const { student_id, student_ids, description, amount, fee_date, month, year } = req.body;
@@ -220,12 +219,16 @@ router.post('/additional', async (req, res) => {
     const created = [];
     for (const sid of ids) {
       try {
+        // Verify student belongs to caller's org.
+        const s = await getById(req, 'Students', String(sid));
+        if (!s || Number(s.org_id) !== Number(req.orgId)) continue;
         const row = await insert(req, 'AdditionalFees', {
           student_id: String(sid),
           description, amount: Number(amount),
           fee_date,
           fee_month: parseInt(month),
           fee_year: parseInt(year),
+          org_id: Number(req.orgId),
         });
         created.push(normalize(row));
       } catch (err) {
@@ -243,8 +246,9 @@ router.post('/additional', async (req, res) => {
 router.put('/additional/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'AdditionalFees', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Additional fee not found' });
-    // API uses 'month'/'year' but DB stores as 'fee_month'/'fee_year' (reserved word workaround).
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Additional fee not found' });
+    }
     const patch = {};
     if (req.body.description !== undefined) patch.description = req.body.description;
     if (req.body.amount !== undefined)      patch.amount = Number(req.body.amount);
@@ -263,7 +267,9 @@ router.put('/additional/:id', async (req, res) => {
 router.delete('/additional/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'AdditionalFees', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Additional fee not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Additional fee not found' });
+    }
     await remove(req, 'AdditionalFees', req.params.id);
     res.json({ message: 'Additional fee deleted' });
   } catch (e) {

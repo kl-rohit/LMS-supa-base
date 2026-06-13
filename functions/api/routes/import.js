@@ -1,9 +1,9 @@
-// /api/import — bulk insert from CSV/JSON uploads.
+// /api/import — bulk insert from CSV/JSON uploads. Org-scoped.
 
 const router = require('express').Router();
-const { insert, normalize } = require('../db/catalystDb');
+const { insert, getById, normalize } = require('../db/catalystDb');
 
-// POST /api/import/students   body: { students: [{ name, parent_name, ... }] }
+// POST /api/import/students
 router.post('/students', async (req, res) => {
   try {
     const { students } = req.body;
@@ -27,6 +27,7 @@ router.post('/students', async (req, res) => {
           fee_offline_group: Number(s.fee_offline_group) || 0,
           status:            s.status || 'active',
           notes:             s.notes || '',
+          org_id:            Number(req.orgId),
         });
         inserted.push(normalize(row));
       } catch (err) {
@@ -39,8 +40,7 @@ router.post('/students', async (req, res) => {
   }
 });
 
-// POST /api/import/attendance   body: { rows: [{ student_id, class_id, date, status, ... }] }
-// (Useful later — not used yet by frontend.)
+// POST /api/import/attendance
 router.post('/attendance', async (req, res) => {
   try {
     const { rows } = req.body;
@@ -51,6 +51,12 @@ router.post('/attendance', async (req, res) => {
     const errors = [];
     for (const r of rows) {
       try {
+        // Verify student is in caller's org.
+        const s = await getById(req, 'Students', r.student_id);
+        if (!s || Number(s.org_id) !== Number(req.orgId)) {
+          errors.push({ row: r, error: 'Student not in this org' });
+          continue;
+        }
         const row = await insert(req, 'Attendance', {
           student_id:     String(r.student_id),
           class_id:       r.class_id ? String(r.class_id) : null,
@@ -62,6 +68,7 @@ router.post('/attendance', async (req, res) => {
           topic:          r.topic || '',
           notes:          r.notes || '',
           recording_url:  r.recording_url || '',
+          org_id:         Number(req.orgId),
         });
         inserted.push(normalize(row));
       } catch (err) {

@@ -1,7 +1,8 @@
 // /api/classes — CRUD against "Classes" + multi-student via "ClassStudents".
+// Org-scoped via middleware/org.resolveOrg (req.orgId).
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
 
 const VALID_TYPES = ['online', 'offline', 'offline_group', 'online_group'];
 const isGroupType = (t) => t === 'offline_group' || t === 'online_group';
@@ -14,29 +15,27 @@ function calcDuration(start, end) {
   return diff > 0 ? diff / 60 : 1;
 }
 
-// Fetch student names linked to a class via ClassStudents
 async function fetchClassStudents(req, classId) {
   try {
-    const links = await zcql(req, `SELECT ClassStudents.student_id FROM ClassStudents WHERE ClassStudents.class_id = ${classId}`);
+    const links = await zcql(req, `SELECT ClassStudents.student_id FROM ClassStudents WHERE ClassStudents.class_id = ${classId} AND ClassStudents.org_id = ${Number(req.orgId)}`);
     return unwrap(links, 'ClassStudents').map((l) => l.student_id).filter(Boolean);
   } catch {
     return [];
   }
 }
 
-// Attach denormalized fields (student_name / group_name / student_ids[]) to a class
 async function decorate(req, cls) {
   const out = { ...normalize(cls) };
   if (cls.student_id) {
     try {
       const s = await getById(req, 'Students', cls.student_id);
-      if (s) out.student_name = s.name;
+      if (s && Number(s.org_id) === Number(req.orgId)) out.student_name = s.name;
     } catch {}
   }
   if (cls.group_id) {
     try {
       const g = await getById(req, 'Groups', cls.group_id);
-      if (g) out.group_name = g.name;
+      if (g && Number(g.org_id) === Number(req.orgId)) out.group_name = g.name;
     } catch {}
   }
   out.student_ids = await fetchClassStudents(req, cls.ROWID);
@@ -47,7 +46,7 @@ async function decorate(req, cls) {
 router.get('/today', async (req, res) => {
   try {
     const today = new Date().getDay();
-    const rows = await zcql(req, `SELECT * FROM Classes WHERE Classes.day_of_week = ${today} AND Classes.is_active = 1 ORDER BY Classes.start_time ASC`);
+    const rows = await zcql(req, `SELECT * FROM Classes WHERE Classes.day_of_week = ${today} AND Classes.is_active = 1 AND Classes.org_id = ${Number(req.orgId)} ORDER BY Classes.start_time ASC`);
     const decorated = await Promise.all(unwrap(rows, 'Classes').map((c) => decorate(req, c)));
     res.json({ classes: decorated, day_of_week: today });
   } catch (e) {
@@ -59,7 +58,7 @@ router.get('/today', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { day_of_week, group_id, student_id, is_active, class_type } = req.query;
-    const where = [];
+    const where = [`Classes.org_id = ${Number(req.orgId)}`];
     if (day_of_week !== undefined) where.push(`Classes.day_of_week = ${parseInt(day_of_week)}`);
     const gid = safeId(group_id);
     const sid = safeId(student_id);
@@ -67,17 +66,9 @@ router.get('/', async (req, res) => {
     if (sid) where.push(`Classes.student_id = ${sid}`);
     if (is_active !== undefined) where.push(`Classes.is_active = ${parseInt(is_active)}`);
     if (class_type) where.push(`Classes.class_type = '${class_type}'`);
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const rows = whereSql
-      ? await zcql(req, `SELECT * FROM Classes ${whereSql} ORDER BY Classes.day_of_week, Classes.start_time ASC`)
-      : null;
-    let list;
-    if (rows) {
-      list = unwrap(rows, 'Classes');
-    } else {
-      list = await getAll(req, 'Classes');
-      list.sort((a, b) => (a.day_of_week - b.day_of_week) || String(a.start_time || '').localeCompare(b.start_time || ''));
-    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const rows = await zcql(req, `SELECT * FROM Classes ${whereSql} ORDER BY Classes.day_of_week, Classes.start_time ASC`);
+    const list = unwrap(rows, 'Classes');
     const decorated = await Promise.all(list.map((c) => decorate(req, c)));
     res.json({ classes: decorated });
   } catch (e) {
@@ -89,7 +80,9 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const cls = await getById(req, 'Classes', req.params.id);
-    if (!cls) return res.status(404).json({ error: 'Class not found' });
+    if (!cls || Number(cls.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
     const decorated = await decorate(req, cls);
     res.json({ class: decorated });
   } catch (e) {
@@ -97,7 +90,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/classes — supports student_ids[] (multi-student individual) or single student_id, or group_id
+// POST /api/classes
 router.post('/', async (req, res) => {
   try {
     const { name, group_id, student_id, student_ids, class_type, day_of_week, start_time, end_time, is_active } = req.body;
@@ -124,12 +117,12 @@ router.post('/', async (req, res) => {
       start_time, end_time,
       duration_hours,
       is_active: is_active !== undefined ? parseInt(is_active) : 1,
+      org_id: Number(req.orgId),
     };
     const cls = await insert(req, 'Classes', baseRow);
-    // For multi-student individual: create ClassStudents links
     if (!isGroupType(class_type) && individualIds.length > 1) {
       for (const sid of individualIds) {
-        try { await insert(req, 'ClassStudents', { class_id: cls.ROWID, student_id: String(sid) }); } catch {}
+        try { await insert(req, 'ClassStudents', { class_id: cls.ROWID, student_id: String(sid), org_id: Number(req.orgId) }); } catch {}
       }
     }
     const decorated = await decorate(req, cls);
@@ -143,7 +136,9 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Classes', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Class not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
     const { name, group_id, student_id, student_ids, class_type, day_of_week, start_time, end_time, is_active } = req.body;
     const newType = class_type ?? existing.class_type;
     if (!VALID_TYPES.includes(newType)) return res.status(400).json({ error: 'invalid class_type' });
@@ -161,16 +156,15 @@ router.put('/:id', async (req, res) => {
       student_id: !isGroupType(newType) && student_id !== undefined ? (student_id ? String(student_id) : null) : (isGroupType(newType) ? null : existing.student_id),
     };
     const updated = await update(req, 'Classes', req.params.id, patch);
-    // If student_ids[] provided: replace ClassStudents
     if (Array.isArray(student_ids)) {
       try {
-        const links = await zcql(req, `SELECT ROWID FROM ClassStudents WHERE ClassStudents.class_id = ${req.params.id}`);
+        const links = await zcql(req, `SELECT ROWID FROM ClassStudents WHERE ClassStudents.class_id = ${req.params.id} AND ClassStudents.org_id = ${Number(req.orgId)}`);
         for (const l of unwrap(links, 'ClassStudents')) {
           try { await remove(req, 'ClassStudents', l.ROWID); } catch {}
         }
       } catch {}
       for (const sid of student_ids) {
-        try { await insert(req, 'ClassStudents', { class_id: req.params.id, student_id: String(sid) }); } catch {}
+        try { await insert(req, 'ClassStudents', { class_id: req.params.id, student_id: String(sid), org_id: Number(req.orgId) }); } catch {}
       }
     }
     const decorated = await decorate(req, updated);
@@ -180,11 +174,15 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/classes/:id  (also removes ClassStudents links)
+// DELETE /api/classes/:id
 router.delete('/:id', async (req, res) => {
   try {
+    const existing = await getById(req, 'Classes', req.params.id);
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
     try {
-      const links = await zcql(req, `SELECT ROWID FROM ClassStudents WHERE ClassStudents.class_id = ${req.params.id}`);
+      const links = await zcql(req, `SELECT ROWID FROM ClassStudents WHERE ClassStudents.class_id = ${req.params.id} AND ClassStudents.org_id = ${Number(req.orgId)}`);
       for (const l of unwrap(links, 'ClassStudents')) {
         try { await remove(req, 'ClassStudents', l.ROWID); } catch {}
       }

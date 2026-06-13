@@ -107,18 +107,17 @@ router.get('/continue-watching', async (req, res) => {
     // Find this student's most recently updated progress row that's NOT completed.
     // We sort by MODIFIEDTIME (auto-managed by Catalyst on every update).
     const progressRows = await zcql(req,
-      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} ORDER BY LessonProgress.MODIFIEDTIME DESC`
+      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.org_id = ${Number(req.orgId)} ORDER BY LessonProgress.MODIFIEDTIME DESC`
     );
     const all = unwrap(progressRows, 'LessonProgress');
-    // Prefer the most recent IN-PROGRESS row; fall back to most recent completed.
     const inProgress = all.find((p) => !p.completed) || all[0];
     if (!inProgress) return res.json({ course: null });
 
     let lesson = null, course = null;
     try { lesson = await getById(req, 'Lessons', inProgress.lesson_id); } catch {}
-    if (!lesson) return res.json({ course: null });
+    if (!lesson || Number(lesson.org_id) !== Number(req.orgId)) return res.json({ course: null });
     try { course = await getById(req, 'Courses', lesson.course_id); } catch {}
-    if (!course) return res.json({ course: null });
+    if (!course || Number(course.org_id) !== Number(req.orgId)) return res.json({ course: null });
 
     res.json({
       course: normalize(course),
@@ -137,7 +136,7 @@ router.get('/courses', async (req, res) => {
   try {
     const sid = safeId(req.studentId);
     if (!sid) return res.status(400).json({ error: 'Invalid student id' });
-    const enrollRows = await zcql(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid}`);
+    const enrollRows = await zcql(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.org_id = ${Number(req.orgId)}`);
     const enrollments = unwrap(enrollRows, 'CourseEnrollments').map(normalize)
       .filter((e) => (e.status || 'active') === 'active');
 
@@ -147,21 +146,20 @@ router.get('/courses', async (req, res) => {
     const results = await Promise.all(enrollments.map(async (en) => {
       let course = null;
       try { course = await getById(req, 'Courses', en.course_id); } catch {}
-      if (!course || (course.status && course.status !== 'active')) return null;
+      if (!course || (course.status && course.status !== 'active') || Number(course.org_id) !== Number(req.orgId)) return null;
 
       let lessons = [];
       try {
-        const rows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${safeId(en.course_id)}`);
+        const rows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${safeId(en.course_id)} AND Lessons.org_id = ${Number(req.orgId)}`);
         lessons = unwrap(rows, 'Lessons');
       } catch {}
 
-      // Completed count for this student
       let completed = 0;
       try {
         const lessonIds = lessons.map((l) => l.ROWID);
         if (lessonIds.length > 0) {
           const progressRows = await zcql(req,
-            `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.completed = true`
+            `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.completed = true AND LessonProgress.org_id = ${Number(req.orgId)}`
           );
           const completedIds = new Set(unwrap(progressRows, 'LessonProgress').map((p) => String(p.lesson_id)));
           completed = lessons.filter((l) => completedIds.has(String(l.ROWID))).length;
@@ -200,23 +198,22 @@ router.get('/courses/:id/lessons', async (req, res) => {
     const cid = safeId(req.params.id);
     if (!sid || !cid) return res.status(400).json({ error: 'Invalid ids' });
 
-    // Verify enrollment
+    // Verify enrollment (org-scoped).
     const enrollRows = await zcql(req,
-      `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.course_id = ${cid}`
+      `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.course_id = ${cid} AND CourseEnrollments.org_id = ${Number(req.orgId)}`
     );
     if (unwrap(enrollRows, 'CourseEnrollments').length === 0) {
       return res.status(403).json({ error: 'Not enrolled in this course' });
     }
 
     const course = await getById(req, 'Courses', cid);
-    if (!course) return res.status(404).json({ error: 'Course not found' });
+    if (!course || Number(course.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Course not found' });
 
-    const lessonRows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${cid} ORDER BY Lessons.order_index ASC`);
+    const lessonRows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${cid} AND Lessons.org_id = ${Number(req.orgId)} ORDER BY Lessons.order_index ASC`);
     const lessons = unwrap(lessonRows, 'Lessons').map(normalize);
 
-    // Per-lesson progress
     const progressRows = await zcql(req,
-      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid}`
+      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.org_id = ${Number(req.orgId)}`
     );
     const progressByLesson = {};
     unwrap(progressRows, 'LessonProgress').forEach((p) => {
@@ -243,11 +240,11 @@ router.post('/lessons/:id/progress', async (req, res) => {
     if (!sid || !lid) return res.status(400).json({ error: 'Invalid ids' });
 
     const lesson = await getById(req, 'Lessons', lid);
-    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    if (!lesson || Number(lesson.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Lesson not found' });
 
-    // Verify enrollment for this lesson's course
+    // Verify enrollment for this lesson's course, org-scoped.
     const enrollRows = await zcql(req,
-      `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.course_id = ${safeId(lesson.course_id)}`
+      `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.course_id = ${safeId(lesson.course_id)} AND CourseEnrollments.org_id = ${Number(req.orgId)}`
     );
     if (unwrap(enrollRows, 'CourseEnrollments').length === 0) {
       return res.status(403).json({ error: 'Not enrolled in this course' });
@@ -262,7 +259,7 @@ router.post('/lessons/:id/progress', async (req, res) => {
 
     // Upsert: find existing progress row
     const existingRows = await zcql(req,
-      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.lesson_id = ${lid}`
+      `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.lesson_id = ${lid} AND LessonProgress.org_id = ${Number(req.orgId)}`
     );
     const existing = unwrap(existingRows, 'LessonProgress')[0];
 
@@ -281,6 +278,7 @@ router.post('/lessons/:id/progress', async (req, res) => {
         duration_seconds: 100,
         percent_complete: percent,
         completed,
+        org_id: Number(req.orgId),
       };
     } else {
       // Video lesson: same as before — chapter-aware segment percent.
@@ -301,6 +299,7 @@ router.post('/lessons/:id/progress', async (req, res) => {
         duration_seconds: duration,
         percent_complete: percent,
         completed,
+        org_id: Number(req.orgId),
       };
     }
 

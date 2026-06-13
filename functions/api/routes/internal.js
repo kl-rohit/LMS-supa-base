@@ -12,6 +12,7 @@
 
 const router = require('express').Router();
 const { generateFeeReminders } = require('../lib/feeReminder');
+const { zcql, unwrap, normalize } = require('../db/catalystDb');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
 // matches the CRON_SECRET env var. If CRON_SECRET is unset (e.g. local
@@ -44,14 +45,12 @@ function isLastDayOfMonth(date) {
 
 // POST /api/internal/cron-fee-reminder
 // Called daily on days 28-31 by the Catalyst Job Scheduling cron.
-// No-ops unless today is the actual last day of the month, then runs the
-// shared fee-reminder generator for the current month/year.
+// On the actual last day of the month (IST), iterates over every active
+// Organization and runs the fee-reminder generator for each. Each org's
+// own AppSettings (school name + signature) flow through automatically.
 router.post('/cron-fee-reminder', async (req, res) => {
   try {
     const now = new Date();
-    // Cron is scheduled in IST (Asia/Kolkata) — the function runs in UTC
-    // so we explicitly convert to compare last-day-of-month against IST.
-    // IST = UTC + 5:30, so add 5.5 hours' worth of ms to UTC.
     const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
     if (!isLastDayOfMonth(ist)) {
       return res.json({
@@ -62,8 +61,27 @@ router.post('/cron-fee-reminder', async (req, res) => {
     }
     const month = ist.getMonth() + 1;
     const year = ist.getFullYear();
-    const result = await generateFeeReminders(req, { month, year });
-    res.json({ skipped: false, ...result });
+
+    // Loop every active org.
+    let orgs = [];
+    try {
+      const orgRows = await zcql(req, `SELECT * FROM Organizations WHERE Organizations.status = 'active'`);
+      orgs = unwrap(orgRows, 'Organizations').map(normalize);
+    } catch (e) {
+      return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
+    }
+
+    const summary = [];
+    for (const org of orgs) {
+      try {
+        // generateFeeReminders sets req.orgId internally from the orgId arg.
+        const r = await generateFeeReminders(req, { month, year, orgId: Number(org.id) });
+        summary.push({ org_id: org.id, org_name: org.name, ok: true, created: r.created });
+      } catch (e) {
+        summary.push({ org_id: org.id, org_name: org.name, ok: false, error: e.message });
+      }
+    }
+    res.json({ skipped: false, month, year, orgs_processed: summary.length, summary });
   } catch (e) {
     res.status(500).json({ error: 'Cron fee-reminder failed', detail: e.message });
   }

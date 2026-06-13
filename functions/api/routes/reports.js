@@ -1,24 +1,25 @@
-// /api/reports — read-only aggregations matching the Reports page shape.
+// /api/reports — read-only aggregations. Org-scoped via resolveOrg.
 
 const router = require('express').Router();
-const { getById, getAll, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
+const { getById, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// GET /api/reports/student/:id?from&to
+// GET /api/reports/student/:id
 router.get('/student/:id', async (req, res) => {
   try {
     const { from, to } = req.query;
     const student = await getById(req, 'Students', req.params.id);
-    if (!student) return res.status(404).json({ error: 'Student not found' });
+    if (!student || Number(student.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
 
-    const where = [`Attendance.student_id = ${req.params.id}`];
+    const where = [`Attendance.student_id = ${req.params.id}`, `Attendance.org_id = ${Number(req.orgId)}`];
     if (from) where.push(`Attendance.class_date >= ${q(from)}`);
     if (to) where.push(`Attendance.class_date <= ${q(to)}`);
-    // Per-student report can span years — paginate.
     const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const attendance = unwrap(aRows, 'Attendance').map(normalize);
 
@@ -30,12 +31,10 @@ router.get('/student/:id', async (req, res) => {
     const attendance_rate = attendedSlots ? Math.round((present / attendedSlots) * 100) : 0;
     const class_fees_total = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
 
-    // Additional fees (no date filter on these — they're tied to month/year)
-    const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${req.params.id}`);
+    const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${req.params.id} AND AdditionalFees.org_id = ${Number(req.orgId)}`);
     const additional = unwrap(afRows, 'AdditionalFees').map(normalize);
     const additional_fees_total = additional.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
-    // Monthly breakdown — group by month/year
     const byMonth = new Map();
     for (const a of attendance) {
       const d = a.date || a.class_date;
@@ -85,20 +84,20 @@ router.get('/monthly/:year/:month', async (req, res) => {
     const monthStr = String(month).padStart(2, '0');
     const dateFrom = `${year}-${monthStr}-01`;
     const dateTo = `${year}-${monthStr}-31`;
-    const students = await getAll(req, 'Students');
+    const sRows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
+    const students = unwrap(sRows, 'Students');
     const rows = [];
     let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalFees = 0, uniqueClassIds = new Set();
     for (const s of students) {
       try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)}`);
+        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`);
         const attendance = unwrap(aRows, 'Attendance');
         const present = attendance.filter((a) => a.status === 'present').length;
         const absent = attendance.filter((a) => a.status === 'absent').length;
         const late = attendance.filter((a) => a.status === 'late').length;
         const tot = present + absent + late;
         const fees = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
-        // Additional fees this month
-        const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year}`);
+        const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`);
         const additional = unwrap(afRows, 'AdditionalFees').reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
         totalPresent += present; totalAbsent += absent; totalLate += late; totalFees += fees + additional;
         attendance.forEach((a) => a.class_id && uniqueClassIds.add(a.class_id));
@@ -129,15 +128,19 @@ router.get('/monthly/:year/:month', async (req, res) => {
   }
 });
 
-// GET /api/reports/overall
+// GET /api/reports/overall — org-scoped
 router.get('/overall', async (req, res) => {
   try {
-    const [students, attendance, additional, classes] = await Promise.all([
-      getAll(req, 'Students').catch(() => []),
-      getAll(req, 'Attendance').catch(() => []),
-      getAll(req, 'AdditionalFees').catch(() => []),
-      getAll(req, 'Classes').catch(() => []),
+    const [sRows, aRows, afRows, cRows] = await Promise.all([
+      zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`).catch(() => []),
+      zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
+      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
+      zcql(req, `SELECT * FROM Classes WHERE Classes.org_id = ${Number(req.orgId)}`).catch(() => []),
     ]);
+    const students = unwrap(sRows, 'Students');
+    const attendance = unwrap(aRows, 'Attendance');
+    const additional = unwrap(afRows, 'AdditionalFees');
+    const classes = unwrap(cRows, 'Classes');
     const active = students.filter((s) => s.status !== 'inactive').length;
     const present = attendance.filter((a) => a.status === 'present').length;
     const absent = attendance.filter((a) => a.status === 'absent').length;

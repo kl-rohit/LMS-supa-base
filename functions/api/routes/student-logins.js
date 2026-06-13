@@ -14,7 +14,7 @@
 
 const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
-const { getById, getAll, update, normalize } = require('../db/catalystDb');
+const { getById, update, zcql, unwrap } = require('../db/catalystDb');
 
 // Shape we return to the React app for each login row.
 function toLogin(student) {
@@ -30,12 +30,12 @@ function toLogin(student) {
   };
 }
 
-// GET /api/student-logins — every student that has a login configured
+// GET /api/student-logins — every student in caller's org that has a login configured
 router.get('/', async (req, res) => {
   try {
-    const rows = await getAll(req, 'Students');
-    const logins = rows
-      .filter((s) => s.login_user_id) // only those with a Catalyst user attached
+    const rows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
+    const logins = unwrap(rows, 'Students')
+      .filter((s) => s.login_user_id)
       .map(toLogin);
     logins.sort((a, b) => String(a.student_name || '').localeCompare(String(b.student_name || '')));
     res.json({ logins });
@@ -54,7 +54,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'student_id and email are required' });
     }
     const student = await getById(req, 'Students', student_id);
-    if (!student) return res.status(404).json({ error: 'Student not found' });
+    if (!student || Number(student.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Student not found' });
     if (student.login_user_id) {
       return res.status(409).json({ error: 'A login already exists for this student' });
     }
@@ -106,7 +106,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Student not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Student not found' });
     if (!existing.login_user_id) return res.status(404).json({ error: 'No login for this student' });
     const patch = {};
     if (req.body.status !== undefined) patch.login_status = req.body.status;
@@ -122,7 +122,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Student not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Student not found' });
     if (!existing.login_user_id) return res.status(404).json({ error: 'No login for this student' });
 
     // Best-effort disable on Catalyst (don't fail the row update if this errors)

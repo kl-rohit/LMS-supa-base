@@ -1,15 +1,16 @@
 // /api/groups — CRUD against "Groups" + member management via "GroupStudents".
+// All queries are scoped to req.orgId set by middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, unwrap, normalize } = require('../db/catalystDb');
 
-// Helper: fetch member students for a group
+// Helper: fetch member students for a group (org-scoped on both ends).
 async function fetchMembers(req, groupId) {
   try {
-    const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${groupId}`);
+    const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${groupId} AND GroupStudents.org_id = ${Number(req.orgId)}`);
     const studentIds = unwrap(links, 'GroupStudents').map((l) => l.student_id).filter(Boolean);
     if (!studentIds.length) return [];
-    const rows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${studentIds.join(',')}) ORDER BY Students.name ASC`);
+    const rows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${studentIds.join(',')}) AND Students.org_id = ${Number(req.orgId)} ORDER BY Students.name ASC`);
     return unwrap(rows, 'Students').map(normalize);
   } catch {
     return [];
@@ -19,10 +20,10 @@ async function fetchMembers(req, groupId) {
 // GET /api/groups
 router.get('/', async (req, res) => {
   try {
-    const rows = await getAll(req, 'Groups');
-    rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    const rows = await zcql(req, `SELECT * FROM Groups WHERE Groups.org_id = ${Number(req.orgId)} ORDER BY Groups.name ASC`);
+    const groups = unwrap(rows, 'Groups');
     // Attach member_count for each
-    const withCounts = await Promise.all(rows.map(async (g) => {
+    const withCounts = await Promise.all(groups.map(async (g) => {
       const members = await fetchMembers(req, g.ROWID);
       return { ...normalize(g), member_count: members.length, members };
     }));
@@ -36,7 +37,9 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const group = await getById(req, 'Groups', req.params.id);
-    if (!group) return res.status(404).json({ error: 'Group not found' });
+    if (!group || Number(group.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
     const students = await fetchMembers(req, req.params.id);
     res.json({ group: normalize(group), students });
   } catch (e) {
@@ -47,6 +50,10 @@ router.get('/:id', async (req, res) => {
 // GET /api/groups/:id/students
 router.get('/:id/students', async (req, res) => {
   try {
+    const group = await getById(req, 'Groups', req.params.id);
+    if (!group || Number(group.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
     const students = await fetchMembers(req, req.params.id);
     res.json({ students });
   } catch (e) {
@@ -59,7 +66,11 @@ router.post('/', async (req, res) => {
   try {
     const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
-    const group = await insert(req, 'Groups', { name, description: description || '' });
+    const group = await insert(req, 'Groups', {
+      name,
+      description: description || '',
+      org_id: Number(req.orgId),
+    });
     res.status(201).json({ group: normalize(group) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create group', detail: e.message });
@@ -77,11 +88,20 @@ router.post('/:id/students', async (req, res) => {
       return res.status(400).json({ error: 'student_ids[] or student_id is required' });
     }
     const group = await getById(req, 'Groups', req.params.id);
-    if (!group) return res.status(404).json({ error: 'Group not found' });
+    if (!group || Number(group.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
     let added = 0;
     for (const sid of ids) {
       try {
-        await insert(req, 'GroupStudents', { group_id: req.params.id, student_id: String(sid) });
+        // Verify the student also belongs to this org before linking.
+        const s = await getById(req, 'Students', String(sid));
+        if (!s || Number(s.org_id) !== Number(req.orgId)) continue;
+        await insert(req, 'GroupStudents', {
+          group_id: req.params.id,
+          student_id: String(sid),
+          org_id: Number(req.orgId),
+        });
         added++;
       } catch (err) { console.error('group member add failed', err.message); }
     }
@@ -92,11 +112,12 @@ router.post('/:id/students', async (req, res) => {
 });
 
 // PUT /api/groups/:id  — accepts { name, description, status }
-// status flips between 'active' and 'inactive' (soft activation/deactivation).
 router.put('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Groups', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Group not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
     const { name, description, status } = req.body;
     const patch = {};
     if (name !== undefined) patch.name = name;
@@ -109,21 +130,20 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/groups/:id  — soft-delete by default (status='inactive').
-// Use ?force=true to permanently delete the row + its M2M links.
+// DELETE /api/groups/:id  — soft delete (status='inactive') or ?force=true hard delete
 router.delete('/:id', async (req, res) => {
   try {
     const existing = await getById(req, 'Groups', req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Group not found' });
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
     const force = req.query.force === 'true' || req.query.force === '1';
     if (!force) {
-      // Soft delete — keep the row + members intact, just mark inactive.
       await update(req, 'Groups', req.params.id, { status: 'inactive' });
       return res.json({ message: 'Group deactivated' });
     }
-    // Hard delete — remove M2M links first, then the group itself.
     try {
-      const links = await zcql(req, `SELECT ROWID FROM GroupStudents WHERE GroupStudents.group_id = ${req.params.id}`);
+      const links = await zcql(req, `SELECT ROWID FROM GroupStudents WHERE GroupStudents.group_id = ${req.params.id} AND GroupStudents.org_id = ${Number(req.orgId)}`);
       for (const l of unwrap(links, 'GroupStudents')) {
         try { await remove(req, 'GroupStudents', l.ROWID); } catch {}
       }
@@ -138,7 +158,11 @@ router.delete('/:id', async (req, res) => {
 // DELETE /api/groups/:id/students/:studentId  — remove a single member
 router.delete('/:id/students/:studentId', async (req, res) => {
   try {
-    const links = await zcql(req, `SELECT ROWID FROM GroupStudents WHERE GroupStudents.group_id = ${req.params.id} AND GroupStudents.student_id = ${req.params.studentId}`);
+    const group = await getById(req, 'Groups', req.params.id);
+    if (!group || Number(group.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+    const links = await zcql(req, `SELECT ROWID FROM GroupStudents WHERE GroupStudents.group_id = ${req.params.id} AND GroupStudents.student_id = ${req.params.studentId} AND GroupStudents.org_id = ${Number(req.orgId)}`);
     const rowsToDel = unwrap(links, 'GroupStudents');
     for (const l of rowsToDel) {
       try { await remove(req, 'GroupStudents', l.ROWID); } catch {}

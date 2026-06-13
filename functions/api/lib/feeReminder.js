@@ -56,41 +56,51 @@ function applyFeeReminderConditionalBlock(text, additionalFees) {
 }
 
 /**
- * Generate fee-reminder drafts for the given month/year.
+ * Generate fee-reminder drafts for the given month/year, scoped to an org.
  * @param {Object} req  — Express request (used for Catalyst SDK init)
- * @param {Object} opts — { month: 1-12, year: 4-digit }
- * @returns {Object} { created, reminders[], month, year, month_name }
+ * @param {Object} opts — { month, year, orgId } — orgId required (resolved
+ *                        from req.orgId by the HTTP wrapper, or passed
+ *                        explicitly by the cron driver looping over orgs).
  */
-async function generateFeeReminders(req, { month, year }) {
+async function generateFeeReminders(req, { month, year, orgId }) {
   const monthStr = String(month).padStart(2, '0');
   const dateFrom = `${year}-${monthStr}-01`;
   const dateTo   = `${year}-${monthStr}-31`;
   const monthName = MONTH_NAMES[month - 1];
+
+  const effectiveOrgId = Number(orgId || req.orgId);
+  if (!Number.isFinite(effectiveOrgId) || effectiveOrgId === 0) {
+    throw new Error('generateFeeReminders requires orgId');
+  }
+
+  // Stash org on req so the loadAppSettings inside loadSchoolCtx (which
+  // reads per-org AppSettings) picks up the right rows. The cron driver
+  // doesn't go through resolveOrg, so this is the only place orgId gets
+  // injected onto req for the cron path.
+  req.orgId = effectiveOrgId;
 
   const [templates, schoolCtx] = await Promise.all([
     loadTemplates(req).catch(() => DEFAULT_TEMPLATES),
     loadSchoolCtx(req),
   ]);
 
-  const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active'`);
+  const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${effectiveOrgId}`);
   const students = unwrap(studentRows, 'Students');
   const reminders = [];
 
   for (const s of students) {
     try {
-      // Sum class fees for the month
       const aRows = await zcql(
         req,
-        `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)}`
+        `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${effectiveOrgId}`
       );
       const attendance = unwrap(aRows, 'Attendance');
       const classFees = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
       const classesAttended = attendance.filter((a) => a.status === 'present' || a.status === 'late').length;
 
-      // Sum additional fees + discount for the month
       const afRows = await zcql(
         req,
-        `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year}`
+        `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${effectiveOrgId}`
       );
       const additional = unwrap(afRows, 'AdditionalFees');
       const positiveAdditional = additional.reduce(
@@ -122,6 +132,7 @@ async function generateFeeReminders(req, { month, year }) {
           message: text,
           message_type: 'fee_reminder',
           is_sent: 0,
+          org_id: effectiveOrgId,
         });
         reminders.push({
           student_id: s.ROWID,

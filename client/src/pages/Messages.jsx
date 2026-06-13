@@ -51,6 +51,9 @@ export default function Messages() {
   // Customizable templates (admin-editable in Settings → Templates).
   // We only READ them here for the compose dropdown + quick-template chips.
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+  // School identity from /api/settings/app — used to substitute {school}
+  // + {signature} in compose so the textarea doesn't show literal tokens.
+  const [schoolCtx, setSchoolCtx] = useState({ school: '', signature: '' });
 
   // Bulk WhatsApp send progress state
   const [bulkSending, setBulkSending] = useState(false);
@@ -80,6 +83,14 @@ export default function Messages() {
     return substituteTemplate(text, {
       name:   studentName || '[Student Name]',
       parent: parentName  || '[Parent Name]',
+      // Pulled from /api/settings/app on mount. Falls back to a friendly
+      // placeholder when Settings hasn't been filled in yet, instead of
+      // leaving a literal {school} / {signature} in the user-visible text.
+      school:    schoolCtx.school    || 'Veena Dhwani Academy',
+      signature: schoolCtx.signature || schoolCtx.school || 'Veena Dhwani Academy',
+      // {count}, {amount}, {month}, {year} stay literal in compose so the
+      // teacher knows they still need to fill them in. Auto-generate paths
+      // pass real values.
     });
   };
 
@@ -131,17 +142,24 @@ export default function Messages() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [messagesData, studentsData, templatesData] = await Promise.all([
+      const [messagesData, studentsData, templatesData, settingsData] = await Promise.all([
         api.get('/messages'),
         api.get('/students'),
         // Templates fetch must not break the page — fall back to defaults
         // if the Settings table doesn't exist yet or the call fails.
         api.get('/settings/templates').catch(() => ({ templates: DEFAULT_TEMPLATES })),
+        // School identity for compose-time substitution of {school}/{signature}.
+        api.get('/settings/app').catch(() => ({ settings: {} })),
       ]);
       setMessages(messagesData.messages || []);
       setStudents((studentsData.students || []).filter((s) => s.status === 'active'));
       const t = { ...DEFAULT_TEMPLATES, ...(templatesData?.templates || {}) };
       setTemplates(t);
+      const s = settingsData?.settings || {};
+      setSchoolCtx({
+        school:    s['school.name']      || '',
+        signature: s['school.signature'] || s['school.name'] || '',
+      });
     } catch (err) {
       toast.error('Failed to load data: ' + err.message);
     } finally {

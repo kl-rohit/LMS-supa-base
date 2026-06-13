@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   MessageSquare,
   AlertTriangle,
@@ -13,7 +13,6 @@ import {
   Phone,
   User,
   Trash2,
-  Settings as SettingsIcon,
   Rocket,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -22,7 +21,10 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
-import Modal from '../components/Modal';
+// Templates editor lives at /settings → Templates tab. We just READ
+// templates here for the compose dropdown + quick-template chips, and use
+// the same DEFAULT_TEMPLATES from the shared component as the fallback.
+import { DEFAULT_TEMPLATES } from '../components/TemplatesEditor';
 
 // Substitute {placeholder} tokens with ctx[key]. Unknown placeholders stay
 // literal so the teacher can fill them manually (e.g. ____ amounts in
@@ -37,41 +39,6 @@ function substituteTemplate(text, ctx) {
   });
 }
 
-// Defaults that mirror the server's DEFAULT_TEMPLATES in
-// functions/api/routes/settings.js. Used as the bootstrap value before
-// /api/settings/templates returns, and as a fallback if a key is missing
-// from the server response.
-const DEFAULT_TEMPLATES = {
-  absence_alert:
-    `Dear {parent},\n\nThis is to inform you that {name} has been absent for the last {count} consecutive classes. Kindly ensure regular attendance for better progress.\n\nPlease reach out if there are any concerns.\n\nRegards,\nVeena Dhwani Academy`,
-  fee_reminder:
-    `Dear {parent},\n\nThis is a gentle reminder regarding the {month} {year} fee payment for {name}.\n\nFees for {name} — {month} {year}: ₹{amount}\n  • Class fees: ₹{class_fees}\n  • Additional: ₹{additional_fees}\n\nKindly do the needful. Thank you.\n\nVeena Dhwani Academy`,
-  class_update:
-    `Dear {parent},\n\nThis is to inform you about an update regarding {name}'s music class schedule. Please check with us for the revised timings.\n\nRegards,\nVeena Dhwani Academy`,
-  thank_you:
-    `Dear {parent},\n\nThank you for your continued support and for ensuring {name}'s regular attendance at Veena Dhwani Academy. We truly appreciate it.\n\nRegards,\nVeena Dhwani Academy`,
-  holiday_notice:
-    `Dear {parent},\n\nThis is to inform you that Veena Dhwani Academy will remain closed on account of the upcoming holiday. {name}'s classes will resume as per the regular schedule after the break.\n\nRegards,\nVeena Dhwani Academy`,
-};
-
-// Which placeholders each template supports — drives the clickable chip
-// buttons rendered under each textarea in the Edit Templates modal.
-const TEMPLATE_PLACEHOLDERS = {
-  absence_alert:  ['{parent}', '{name}', '{count}'],
-  fee_reminder:   ['{parent}', '{name}', '{month}', '{year}', '{amount}', '{class_fees}', '{additional_fees}'],
-  class_update:   ['{parent}', '{name}'],
-  thank_you:      ['{parent}', '{name}'],
-  holiday_notice: ['{parent}', '{name}'],
-};
-
-const TEMPLATE_LABELS = {
-  absence_alert:  'Absence Alert',
-  fee_reminder:   'Fee Reminder',
-  class_update:   'Class Update',
-  thank_you:      'Thank You',
-  holiday_notice: 'Holiday Notice',
-};
-
 export default function Messages() {
   const confirm = useConfirm();
   const [messages, setMessages] = useState([]);
@@ -81,13 +48,9 @@ export default function Messages() {
   const [generating, setGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
 
-  // Customizable templates (admin-editable). Bootstrapped to defaults so the
-  // page works on first render before /api/settings/templates returns.
+  // Customizable templates (admin-editable in Settings → Templates).
+  // We only READ them here for the compose dropdown + quick-template chips.
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [templatesDraft, setTemplatesDraft] = useState(DEFAULT_TEMPLATES);
-  const [savingTemplates, setSavingTemplates] = useState(false);
-  const templateTextareaRefs = useRef({});
 
   // Bulk WhatsApp send progress state
   const [bulkSending, setBulkSending] = useState(false);
@@ -184,50 +147,6 @@ export default function Messages() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Open the Edit Templates modal seeded with the latest fetched values.
-  const openTemplatesEditor = () => {
-    setTemplatesDraft({ ...DEFAULT_TEMPLATES, ...templates });
-    setTemplatesOpen(true);
-  };
-
-  // Insert a placeholder at the textarea's current cursor position.
-  // Keeps focus + restores caret after the inserted token.
-  const insertPlaceholder = (type, placeholder) => {
-    const ta = templateTextareaRefs.current[type];
-    if (!ta) return;
-    const start = ta.selectionStart ?? ta.value.length;
-    const end   = ta.selectionEnd   ?? ta.value.length;
-    const before = ta.value.slice(0, start);
-    const after  = ta.value.slice(end);
-    const next   = before + placeholder + after;
-    setTemplatesDraft((prev) => ({ ...prev, [type]: next }));
-    // Restore cursor after the inserted token on next tick.
-    requestAnimationFrame(() => {
-      ta.focus();
-      const caret = start + placeholder.length;
-      try { ta.setSelectionRange(caret, caret); } catch {}
-    });
-  };
-
-  const saveTemplates = async () => {
-    try {
-      setSavingTemplates(true);
-      const result = await api.put('/settings/templates', { templates: templatesDraft });
-      const t = { ...DEFAULT_TEMPLATES, ...(result?.templates || templatesDraft) };
-      setTemplates(t);
-      toast.success('Templates saved');
-      setTemplatesOpen(false);
-    } catch (err) {
-      toast.error('Failed to save templates: ' + err.message);
-    } finally {
-      setSavingTemplates(false);
-    }
-  };
-
-  const resetTemplateToDefault = (type) => {
-    setTemplatesDraft((prev) => ({ ...prev, [type]: DEFAULT_TEMPLATES[type] }));
   };
 
   // ----- Bulk WhatsApp "Send All Pending" -----
@@ -465,14 +384,6 @@ export default function Messages() {
               {bulkSending ? 'Opening tabs...' : `Send All Pending (${pendingSendable.length})`}
             </button>
           )}
-          <button
-            onClick={openTemplatesEditor}
-            className="btn-secondary btn-sm"
-            title="Customize message wording"
-          >
-            <SettingsIcon className="w-4 h-4" />
-            Edit Templates
-          </button>
           <button
             onClick={generateAbsenceAlerts}
             disabled={generating}
@@ -748,85 +659,6 @@ export default function Messages() {
         </div>
       )}
 
-      {/* Edit Templates modal */}
-      <Modal
-        isOpen={templatesOpen}
-        onClose={() => setTemplatesOpen(false)}
-        title="Edit message templates"
-        size="lg"
-      >
-        <div className="space-y-5">
-          <p className="text-sm text-gray-600">
-            Customize the wording of automated and quick-template messages.
-            Use the chip buttons below each field to insert placeholders that
-            get replaced with student details when the message is generated.
-          </p>
-          {Object.keys(DEFAULT_TEMPLATES).map((type) => {
-            const placeholders = TEMPLATE_PLACEHOLDERS[type] || [];
-            return (
-              <div key={type} className="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-medium text-gray-800">
-                    {TEMPLATE_LABELS[type]}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => resetTemplateToDefault(type)}
-                    className="text-xs text-gray-500 hover:text-indigo-600 hover:underline"
-                    title="Restore the original wording"
-                  >
-                    Reset to default
-                  </button>
-                </div>
-                <textarea
-                  ref={(el) => { templateTextareaRefs.current[type] = el; }}
-                  value={templatesDraft[type] ?? ''}
-                  onChange={(e) =>
-                    setTemplatesDraft((prev) => ({ ...prev, [type]: e.target.value }))
-                  }
-                  rows={6}
-                  className="input-field font-mono text-sm"
-                  spellCheck={false}
-                />
-                {placeholders.length > 0 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs text-gray-500">Insert:</span>
-                    {placeholders.map((ph) => (
-                      <button
-                        key={ph}
-                        type="button"
-                        onClick={() => insertPlaceholder(type, ph)}
-                        className="px-2 py-0.5 rounded-full text-xs font-mono bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                        title={`Insert ${ph} at cursor`}
-                      >
-                        {ph}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setTemplatesOpen(false)}
-              className="btn-secondary btn-sm"
-              disabled={savingTemplates}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={saveTemplates}
-              className="btn-primary btn-sm"
-              disabled={savingTemplates}
-            >
-              {savingTemplates ? 'Saving...' : 'Save templates'}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

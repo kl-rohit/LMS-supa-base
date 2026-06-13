@@ -3,7 +3,6 @@
 // Future tabs: Notifications, Branding, Privacy, Integrations.
 
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   School,
   IndianRupee,
@@ -15,12 +14,12 @@ import {
   MapPin,
   Type,
   PenLine,
-  ExternalLink,
   CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
+import TemplatesEditor from '../components/TemplatesEditor';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -275,27 +274,7 @@ function BillingTab({ form, set }) {
 }
 
 function TemplatesTab() {
-  return (
-    <div className="card">
-      <h3 className="text-base font-semibold text-gray-900">Message templates</h3>
-      <p className="text-sm text-gray-600 mt-1 mb-4">
-        Templates for absence alerts, fee reminders, class updates, thank-yous,
-        and holiday notices live on the Messages page. Click below to open the editor.
-      </p>
-      <Link
-        to="/messages"
-        className="btn-secondary btn-sm inline-flex"
-      >
-        <ExternalLink className="w-4 h-4" /> Open Messages → Edit Templates
-      </Link>
-      <div className="mt-4 text-xs text-gray-500 space-y-1">
-        <p className="font-medium text-gray-700">Available placeholders:</p>
-        <p><code>{'{name}'}</code> <code>{'{parent}'}</code> <code>{'{school}'}</code> <code>{'{signature}'}</code></p>
-        <p>Fee reminder: <code>{'{amount}'}</code> <code>{'{class_fees}'}</code> <code>{'{additional_fees}'}</code> <code>{'{month}'}</code> <code>{'{year}'}</code></p>
-        <p>Absence alert: <code>{'{count}'}</code></p>
-      </div>
-    </div>
-  );
+  return <TemplatesEditor />;
 }
 
 // ----- Field row ------------------------------------------------------------

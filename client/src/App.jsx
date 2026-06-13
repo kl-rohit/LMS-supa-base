@@ -17,6 +17,7 @@ import {
   LogOut,
   KeyRound,
   Video,
+  Shield,
 } from 'lucide-react';
 
 // Eagerly load only Login (everyone needs it immediately) and ParentLayout
@@ -37,13 +38,14 @@ const Reports        = lazy(() => import('./pages/Reports'));
 const Settings       = lazy(() => import('./pages/Settings'));
 const StudentLogins  = lazy(() => import('./pages/StudentLogins'));
 const Lessons        = lazy(() => import('./pages/Lessons'));
+const Platform       = lazy(() => import('./pages/Platform'));
 
 import Loader from './components/Loader';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
 
-const navItems = [
+const BASE_NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/students', label: 'Students', icon: Users },
   { to: '/groups', label: 'Groups', icon: UsersRound },
@@ -56,6 +58,14 @@ const navItems = [
   { to: '/student-logins', label: 'Parent Logins', icon: KeyRound },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
+// Platform admin link only shows for Catalyst "App Administrator" users —
+// i.e. the platform owner (Rohit), not academy owners.
+const PLATFORM_NAV = { to: '/platform', label: 'Platform Admin', icon: Shield };
+
+function navItemsFor(user) {
+  if (user?.role === 'App Administrator') return [...BASE_NAV, PLATFORM_NAV];
+  return BASE_NAV;
+}
 
 // Teacher app shell: sidebar + main content.
 function TeacherLayout() {
@@ -93,7 +103,7 @@ function TeacherLayout() {
         </div>
 
         <nav className="mt-4 px-3 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
-          {navItems.map((item) => {
+          {navItemsFor(user).map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -166,6 +176,7 @@ function TeacherLayout() {
               <Route path="/lessons" element={<Lessons />} />
               <Route path="/student-logins" element={<StudentLogins />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/platform" element={<Platform />} />
             </Routes>
           </Suspense>
         </main>

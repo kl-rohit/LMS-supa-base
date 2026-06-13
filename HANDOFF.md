@@ -211,22 +211,38 @@ and the deployed site 404s on every route because asset paths are wrong.
 ### 1. Verify Attendance org_id stamping in production *(urgent)*
 
 User reported on day-of-handoff that an attendance row inserted today
-did not have `org_id` set. **The code IS correct** — every Attendance
-insert (POST `/attendance`, `/attendance/adhoc`, `/attendance/bulk`,
-and `/camps/days/:id/attendance`) explicitly stamps `org_id:
-Number(req.orgId)` (audited in `routes/attendance.js` lines 145, 185,
-244 and `routes/camps.js`).
+did not have `org_id` set. **A full audit on `2026-06-14` confirmed
+the code IS correct** — every INSERT in the codebase stamps `org_id`,
+and every UPDATE/DELETE checks `Number(existing.org_id) === Number(req.orgId)`
+before mutating.
 
-**Most likely cause**: the row was created before commit `3c472be` was
-deployed.
+**Audit results** (commit `dd37dfe`):
+
+| Path | File:line | Has org_id? |
+|---|---|---|
+| POST `/api/attendance` | attendance.js:134 | ✅ |
+| POST `/api/attendance/adhoc` | attendance.js:174 | ✅ |
+| POST `/api/attendance/bulk` | attendance.js:250 | ✅ |
+| POST `/api/camps/days/:id/attendance` | camps.js:167 | ✅ |
+| POST `/api/import/attendance` | import.js:60 | ✅ |
+| Cron Messages insert (`feeReminder.js`) | lib/feeReminder.js:128 | ✅ |
+| Every other table's INSERT/UPDATE | all files | ✅ |
+
+**Most likely cause of the reported issue**: the row was created before
+commit `3c472be` was deployed. Phase B.2 (3c472be) is what added org_id
+stamping; anything inserted on an older deploy would have null org_id.
 
 **Verification steps**:
-1. Check the production deploy commit hash matches `981d010` (latest)
-2. Insert a fresh attendance row via the UI
-3. Catalyst console → Data Store → Attendance → newest row → confirm
-   `org_id` column has a value
-4. If still null, dump the Express logs from the function. The
-   `console.error` in the insert path will show the cause.
+1. Verify the deployed commit is `dd37dfe` or later: `git rev-parse HEAD`
+   on the local machine matches the latest deploy.
+2. Insert a fresh attendance row via the UI (admin → Attendance → mark
+   a student present).
+3. Catalyst console → Data Store → Attendance → sort by `CREATEDTIME`
+   descending → top row → confirm `org_id` column has a value
+   (will be the lossy Number version of Veena's Organizations.ROWID).
+4. If still null after a fresh insert, dump the function logs in
+   Catalyst console → DevOps → Logs → look for "Failed to create
+   attendance" with a stack trace.
 
 ### 2. Slug in URL (`/app/o/<slug>/...`)
 

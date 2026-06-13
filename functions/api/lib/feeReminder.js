@@ -7,7 +7,22 @@
 // body comes from MessageTemplates (with hard-coded fallback).
 
 const { insert, zcql, unwrap, q } = require('../db/catalystDb');
-const { loadTemplates, DEFAULT_TEMPLATES } = require('../routes/settings');
+const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('../routes/settings');
+
+// Build the {school} + {signature} ctx pieces from AppSettings, falling
+// back to the same hard-coded values the templates used pre-Settings
+// module so a never-configured install still produces correct messages.
+async function loadSchoolCtx(req) {
+  try {
+    const s = await loadAppSettings(req);
+    return {
+      school:    s['school.name']      || 'Veena Dhwani Academy',
+      signature: s['school.signature'] || s['school.name'] || 'Veena Dhwani Academy',
+    };
+  } catch {
+    return { school: 'Veena Dhwani Academy', signature: 'Veena Dhwani Academy' };
+  }
+}
 
 const MONTH_NAMES = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December'];
@@ -52,7 +67,10 @@ async function generateFeeReminders(req, { month, year }) {
   const dateTo   = `${year}-${monthStr}-31`;
   const monthName = MONTH_NAMES[month - 1];
 
-  const templates = await loadTemplates(req).catch(() => DEFAULT_TEMPLATES);
+  const [templates, schoolCtx] = await Promise.all([
+    loadTemplates(req).catch(() => DEFAULT_TEMPLATES),
+    loadSchoolCtx(req),
+  ]);
 
   const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active'`);
   const students = unwrap(studentRows, 'Students');
@@ -93,6 +111,7 @@ async function generateFeeReminders(req, { month, year }) {
           additional_fees: positiveAdditionalRounded,
           month: monthName,
           year,
+          ...schoolCtx,
         });
         text = applyFeeReminderConditionalBlock(text, positiveAdditionalRounded);
 

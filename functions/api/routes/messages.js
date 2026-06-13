@@ -2,8 +2,22 @@
 
 const router = require('express').Router();
 const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
-const { loadTemplates, DEFAULT_TEMPLATES } = require('./settings');
+const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
+
+// Mirror of the fee-reminder generator — read school identity once per
+// request so absence alerts substitute {school} / {signature} consistently.
+async function loadSchoolCtx(req) {
+  try {
+    const s = await loadAppSettings(req);
+    return {
+      school:    s['school.name']      || 'Veena Dhwani Academy',
+      signature: s['school.signature'] || s['school.name'] || 'Veena Dhwani Academy',
+    };
+  } catch {
+    return { school: 'Veena Dhwani Academy', signature: 'Veena Dhwani Academy' };
+  }
+}
 
 // GET /api/messages
 router.get('/', async (req, res) => {
@@ -43,8 +57,11 @@ router.post('/', async (req, res) => {
 // POST /api/messages/generate-absence-alert
 router.post('/generate-absence-alert', async (req, res) => {
   try {
-    // Fetch templates once per request (single ZCQL query — fine at our scale).
-    const templates = await loadTemplates(req).catch(() => DEFAULT_TEMPLATES);
+    // Fetch templates + school identity once per request.
+    const [templates, schoolCtx] = await Promise.all([
+      loadTemplates(req).catch(() => DEFAULT_TEMPLATES),
+      loadSchoolCtx(req),
+    ]);
     // Reuse the same absent-streak logic
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active'`);
     const students = unwrap(studentRows, 'Students');
@@ -62,6 +79,7 @@ router.post('/generate-absence-alert', async (req, res) => {
             name: s.name,
             parent: s.parent_name,
             count: streak,
+            ...schoolCtx,
           });
           await insert(req, 'Messages', {
             student_id: String(s.ROWID),

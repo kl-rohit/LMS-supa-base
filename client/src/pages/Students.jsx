@@ -118,6 +118,34 @@ export default function Students() {
   const [photoPending, setPhotoPending] = useState('');
   const photoFileRef = useRef(null);
 
+  // Billing defaults pulled from /api/settings/app on mount. Used to
+  // pre-fill the Add Student form so the teacher doesn't retype the
+  // standard rates for every new student.
+  const [billingDefaults, setBillingDefaults] = useState({
+    fee_online: '',
+    fee_offline: '',
+    fee_offline_group: '',
+    min_classes_per_month: '',
+  });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { settings } = await api.get('/settings/app');
+        if (cancelled || !settings) return;
+        setBillingDefaults({
+          fee_online:            settings['billing.default_online_fee']  || '',
+          fee_offline:           settings['billing.default_offline_fee'] || '',
+          fee_offline_group:     settings['billing.default_group_fee']   || '',
+          min_classes_per_month: settings['billing.default_min_classes'] || '',
+        });
+      } catch {
+        // Settings unavailable — fall back to empty (current behaviour).
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Column visibility (persisted to localStorage). Name/Status always show.
   const [visibleCols, setVisibleCols] = useState(loadVisibleCols);
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
@@ -284,7 +312,9 @@ export default function Students() {
 
   const openAdd = () => {
     setEditingStudent(null);
-    setForm(emptyForm);
+    // Seed billing-related fields from Settings defaults — teacher can
+    // override per student. Identity fields stay blank.
+    setForm({ ...emptyForm, ...billingDefaults });
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
     setModalOpen(true);

@@ -76,5 +76,6 @@ app.use('/api/courses',        requireAuth, resolveOrg, requireOrgId, require('.
 app.use('/api/lessons',        requireAuth, resolveOrg, requireOrgId, require('./routes/lessons'));
 app.use('/api/enrollments',    requireAuth, resolveOrg, requireOrgId, require('./routes/enrollments'));
 app.use('/api/settings',       requireAuth, resolveOrg, requireOrgId, require('./routes/settings'));
+app.use('/api/organization',   requireAuth, resolveOrg, requireOrgId, require('./routes/organization'));
 
 module.exports = app;

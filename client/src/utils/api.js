@@ -5,6 +5,25 @@
 // `process.env.API_BASE` is replaced at build time by webpack.DefinePlugin.
 const BASE_URL = process.env.API_BASE || '/api';
 
+// Platform-admin impersonation: when set in localStorage, every API call
+// gets `?org=<id>` appended so backend's resolveOrg picks that tenant.
+// Skips /auth/* (no org context) and any URL that already has ?org=.
+const IMPERSONATE_KEY = 'veena_impersonate_org_id';
+
+function withImpersonation(url) {
+  try {
+    if (typeof window === 'undefined') return url;
+    if (url.startsWith('/auth/') || url.startsWith('/platform')) return url;
+    if (url.includes('?org=') || url.includes('&org=')) return url;
+    const orgId = localStorage.getItem(IMPERSONATE_KEY);
+    if (!orgId) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}org=${encodeURIComponent(orgId)}`;
+  } catch {
+    return url;
+  }
+}
+
 async function request(url, options = {}) {
   const config = {
     headers: {
@@ -17,7 +36,8 @@ async function request(url, options = {}) {
     config.body = JSON.stringify(config.body);
   }
 
-  const response = await fetch(`${BASE_URL}${url}`, {
+  const finalUrl = withImpersonation(url);
+  const response = await fetch(`${BASE_URL}${finalUrl}`, {
     credentials: 'include', // include Catalyst session cookies
     ...config,
   });

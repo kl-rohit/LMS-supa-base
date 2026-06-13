@@ -12,19 +12,32 @@ import {
   Search,
   TrendingUp,
   AlertCircle,
+  Pause,
+  Play,
+  Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+
+// localStorage key the api client checks to inject ?org=<id> on every
+// admin call. Setting this lets the platform admin "see what the org
+// sees" without needing to be a member.
+const IMPERSONATE_KEY = 'veena_impersonate_org_id';
 
 export default function Platform() {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [orgs, setOrgs] = useState([]);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [impersonating, setImpersonating] = useState(() => {
+    try { return localStorage.getItem(IMPERSONATE_KEY) || ''; } catch { return ''; }
+  });
 
   const isPlatformAdmin = user?.role === 'App Administrator';
 
@@ -45,6 +58,43 @@ export default function Platform() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  const setOrgStatus = async (org, nextStatus) => {
+    const action = nextStatus === 'suspended' ? 'suspend' : 'reactivate';
+    const ok = await confirm({
+      title: `${action[0].toUpperCase() + action.slice(1)} ${org.name}?`,
+      message: nextStatus === 'suspended'
+        ? `All members of ${org.name} will be locked out immediately. They can be unsuspended any time.`
+        : `${org.name} members will be able to sign in and use the app again.`,
+      confirmText: action[0].toUpperCase() + action.slice(1),
+    });
+    if (!ok) return;
+    try {
+      await api.put(`/platform/orgs/${org.id}`, { status: nextStatus });
+      toast.success(`${org.name} ${nextStatus === 'suspended' ? 'suspended' : 'reactivated'}`);
+      fetchAll();
+    } catch (e) {
+      toast.error('Action failed: ' + e.message);
+    }
+  };
+
+  const startImpersonate = (org) => {
+    try {
+      localStorage.setItem(IMPERSONATE_KEY, String(org.id));
+      setImpersonating(String(org.id));
+      toast.success(`Now viewing as ${org.name}. All requests target this org until you stop.`);
+    } catch {
+      toast.error('Could not set impersonation (localStorage blocked?)');
+    }
+  };
+
+  const stopImpersonate = () => {
+    try {
+      localStorage.removeItem(IMPERSONATE_KEY);
+      setImpersonating('');
+      toast.success('Stopped impersonation — back to platform-admin view.');
+    } catch {}
+  };
 
   const filteredOrgs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -89,6 +139,22 @@ export default function Platform() {
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
+
+      {/* Impersonation banner — visible whenever you're acting as a tenant */}
+      {impersonating && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Eye className="w-5 h-5 text-amber-700 flex-shrink-0" />
+            <p className="text-sm text-amber-900 truncate">
+              <strong>Impersonating org {impersonating}.</strong>
+              {' '}All admin API calls will be scoped to this academy until you stop.
+            </p>
+          </div>
+          <button onClick={stopImpersonate} className="btn-sm bg-white text-amber-800 border border-amber-300 hover:bg-amber-50 rounded-lg px-3 py-1 text-xs font-medium flex-shrink-0">
+            Stop impersonating
+          </button>
+        </div>
+      )}
 
       {/* Bootstrap status banner */}
       {status && !status.bootstrapped && (
@@ -144,7 +210,7 @@ export default function Platform() {
                   <th className="table-header">Plan</th>
                   <th className="table-header">Status</th>
                   <th className="table-header">Created</th>
-                  <th className="table-header">Owner ID</th>
+                  <th className="table-header text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -179,8 +245,34 @@ export default function Platform() {
                         ? new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
                         : '-'}
                     </td>
-                    <td className="table-cell font-mono text-xs text-gray-400 truncate max-w-[10rem]" title={o.owner_user_id}>
-                      {o.owner_user_id || '-'}
+                    <td className="table-cell text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => startImpersonate(o)}
+                          disabled={String(impersonating) === String(o.id)}
+                          className="btn-sm rounded-md px-2 py-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                          title="View the app as this org"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View
+                        </button>
+                        {o.status === 'suspended' ? (
+                          <button
+                            onClick={() => setOrgStatus(o, 'active')}
+                            className="btn-sm rounded-md px-2 py-1 text-xs bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center gap-1"
+                            title="Reactivate this org"
+                          >
+                            <Play className="w-3.5 h-3.5" /> Reactivate
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setOrgStatus(o, 'suspended')}
+                            className="btn-sm rounded-md px-2 py-1 text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 flex items-center gap-1"
+                            title="Lock this org's members out immediately"
+                          >
+                            <Pause className="w-3.5 h-3.5" /> Suspend
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

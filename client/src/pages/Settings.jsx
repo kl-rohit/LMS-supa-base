@@ -17,11 +17,17 @@ import {
   CheckCircle2,
   ToggleLeft,
   Eye,
+  Users as UsersIcon,
+  UserPlus,
+  Crown,
+  Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import TemplatesEditor from '../components/TemplatesEditor';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -49,10 +55,11 @@ const EMPTY_SETTINGS = {
 };
 
 const TABS = [
-  { id: 'school',    label: 'School',    icon: School },
-  { id: 'billing',   label: 'Billing',   icon: IndianRupee },
-  { id: 'modules',   label: 'Modules',   icon: ToggleLeft },
-  { id: 'templates', label: 'Templates', icon: MessageSquare },
+  { id: 'school',       label: 'School',       icon: School },
+  { id: 'billing',      label: 'Billing',      icon: IndianRupee },
+  { id: 'modules',      label: 'Modules',      icon: ToggleLeft },
+  { id: 'templates',    label: 'Templates',    icon: MessageSquare },
+  { id: 'organization', label: 'Organization', icon: ShieldCheck },
 ];
 
 export default function Settings() {
@@ -136,13 +143,14 @@ export default function Settings() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'school'    && <SchoolTab form={form} set={set} />}
-      {activeTab === 'billing'   && <BillingTab form={form} set={set} />}
-      {activeTab === 'modules'   && <ModulesTab form={form} set={set} />}
-      {activeTab === 'templates' && <TemplatesTab />}
+      {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
+      {activeTab === 'billing'      && <BillingTab form={form} set={set} />}
+      {activeTab === 'modules'      && <ModulesTab form={form} set={set} />}
+      {activeTab === 'templates'    && <TemplatesTab />}
+      {activeTab === 'organization' && <OrganizationTab />}
 
-      {/* Save bar (sticky bottom) — visible for School + Billing tabs only */}
-      {activeTab !== 'templates' && (
+      {/* Save bar (sticky bottom) — hidden for tabs that own their own UI */}
+      {activeTab !== 'templates' && activeTab !== 'organization' && (
         <div className="sticky bottom-0 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-white border-t border-gray-200 flex items-center justify-between">
           <span className="text-xs text-gray-500">
             {savedNotice && (
@@ -330,6 +338,245 @@ function ModulesTab({ form, set }) {
           <ModuleToggle label="My Lessons"        hint="Parents see enrolled courses + watch lessons" on={isOn('portal.show_lessons')}       onClick={toggle('portal.show_lessons')} />
           <ModuleToggle label="Fees tab"          hint="Parents can see their fee breakdown by month" on={isOn('portal.show_fees')}          onClick={toggle('portal.show_fees')} />
           <ModuleToggle label="Profile editing"   hint="Parents can edit name, DOB, address, photo. Disable to lock the profile." on={isOn('portal.allow_profile_edit')} onClick={toggle('portal.allow_profile_edit')} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrganizationTab() {
+  const confirm = useConfirm();
+  const [loading, setLoading] = useState(true);
+  const [org, setOrg] = useState(null);
+  const [role, setRole] = useState('');
+  const [members, setMembers] = useState([]);
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' });
+  const [inviting, setInviting] = useState(false);
+
+  const isOwner = role === 'owner' || role === 'platform_admin';
+
+  const fetchOrg = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/organization');
+      setOrg(data.org); setRole(data.role); setMembers(data.members || []);
+      setName(data.org?.name || '');
+    } catch (e) {
+      toast.error('Failed to load organization: ' + e.message);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { fetchOrg(); }, []);
+
+  const saveName = async () => {
+    try {
+      setSaving(true);
+      await api.put('/organization', { name: name.trim() });
+      toast.success('Academy name updated');
+      setEditingName(false);
+      fetchOrg();
+    } catch (e) {
+      toast.error('Save failed: ' + e.message);
+    } finally { setSaving(false); }
+  };
+
+  const sendInvite = async (e) => {
+    e?.preventDefault?.();
+    if (!inviteForm.email.trim()) return toast.error('Email required');
+    try {
+      setInviting(true);
+      await api.post('/organization/invite', inviteForm);
+      toast.success('Invite sent — they\'ll get an email to set their password');
+      setInviteOpen(false);
+      setInviteForm({ email: '', first_name: '', last_name: '' });
+      fetchOrg();
+    } catch (e) {
+      toast.error('Invite failed: ' + (e.message || 'unknown'));
+    } finally { setInviting(false); }
+  };
+
+  const removeMember = async (m) => {
+    const ok = await confirm({
+      title: `Remove ${m.display || m.email || 'this member'}?`,
+      message: 'They will lose access to this academy immediately. Their Catalyst login isn\'t deleted — only the org membership is.',
+      confirmText: 'Remove',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/organization/members/${m.id}`);
+      toast.success('Member removed');
+      fetchOrg();
+    } catch (e) {
+      toast.error('Remove failed: ' + e.message);
+    }
+  };
+
+  const transferOwnership = async (m) => {
+    const ok = await confirm({
+      title: `Make ${m.display || m.email || 'this teacher'} the new owner?`,
+      message: 'You will become a teacher of this academy. They will have full owner rights including the ability to remove you. This cannot be easily undone.',
+      confirmText: 'Transfer ownership',
+    });
+    if (!ok) return;
+    try {
+      await api.post('/organization/transfer-ownership', { membership_id: m.id });
+      toast.success('Ownership transferred');
+      fetchOrg();
+    } catch (e) {
+      toast.error('Transfer failed: ' + e.message);
+    }
+  };
+
+  if (loading) return <div className="card text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading organization...</div>;
+  if (!org) return <div className="card text-sm text-red-600">Could not load organization data.</div>;
+
+  return (
+    <div className="space-y-5">
+      {/* Org identity */}
+      <div className="card">
+        <h3 className="text-base font-semibold text-gray-900 mb-3">Organization</h3>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-semibold flex-shrink-0">
+            {(org.name || '?').slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="input-field"
+                  maxLength={200}
+                  autoFocus
+                />
+                <button onClick={saveName} disabled={saving} className="btn-primary btn-sm">
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save
+                </button>
+                <button onClick={() => { setEditingName(false); setName(org.name); }} className="btn-secondary btn-sm">Cancel</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-lg font-semibold text-gray-900 truncate">{org.name}</p>
+                <p className="text-xs text-gray-500">Slug: <code>{org.slug}</code> · Plan: <code>{org.plan || 'free'}</code></p>
+              </>
+            )}
+          </div>
+          {!editingName && isOwner && (
+            <button onClick={() => setEditingName(true)} className="btn-secondary btn-sm">Rename</button>
+          )}
+        </div>
+        <p className="text-xs text-gray-500">
+          Your role: <span className="font-medium text-gray-700">{role}</span>
+        </p>
+      </div>
+
+      {/* Members list */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <UsersIcon className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-base font-semibold text-gray-900">Members ({members.length})</h3>
+          </div>
+          {isOwner && (
+            <button onClick={() => setInviteOpen(!inviteOpen)} className="btn-primary btn-sm">
+              <UserPlus className="w-4 h-4" /> Invite teacher
+            </button>
+          )}
+        </div>
+
+        {inviteOpen && (
+          <form onSubmit={sendInvite} className="border border-gray-200 rounded-lg p-3 mb-3 space-y-2 bg-gray-50">
+            <p className="text-xs text-gray-600">
+              They'll receive an email to set their password. After they sign in,
+              they get a teacher role — full admin access to this academy except
+              ownership transfer.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                type="email"
+                value={inviteForm.email}
+                onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                className="input-field"
+                placeholder="teacher@example.com"
+                required
+                autoFocus
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={inviteForm.first_name}
+                  onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
+                  className="input-field"
+                  placeholder="First name"
+                />
+                <input
+                  type="text"
+                  value={inviteForm.last_name}
+                  onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
+                  className="input-field"
+                  placeholder="Last (optional)"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setInviteOpen(false)} className="btn-secondary btn-sm">Cancel</button>
+              <button type="submit" disabled={inviting} className="btn-primary btn-sm">
+                {inviting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...</> : <>Send invite</>}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="divide-y divide-gray-100">
+          {members.map((m) => (
+            <div key={m.id} className="flex items-center gap-3 py-3">
+              <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                {(m.display || m.email || '?').slice(0, 1).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm font-medium text-gray-900 truncate">{m.display || m.email || m.user_id}</span>
+                  {m.role === 'owner' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+                      <Crown className="w-3 h-3" /> owner
+                    </span>
+                  )}
+                  {m.role === 'teacher' && (
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 text-xs font-medium">teacher</span>
+                  )}
+                  {m.role === 'parent' && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">parent</span>
+                  )}
+                  {m.status === 'invited' && (
+                    <span className="px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 text-xs font-medium">invite pending</span>
+                  )}
+                </div>
+                {m.email && <p className="text-xs text-gray-500 truncate">{m.email}</p>}
+              </div>
+              {isOwner && m.role !== 'owner' && m.status === 'active' && (
+                <>
+                  <button
+                    onClick={() => transferOwnership(m)}
+                    className="btn-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-lg flex items-center gap-1 px-2 py-1 text-xs"
+                    title="Make this user the new owner"
+                  >
+                    <Crown className="w-3.5 h-3.5" /> Transfer
+                  </button>
+                  <button
+                    onClick={() => removeMember(m)}
+                    className="btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 rounded-lg flex items-center gap-1 px-2 py-1 text-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>

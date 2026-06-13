@@ -63,10 +63,25 @@ async function resolveOrg(req, res, next) {
 
   const active = memberships.filter((m) => m.status === 'active');
 
+  // Check the org's own status — suspended orgs block access for everyone
+  // EXCEPT the platform admin (who can still impersonate to investigate).
+  async function checkOrgActive(orgId) {
+    try {
+      const rows = await zcql(req, `SELECT status FROM Organizations WHERE ROWID = ${Number(orgId)}`);
+      const o = unwrap(rows, 'Organizations')[0];
+      return !o || (o.status || 'active') === 'active';
+    } catch {
+      return true; // fail open — don't lock the app if the lookup hiccups
+    }
+  }
+
   // If the user explicitly requested an org, honor it only if they belong to it.
   if (requestedId) {
     const match = active.find((m) => Number(m.org_id) === requestedId);
     if (match) {
+      if (!isPlatformAdmin && !(await checkOrgActive(requestedId))) {
+        return res.status(403).json({ error: 'This academy is currently suspended. Contact support.' });
+      }
       req.orgId = Number(match.org_id);
       req.orgRole = match.role;
       return next();
@@ -82,6 +97,9 @@ async function resolveOrg(req, res, next) {
   // hit; the eventual org-switcher UI can pass ?org= to pin a choice.
   if (active.length > 0) {
     const m = active[0];
+    if (!isPlatformAdmin && !(await checkOrgActive(m.org_id))) {
+      return res.status(403).json({ error: 'This academy is currently suspended. Contact support.' });
+    }
     req.orgId = Number(m.org_id);
     req.orgRole = m.role;
     return next();

@@ -192,6 +192,29 @@ router.get('/orgs', async (req, res) => {
   }
 });
 
+// =============================================================================
+// PUT /api/platform/orgs/:id — platform-admin only (Catalyst App Admin).
+// Allowed patch: name, slug, status, plan.
+// =============================================================================
+router.put('/orgs/:id', async (req, res) => {
+  try {
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${Number(req.params.id)}`);
+    const org = unwrap(existing, 'Organizations')[0];
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    const patch = {};
+    if (req.body.name   !== undefined) patch.name   = String(req.body.name).slice(0, 200);
+    if (req.body.slug   !== undefined) patch.slug   = slugify(req.body.slug);
+    if (req.body.status !== undefined) patch.status = String(req.body.status).slice(0, 20);
+    if (req.body.plan   !== undefined) patch.plan   = String(req.body.plan).slice(0, 20);
+
+    const updated = await update(req, 'Organizations', req.params.id, patch);
+    res.json({ org: normalize(updated) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update org', detail: e.message });
+  }
+});
+
 // ----- helpers --------------------------------------------------------------
 
 function slugify(s) {

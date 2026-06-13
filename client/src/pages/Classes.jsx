@@ -22,6 +22,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import { useModuleFlags } from '../hooks/useModuleFlags';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -40,6 +41,8 @@ const isGroupType = (type) => type === 'offline_group' || type === 'online_group
 
 export default function Classes() {
   const confirm = useConfirm();
+  const { flags } = useModuleFlags();
+  const campsModuleOn = flags['modules.camps'] !== false;
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -55,6 +58,10 @@ export default function Classes() {
   // ----- Camps tab state -----
   // activeTab: 'schedule' (weekly grid) | 'camps' (camps list)
   const [activeTab, setActiveTab] = useState('schedule');
+  // Guard against landing on the camps tab when the module is disabled.
+  useEffect(() => {
+    if (!campsModuleOn && activeTab === 'camps') setActiveTab('schedule');
+  }, [campsModuleOn, activeTab]);
   const [camps, setCamps] = useState([]);
   const [campsStatusFilter, setCampsStatusFilter] = useState('active'); // active | archived
   const [campFormOpen, setCampFormOpen] = useState(false);
@@ -436,7 +443,7 @@ export default function Classes() {
 
   return (
     <div className="space-y-4">
-      {/* Tab strip: Weekly Schedule vs Camps */}
+      {/* Tab strip: Weekly Schedule, plus Camps when the module is enabled */}
       <div className="flex border-b border-gray-200">
         <button
           onClick={() => setActiveTab('schedule')}
@@ -448,16 +455,18 @@ export default function Classes() {
         >
           <Calendar className="w-4 h-4" /> Weekly Schedule
         </button>
-        <button
-          onClick={() => setActiveTab('camps')}
-          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'camps'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Tent className="w-4 h-4" /> Camps
-        </button>
+        {campsModuleOn && (
+          <button
+            onClick={() => setActiveTab('camps')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'camps'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Tent className="w-4 h-4" /> Camps
+          </button>
+        )}
       </div>
 
       {activeTab === 'schedule' && (

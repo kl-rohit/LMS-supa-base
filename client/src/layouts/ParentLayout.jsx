@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useModuleFlags } from '../hooks/useModuleFlags';
+import { useOrgBranding } from '../hooks/useOrgBranding';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 
@@ -47,7 +48,15 @@ export default function ParentLayout() {
   const { user, signOut } = useAuth();
   const { flags } = useModuleFlags();
   const navItems = visibleNav(flags);
+  const branding = useOrgBranding();
+  const displayName = branding.name || 'Veena';
   const [studentName, setStudentName] = useState('');
+  // Reflect the academy name in the browser tab title.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = `${displayName} — Parent Portal`;
+    }
+  }, [displayName]);
   const isAdmin = user?.role === 'App Administrator';
 
   // Fetch the linked student's name once. Skipped for admin (they'll be redirected).
@@ -80,11 +89,20 @@ export default function ParentLayout() {
         }`}
       >
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Music2 className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900">Veena</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {branding.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt=""
+                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Music2 className="w-5 h-5 text-white" />
+              </div>
+            )}
+            <span className="text-xl font-bold text-gray-900 truncate">{displayName}</span>
           </div>
           <button
             className="lg:hidden p-1 rounded-md hover:bg-gray-100"

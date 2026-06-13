@@ -11,6 +11,19 @@ const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
 const { insert, getById, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
 
+// Catalyst ROWIDs are 17-digit numbers — beyond JS Number.MAX_SAFE_INTEGER.
+// req.orgId is the lossy JS Number version (set by resolveOrg), so it can't
+// be passed directly to getById('Organizations', ...) which uses Catalyst's
+// own precise-string lookup. Instead, fetch all orgs and match by rounded
+// Number value — both sides lose precision the same way, so the comparison
+// is reliable.
+async function findOrgByLossyId(req, lossyOrgId) {
+  const rows = await zcql(req, `SELECT * FROM Organizations`);
+  return unwrap(rows, 'Organizations').find(
+    (o) => Number(o.ROWID) === Number(lossyOrgId)
+  );
+}
+
 // Helper — refuse mutations from anyone except the owner (or platform admin
 // impersonating the owner).
 function requireOwner(req, res, next) {
@@ -25,7 +38,7 @@ function requireOwner(req, res, next) {
 // =============================================================================
 router.get('/', async (req, res) => {
   try {
-    const orgRow = await getById(req, 'Organizations', req.orgId);
+    const orgRow = await findOrgByLossyId(req, req.orgId);
     if (!orgRow) return res.status(404).json({ error: 'Org not found' });
 
     // Membership list
@@ -63,9 +76,15 @@ router.get('/', async (req, res) => {
 router.put('/', requireOwner, async (req, res) => {
   try {
     const patch = {};
-    if (req.body.name !== undefined) patch.name = String(req.body.name).slice(0, 200);
+    if (req.body.name !== undefined)       patch.name       = String(req.body.name).slice(0, 200);
+    if (req.body.logo_url !== undefined)   patch.logo_url   = String(req.body.logo_url).slice(0, 500);
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'nothing to update' });
-    const updated = await update(req, 'Organizations', req.orgId, patch);
+
+    // Resolve the precise ROWID — see findOrgByLossyId comment for the
+    // ROWID precision gotcha.
+    const orgRow = await findOrgByLossyId(req, req.orgId);
+    if (!orgRow) return res.status(404).json({ error: 'Org not found' });
+    const updated = await update(req, 'Organizations', orgRow.ROWID, patch);
     res.json({ org: normalize(updated) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update org', detail: e.message });
@@ -196,11 +215,75 @@ router.post('/transfer-ownership', requireOwner, async (req, res) => {
       await update(req, 'OrgMemberships', ownerRow.ROWID, { role: 'teacher' });
     }
     // Also stamp Organizations.owner_user_id so the platform admin view stays accurate.
-    await update(req, 'Organizations', req.orgId, { owner_user_id: String(targetMembership.user_id) });
+    // (Use the precise ROWID — see findOrgByLossyId comment.)
+    const orgRowPrecise = await findOrgByLossyId(req, req.orgId);
+    if (orgRowPrecise) {
+      await update(req, 'Organizations', orgRowPrecise.ROWID, { owner_user_id: String(targetMembership.user_id) });
+    }
 
     res.json({ message: 'Ownership transferred' });
   } catch (e) {
     res.status(500).json({ error: 'Transfer failed', detail: e.message });
+  }
+});
+
+// =============================================================================
+// POST /api/organization/logo — upload + persist a logo for this org.
+// Body: { data: 'data:image/png;base64,...' }
+// Reuses the existing photo Stratus bucket — logos live alongside student
+// photos under a distinct key (`org-<id>-logo.jpg`). Resized to ≤800px JPEG.
+// =============================================================================
+const { appFor } = require('../db/catalystDb');
+const { resizeAndCompress } = require('../lib/image');
+const { PHOTO_BUCKET, signStoredPhoto } = require('../lib/photoUpload');
+
+router.post('/logo', requireOwner, async (req, res) => {
+  try {
+    const { data } = req.body || {};
+    if (!data || typeof data !== 'string') {
+      return res.status(400).json({ error: 'data (base64 image) is required' });
+    }
+    const m = data.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    const b64 = m ? m[2] : data;
+    let buffer;
+    try { buffer = Buffer.from(b64, 'base64'); }
+    catch { return res.status(400).json({ error: 'Invalid base64 payload' }); }
+    if (buffer.length === 0) return res.status(400).json({ error: 'Empty image payload' });
+    if (buffer.length > 8 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Image must be 8MB or smaller' });
+    }
+
+    // Resize to a sensible logo size + compress.
+    let processed;
+    try { processed = await resizeAndCompress(buffer); }
+    catch (e) { return res.status(422).json({ error: 'Could not process image', detail: e.message }); }
+
+    const objectKey = `org-${Number(req.orgId)}-logo.jpg`;
+    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
+    await bucket.putObject(objectKey, processed, { contentType: 'image/jpeg', overwrite: true });
+
+    // Write the object key to Organizations.logo_url (we sign on read for display).
+    const orgRow = await findOrgByLossyId(req, req.orgId);
+    if (!orgRow) return res.status(404).json({ error: 'Org not found' });
+    await update(req, 'Organizations', orgRow.ROWID, { logo_url: objectKey });
+
+    // Return a fresh signed URL for instant preview.
+    const signed = await signStoredPhoto(req, objectKey);
+    res.json({ logo_url: signed, object_key: objectKey });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to upload logo', detail: e.message });
+  }
+});
+
+// GET /api/organization/logo-url — fresh signed URL for the current logo.
+router.get('/logo-url', async (req, res) => {
+  try {
+    const orgRow = await findOrgByLossyId(req, req.orgId);
+    if (!orgRow) return res.status(404).json({ error: 'Org not found' });
+    const signed = await signStoredPhoto(req, orgRow.logo_url);
+    res.json({ logo_url: signed });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to sign logo URL', detail: e.message });
   }
 });
 

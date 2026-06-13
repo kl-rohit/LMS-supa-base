@@ -2,7 +2,7 @@
 // Today: School (Phase 1) + Billing (Phase 2) + Templates (link to Messages).
 // Future tabs: Notifications, Branding, Privacy, Integrations.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   School,
   IndianRupee,
@@ -22,12 +22,15 @@ import {
   Crown,
   Trash2,
   ShieldCheck,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import TemplatesEditor from '../components/TemplatesEditor';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { invalidateOrgBranding } from '../hooks/useOrgBranding';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -356,15 +359,25 @@ function OrganizationTab() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' });
   const [inviting, setInviting] = useState(false);
+  // Logo state — picked file as a data URL, plus the currently-signed URL
+  // for display.
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoPending, setLogoPending] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef(null);
 
   const isOwner = role === 'owner' || role === 'platform_admin';
 
   const fetchOrg = async () => {
     setLoading(true);
     try {
-      const data = await api.get('/organization');
+      const [data, logoRes] = await Promise.all([
+        api.get('/organization'),
+        api.get('/organization/logo-url').catch(() => ({ logo_url: '' })),
+      ]);
       setOrg(data.org); setRole(data.role); setMembers(data.members || []);
       setName(data.org?.name || '');
+      setLogoUrl(logoRes?.logo_url || '');
     } catch (e) {
       toast.error('Failed to load organization: ' + e.message);
     } finally { setLoading(false); }
@@ -375,12 +388,42 @@ function OrganizationTab() {
     try {
       setSaving(true);
       await api.put('/organization', { name: name.trim() });
-      toast.success('Academy name updated');
+      // Tell the layouts to refetch branding so the sidebar updates immediately.
+      invalidateOrgBranding();
+      toast.success('Academy name updated — refresh the page to see it in the sidebar');
       setEditingName(false);
       fetchOrg();
     } catch (e) {
       toast.error('Save failed: ' + e.message);
     } finally { setSaving(false); }
+  };
+
+  const handlePickLogo = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please pick an image file'); return; }
+    if (file.size > 8 * 1024 * 1024)   { toast.error('Logo must be 8MB or smaller'); return; }
+    const reader = new FileReader();
+    reader.onload  = () => setLogoPending(String(reader.result || ''));
+    reader.onerror = () => toast.error('Could not read the file');
+    reader.readAsDataURL(file);
+  };
+
+  const uploadLogo = async () => {
+    if (!logoPending) return;
+    try {
+      setUploadingLogo(true);
+      const { logo_url } = await api.post('/organization/logo', { data: logoPending });
+      setLogoUrl(logo_url || '');
+      setLogoPending('');
+      if (logoInputRef.current) logoInputRef.current.value = '';
+      invalidateOrgBranding();
+      toast.success('Logo updated — refresh to see it in the sidebar');
+    } catch (e) {
+      toast.error('Logo upload failed: ' + e.message);
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   const sendInvite = async (e) => {
@@ -435,41 +478,93 @@ function OrganizationTab() {
 
   return (
     <div className="space-y-5">
-      {/* Org identity */}
-      <div className="card">
-        <h3 className="text-base font-semibold text-gray-900 mb-3">Organization</h3>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg font-semibold flex-shrink-0">
-            {(org.name || '?').slice(0, 1).toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            {editingName ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="input-field"
-                  maxLength={200}
-                  autoFocus
-                />
-                <button onClick={saveName} disabled={saving} className="btn-primary btn-sm">
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Save
-                </button>
-                <button onClick={() => { setEditingName(false); setName(org.name); }} className="btn-secondary btn-sm">Cancel</button>
-              </div>
+      {/* Org identity + branding */}
+      <div className="card space-y-4">
+        <h3 className="text-base font-semibold text-gray-900">Organization</h3>
+
+        {/* Logo block — the same image is what shows in the sidebar */}
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0">
+            {logoPending || logoUrl ? (
+              <img
+                src={logoPending || logoUrl}
+                alt=""
+                className="w-20 h-20 rounded-xl object-cover border-2 border-indigo-100 shadow-sm"
+              />
             ) : (
-              <>
-                <p className="text-lg font-semibold text-gray-900 truncate">{org.name}</p>
-                <p className="text-xs text-gray-500">Slug: <code>{org.slug}</code> · Plan: <code>{org.plan || 'free'}</code></p>
-              </>
+              <div className="w-20 h-20 rounded-xl bg-indigo-50 border-2 border-dashed border-indigo-200 flex items-center justify-center">
+                <ImageIcon className="w-8 h-8 text-indigo-300" />
+              </div>
             )}
           </div>
-          {!editingName && isOwner && (
-            <button onClick={() => setEditingName(true)} className="btn-secondary btn-sm">Rename</button>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-700">Logo</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Replaces the default music icon in the sidebar + browser tab. Square images render best.
+            </p>
+            {isOwner && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePickLogo}
+                  className="hidden"
+                  id="org-logo-input"
+                />
+                <label htmlFor="org-logo-input" className="btn-secondary btn-sm cursor-pointer">
+                  <Camera className="w-3.5 h-3.5" /> Choose file
+                </label>
+                {logoPending && (
+                  <>
+                    <button onClick={uploadLogo} disabled={uploadingLogo} className="btn-primary btn-sm">
+                      {uploadingLogo ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</>) : (<><Save className="w-3.5 h-3.5" /> Upload</>)}
+                    </button>
+                    <button onClick={() => { setLogoPending(''); if (logoInputRef.current) logoInputRef.current.value=''; }} className="text-xs text-gray-500 hover:text-gray-700 underline">
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Academy name (inline edit) */}
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-sm font-medium text-gray-700 mb-1">Academy name</p>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input-field"
+                maxLength={200}
+                autoFocus
+              />
+              <button onClick={saveName} disabled={saving} className="btn-primary btn-sm">
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save
+              </button>
+              <button onClick={() => { setEditingName(false); setName(org.name); }} className="btn-secondary btn-sm">Cancel</button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-lg font-semibold text-gray-900 truncate">{org.name}</p>
+                <p className="text-xs text-gray-500">
+                  Shown in the sidebar, browser tab, and as <code>{'{school}'}</code> in message templates.
+                  · Slug: <code>{org.slug}</code> · Plan: <code>{org.plan || 'free'}</code>
+                </p>
+              </div>
+              {isOwner && (
+                <button onClick={() => setEditingName(true)} className="btn-secondary btn-sm flex-shrink-0">Rename</button>
+              )}
+            </div>
           )}
         </div>
+
         <p className="text-xs text-gray-500">
           Your role: <span className="font-medium text-gray-700">{role}</span>
         </p>

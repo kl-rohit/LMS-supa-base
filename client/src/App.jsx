@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import {
@@ -46,6 +46,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
 import { useModuleFlags } from './hooks/useModuleFlags';
+import { useOrgBranding } from './hooks/useOrgBranding';
 
 // Every nav item gets a `flag` key — the name of the AppSettings toggle
 // that gates it. Items with flag: null are always visible (foundational).
@@ -78,6 +79,15 @@ function TeacherLayout() {
   const location = useLocation();
   const { user, signOut } = useAuth();
   const { flags } = useModuleFlags();
+  const branding = useOrgBranding();
+  const displayName = branding.name || 'Veena';
+
+  // Reflect the academy name in the browser tab title.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = `${displayName} — Student Tracker`;
+    }
+  }, [displayName]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -94,11 +104,20 @@ function TeacherLayout() {
         }`}
       >
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Music2 className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-gray-900">Veena</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {branding.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt=""
+                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Music2 className="w-5 h-5 text-white" />
+              </div>
+            )}
+            <span className="text-xl font-bold text-gray-900 truncate">{displayName}</span>
           </div>
           <button
             className="lg:hidden p-1 rounded-md hover:bg-gray-100"

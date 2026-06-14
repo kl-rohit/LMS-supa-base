@@ -25,7 +25,6 @@ import {
 // code-split via React.lazy → webpack emits a separate chunk per page, so
 // first-load JS is the small shell + the destination route.
 import Login from './pages/Login';
-import Signup from './pages/Signup';
 import ParentLayout from './layouts/ParentLayout';
 
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
@@ -138,7 +137,7 @@ function TeacherLayout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
                     isActive
-                      ? 'bg-indigo-50 text-indigo-700'
+                      ? 'bg-indigo-50 text-gray-900 dark:bg-indigo-600 dark:text-white'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`
                 }
@@ -154,10 +153,10 @@ function TeacherLayout() {
         <div className="absolute bottom-4 left-3 right-3 space-y-2">
           {user && (
             <div className="bg-indigo-50 rounded-lg p-3">
-              <p className="text-xs text-indigo-500 font-medium truncate">
+              <p className="text-xs text-gray-900 font-medium truncate">
                 {user.first_name || user.email}
               </p>
-              <p className="text-xs text-indigo-400 truncate">{user.email}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
             </div>
           )}
           <button
@@ -223,7 +222,10 @@ export default function App() {
       />
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+        {/* Academy creation is invite-only (platform admin creates them from
+            the Platform Admin page). The public signup form is retired — any
+            stale /signup link just bounces to sign-in. */}
+        <Route path="/signup" element={<Navigate to="/login" replace />} />
         <Route
           path="/portal/*"
           element={
@@ -235,7 +237,7 @@ export default function App() {
         <Route
           path="/*"
           element={
-            <RequireAuth role="App Administrator">
+            <RequireAuth role="admin">
               <TeacherLayout />
             </RequireAuth>
           }

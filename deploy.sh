@@ -62,11 +62,23 @@ if ! grep -q 'src="/app/' "$DIST/index.html"; then
 fi
 green "  ✓ artefacts look correct"
 
+# ---------- stamp build version ----------
+# Write the git SHA + build time into the function so /api/health can report
+# exactly which commit is live. Lets you verify a deploy with a single curl.
+blue "▶ Stamping build version"
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+GIT_DIRTY=""
+git diff --quiet 2>/dev/null || GIT_DIRTY="-dirty"
+BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '{\n  "commit": "%s%s",\n  "builtAt": "%s"\n}\n' "$GIT_SHA" "$GIT_DIRTY" "$BUILT_AT" \
+  > functions/api/version.json
+green "  ✓ commit ${GIT_SHA}${GIT_DIRTY} @ ${BUILT_AT}"
+
 # ---------- deploy ----------
 blue "▶ Running catalyst deploy"
 catalyst deploy
 
 green "✔ Deploy complete."
 echo
-echo "Quick smoke test:"
+echo "Quick smoke test (the 'commit' field should read ${GIT_SHA}${GIT_DIRTY}):"
 echo "  curl -s 'https://veena-attendance-60070745325.development.catalystserverless.in/server/api/api/health'"

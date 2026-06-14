@@ -15,6 +15,10 @@ import {
   Pause,
   Play,
   Eye,
+  Plus,
+  Mail,
+  X,
+  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -38,6 +42,15 @@ export default function Platform() {
   const [impersonating, setImpersonating] = useState(() => {
     try { return localStorage.getItem(IMPERSONATE_KEY) || ''; } catch { return ''; }
   });
+
+  // Create-academy (invite-only) form. The platform admin fills this; the
+  // backend creates the Catalyst user + org + owner membership and Catalyst
+  // emails the new owner an invite to set their password.
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const emptyForm = { academy_name: '', first_name: '', last_name: '', owner_email: '' };
+  const [createForm, setCreateForm] = useState(emptyForm);
+  const setCF = (k) => (e) => setCreateForm((f) => ({ ...f, [k]: e.target.value }));
 
   const isPlatformAdmin = user?.role === 'App Administrator';
 
@@ -75,6 +88,33 @@ export default function Platform() {
       fetchAll();
     } catch (e) {
       toast.error('Action failed: ' + e.message);
+    }
+  };
+
+  const createAcademy = async (e) => {
+    e.preventDefault();
+    const f = createForm;
+    if (!f.academy_name.trim()) return toast.error('Academy name is required.');
+    if (!f.first_name.trim()) return toast.error("Owner's first name is required.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.owner_email)) {
+      return toast.error('A valid owner email is required.');
+    }
+    try {
+      setCreating(true);
+      const data = await api.post('/auth/signup', {
+        academy_name: f.academy_name.trim(),
+        first_name: f.first_name.trim(),
+        last_name: f.last_name.trim(),
+        owner_email: f.owner_email.trim().toLowerCase(),
+      });
+      toast.success(`Created "${data?.org?.name || f.academy_name}". Invite emailed to ${f.owner_email}.`);
+      setCreateForm(emptyForm);
+      setShowCreate(false);
+      fetchAll();
+    } catch (err) {
+      toast.error('Could not create academy: ' + err.message);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -135,10 +175,62 @@ export default function Platform() {
             Cross-org dashboard for you, the platform owner. Org owners see only their own academy.
           </p>
         </div>
-        <button onClick={fetchAll} className="btn-secondary btn-sm">
-          <RefreshCw className="w-4 h-4" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchAll} className="btn-secondary btn-sm">
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+          <button
+            onClick={() => setShowCreate((v) => !v)}
+            className="btn-primary btn-sm"
+          >
+            {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showCreate ? 'Cancel' : 'Create academy'}
+          </button>
+        </div>
       </div>
+
+      {/* Invite a new academy (invite-only signup) */}
+      {showCreate && (
+        <form onSubmit={createAcademy} className="card border-indigo-100 bg-indigo-50/40 space-y-4">
+          <div className="flex items-start gap-2">
+            <Mail className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-gray-900">Invite a new academy</p>
+              <p className="text-sm text-gray-500">
+                We'll create the org and email the owner a link to set their password. They land in their
+                own admin app on first sign-in.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Academy name</label>
+              <input type="text" value={createForm.academy_name} onChange={setCF('academy_name')}
+                className="input-field" placeholder="e.g. Sangeet Sadhana" autoFocus required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Owner first name</label>
+              <input type="text" value={createForm.first_name} onChange={setCF('first_name')}
+                className="input-field" placeholder="First name" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Owner last name</label>
+              <input type="text" value={createForm.last_name} onChange={setCF('last_name')}
+                className="input-field" placeholder="Optional" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Owner email</label>
+              <input type="email" value={createForm.owner_email} onChange={setCF('owner_email')}
+                className="input-field" placeholder="owner@example.com" required />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" disabled={creating} className="btn-primary disabled:opacity-50">
+              {creating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : <><Plus className="w-4 h-4" /> Create & send invite</>}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Impersonation banner — visible whenever you're acting as a tenant */}
       {impersonating && (

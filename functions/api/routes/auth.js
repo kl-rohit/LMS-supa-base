@@ -7,7 +7,7 @@
 const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
 const { loadUser, publicUser } = require('../middleware/auth');
-const { insert, update, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { insert, update, zcql, unwrap, normalize, q } = require('../db/catalystDb');
 
 // GET /api/auth/me
 // Used by AuthContext on app mount + activates 'invited' org memberships
@@ -19,7 +19,8 @@ router.get('/me', async (req, res) => {
   // them active. They get here only by successfully logging in, which
   // implies they accepted the email invite.
   try { await activateMemberships(req, user.user_id); } catch {}
-  res.json({ user: publicUser(user) });
+  const app_role = await resolveAppRole(req, user);
+  res.json({ user: { ...publicUser(user), app_role } });
 });
 
 // POST /api/auth/logout
@@ -30,17 +31,32 @@ router.post('/logout', (req, res) => {
 // POST /api/auth/signup
 // Body: { academy_name, owner_email, first_name, last_name }
 //
-// Public endpoint (no auth required — mounted before requireAuth). Creates:
+// INVITE-ONLY. Academy creation is restricted to the platform administrator —
+// there is no public self-service signup. (Self-signup created un-linkable
+// "App User" accounts that landed in the parent portal with no student.) The
+// platform admin calls this from the Platform Admin page; Catalyst emails the
+// new owner an invite to set their password. Creates:
 //   1. A Catalyst user (userManagement.registerUser) → email invite sent
 //   2. An Organizations row (status: active, plan: free)
 //   3. An OrgMemberships row (role: owner, status: invited)
 //
-// The user then clicks the email link, sets a password, signs in. On their
-// first /api/auth/me call we flip status → active.
-//
-// Refuses if owner_email is already attached to an existing OrgMembership.
+// The new owner clicks the email link, sets a password, signs in. On their
+// first /api/auth/me call we flip the membership status → active and resolve
+// app_role → 'admin' (they have an owner membership).
 router.post('/signup', async (req, res) => {
   try {
+    // Gate: only the platform administrator (Catalyst "App Administrator")
+    // may create academies. Anyone else — including signed-out visitors — is
+    // refused. The endpoint stays mounted publicly, so we auth inline.
+    const caller = await loadUser(req);
+    const callerRole = caller?.role_details?.role_name || caller?.role || '';
+    if (callerRole !== 'App Administrator') {
+      return res.status(403).json({
+        error: 'Academy creation is invite-only',
+        detail: 'New academies are created by the platform administrator. Please contact them to get set up.',
+      });
+    }
+
     const academy_name = String(req.body?.academy_name || '').trim();
     const owner_email = String(req.body?.owner_email || '').trim().toLowerCase();
     const first_name = String(req.body?.first_name || '').trim();
@@ -136,6 +152,46 @@ function slugify(s) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 100);
+}
+
+// Decide where a logged-in user belongs, based on APP DATA — not the Catalyst
+// role. (Both academy owners and parents are created as Catalyst "App User";
+// public signup never assigned "App Administrator", so the role string can't be
+// trusted to tell admin from parent.) Resolution order:
+//   1. Catalyst "App Administrator"        → 'admin'  (the platform owner)
+//   2. Active OrgMembership owner/admin/teacher → 'admin'  (academy staff)
+//   3. A Students row links this user_id   → 'parent'
+//   4. Otherwise                           → 'unlinked' (signed in, nothing attached)
+async function resolveAppRole(req, user) {
+  const catalystRole = user?.role_details?.role_name || user?.role || '';
+  if (catalystRole === 'App Administrator') return 'admin';
+
+  const userId = String(user?.user_id || '');
+  if (!userId) return 'unlinked';
+
+  // Academy staff? Any active membership with a staff role makes them an admin.
+  try {
+    const rows = await zcql(
+      req,
+      `SELECT role, status FROM OrgMemberships WHERE OrgMemberships.user_id = ${q(userId)}`
+    );
+    const memberships = unwrap(rows, 'OrgMemberships').map(normalize);
+    const staff = memberships.some(
+      (m) => m.status === 'active' && ['owner', 'admin', 'teacher'].includes(String(m.role))
+    );
+    if (staff) return 'admin';
+  } catch { /* table may not exist in un-bootstrapped envs — fall through */ }
+
+  // Linked parent?
+  try {
+    const rows = await zcql(
+      req,
+      `SELECT ROWID FROM Students WHERE Students.login_user_id = ${q(userId)}`
+    );
+    if (unwrap(rows, 'Students').length > 0) return 'parent';
+  } catch { /* ignore */ }
+
+  return 'unlinked';
 }
 
 // Flip any 'invited' OrgMemberships for this user to 'active'.

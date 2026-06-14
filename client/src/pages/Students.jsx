@@ -675,7 +675,7 @@ export default function Students() {
               </div>
             </div>
           )}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -795,6 +795,73 @@ export default function Students() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile: stacked cards instead of a side-scrolling table */}
+          <div className="md:hidden divide-y divide-gray-100">
+            <label className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+              <input
+                type="checkbox"
+                checked={selectedIds.size > 0 && filteredStudents.every((s) => selectedIds.has(String(s.id)))}
+                onChange={(e) => {
+                  if (e.target.checked) setSelectedIds(new Set(filteredStudents.map((s) => String(s.id))));
+                  else clearSelection();
+                }}
+                className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+              />
+              Select all ({filteredStudents.length})
+            </label>
+            {filteredStudents.map((student) => {
+              const isOpenRow = detailStudent && String(detailStudent.id) === String(student.id);
+              const mobile = student.mobile_number
+                ? (phoneReveal.revealed ? formatMobileDisplay(student.mobile_number) : maskPhone(student.mobile_number))
+                : '';
+              const sub = [student.parent_name, mobile].filter(Boolean).join(' · ');
+              return (
+                <div
+                  key={student.id}
+                  onClick={() => setDetailStudent(student)}
+                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer ${
+                    isOpenRow
+                      ? 'bg-indigo-50'
+                      : selectedIds.has(String(student.id))
+                        ? 'bg-indigo-50/40'
+                        : 'active:bg-gray-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    onClick={(e) => e.stopPropagation()}
+                    checked={selectedIds.has(String(student.id))}
+                    onChange={() => toggleSelect(student.id)}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 flex-shrink-0"
+                  />
+                  {student.photo_url ? (
+                    <img
+                      src={student.photo_url}
+                      alt=""
+                      className="w-9 h-9 rounded-full object-cover border border-gray-200 flex-shrink-0"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-400 flex-shrink-0">
+                      {(student.name || '?').slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900 truncate">{student.name}</span>
+                      <span className={`${student.status === 'active' ? 'badge-active' : 'badge-inactive'} flex-shrink-0`}>
+                        {student.status}
+                      </span>
+                    </div>
+                    {sub && <div className="text-xs text-gray-500 truncate font-mono">{sub}</div>}
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                </div>
+              );
+            })}
+          </div>
+
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
             Showing {filteredStudents.length} of {students.length} students
           </div>

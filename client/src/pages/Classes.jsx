@@ -449,7 +449,7 @@ export default function Classes() {
           onClick={() => setActiveTab('schedule')}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'schedule'
-              ? 'border-indigo-600 text-indigo-600'
+              ? 'border-indigo-600 text-indigo-600 dark:text-white'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -460,7 +460,7 @@ export default function Classes() {
             onClick={() => setActiveTab('camps')}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'camps'
-                ? 'border-indigo-600 text-indigo-600'
+                ? 'border-indigo-600 text-indigo-600 dark:text-white'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -483,7 +483,7 @@ export default function Classes() {
                 onClick={() => setTypeFilter(type)}
                 className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                   typeFilter === type
-                    ? 'bg-indigo-100 text-indigo-700'
+                    ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -607,7 +607,7 @@ export default function Classes() {
                   onClick={() => setCampsStatusFilter(s)}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize ${
                     campsStatusFilter === s
-                      ? 'bg-indigo-100 text-indigo-700'
+                      ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >

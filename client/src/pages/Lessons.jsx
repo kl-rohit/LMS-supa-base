@@ -82,9 +82,9 @@ function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
       </button>
       <div className="text-sm font-semibold text-gray-400 w-6">{displayIdx + 1}.</div>
       {ytId ? (
-        <img src={ytThumbnail(ytId)} alt="" className="w-24 h-14 rounded object-cover flex-shrink-0" loading="lazy" />
+        <img src={ytThumbnail(ytId)} alt="" className="w-24 h-14 rounded object-cover flex-shrink-0 hidden sm:block" loading="lazy" />
       ) : (
-        <div className="w-24 h-14 rounded bg-blue-50 flex items-center justify-center flex-shrink-0">
+        <div className="w-24 h-14 rounded bg-blue-50 items-center justify-center flex-shrink-0 hidden sm:flex">
           <FileText className="w-6 h-6 text-blue-500" />
         </div>
       )}
@@ -498,13 +498,13 @@ export default function Lessons() {
         <div className="flex gap-1 bg-white rounded-lg border border-gray-200 p-1 w-fit">
           <button
             onClick={() => setTab('lessons')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === 'lessons' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === 'lessons' ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'}`}
           >
             Lessons ({lessons.length})
           </button>
           <button
             onClick={() => setTab('enrollments')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === 'enrollments' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === 'enrollments' ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'}`}
           >
             Enrollments ({enrollments.length})
           </button>
@@ -592,7 +592,8 @@ export default function Lessons() {
                 message="Add students to give them access to this course."
               />
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="overflow-x-auto hidden md:block">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
@@ -628,6 +629,31 @@ export default function Lessons() {
                   </tbody>
                 </table>
               </div>
+              {/* Mobile: stacked cards instead of a side-scrolling table */}
+              <div className="md:hidden space-y-2">
+                {enrollments.map((en) => (
+                  <div key={en.id} className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-gray-900 truncate">{en.student_name || '—'}</span>
+                      <button onClick={() => unenroll(en)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0" title="Unenroll">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${en.progress_percent >= 90 ? 'bg-green-500' : en.progress_percent >= 50 ? 'bg-indigo-500' : 'bg-amber-500'}`}
+                          style={{ width: `${en.progress_percent}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-600 flex-shrink-0">
+                        {en.lessons_completed}/{en.lessons_total} ({en.progress_percent}%)
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              </>
             )}
           </div>
         )}

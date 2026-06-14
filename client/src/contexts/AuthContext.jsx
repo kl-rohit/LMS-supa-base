@@ -9,6 +9,28 @@ import api from '../utils/api';
 
 const AuthContext = createContext(null);
 
+// Inject the Catalyst Web SDK (CDN core + project init) once, on demand.
+// Resolves when window.catalyst.auth is ready. Scripts must load in order:
+// the init.js wires the CDN SDK to THIS project's auth config.
+let sdkPromise = null;
+function loadCatalystSDK() {
+  if (window.catalyst?.auth) return Promise.resolve();
+  if (sdkPromise) return sdkPromise;
+  const loadScript = (src) =>
+    new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+  sdkPromise = loadScript('https://static.zohocdn.com/catalyst/sdk/js/4.4.0/catalystWebSDK.js')
+    .then(() => loadScript('/__catalyst/sdk/init.js'))
+    .catch((err) => { sdkPromise = null; throw err; });
+  return sdkPromise;
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,14 +48,22 @@ export function AuthProvider({ children }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Logout: redirect to Catalyst's hosted signout endpoint, which clears the
-  // session cookies and then bounces back to our /login page.
+  // Logout. Catalyst has NO hosted logout endpoint (only /__catalyst/auth/login
+  // is hosted) — clearing the session must go through the Web SDK's
+  // catalyst.auth.signOut(redirectURL), which wipes the cookies and then sends
+  // the browser to redirectURL. We lazy-load the SDK only on click so the rest
+  // of the app stays SDK-free (see Login.jsx). If the SDK can't load (offline,
+  // CDN blocked) we still hard-navigate to /login as a best effort.
   const signOut = useCallback(async () => {
-    try { await api.post('/auth/logout', {}); } catch {}
     setUser(null);
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
-    const back = encodeURIComponent(`${base}/login`);
-    window.location.href = `/__catalyst/auth/logout?signout_to=${back}`;
+    const redirectURL = `${window.location.origin}${base}/login`;
+    try {
+      await loadCatalystSDK();
+      window.catalyst.auth.signOut(redirectURL);
+    } catch {
+      window.location.href = `${base}/login`;
+    }
   }, []);
 
   return (

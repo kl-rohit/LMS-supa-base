@@ -221,11 +221,11 @@ export default function Messages() {
     try {
       setGenerating(true);
       const result = await api.post('/messages/generate-absence-alert');
-      const count = result.alerts?.length || 0;
+      const count = result.created ?? result.alerts?.length ?? 0;
       if (count > 0) {
         toast.success(`Generated ${count} absence alert(s)`);
       } else {
-        toast.success('No students with 3+ consecutive absences');
+        toast.success('No students with 2+ consecutive absences');
       }
       fetchData();
     } catch (err) {
@@ -503,7 +503,7 @@ export default function Messages() {
                     onClick={() => applyQuickTemplate(t.key)}
                     className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                       composeForm.message_type === t.key
-                        ? 'bg-indigo-100 text-indigo-700 border-indigo-300'
+                        ? 'bg-indigo-100 text-gray-900 border-indigo-300 dark:bg-indigo-600 dark:text-white'
                         : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                     }`}
                   >
@@ -540,7 +540,7 @@ export default function Messages() {
               onClick={() => setFilter(f.value)}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 filter === f.value
-                  ? 'bg-indigo-100 text-indigo-700'
+                  ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -578,7 +578,7 @@ export default function Messages() {
                 key={message.id}
                 className={`border-l-4 rounded-xl p-4 ${messageTypeColors[message.message_type] || 'bg-gray-50 border-l-gray-300'}`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`badge text-xs ${messageTypeBadge[message.message_type] || 'bg-gray-100 text-gray-600'}`}>
@@ -628,7 +628,7 @@ export default function Messages() {
                     </p>
                   </div>
 
-                  <div className="flex flex-col gap-2 flex-shrink-0">
+                  <div className="flex flex-row flex-wrap sm:flex-col gap-2 flex-shrink-0">
                     <button
                       onClick={() => copyMessage(message)}
                       className={`btn-sm rounded-lg transition-colors ${

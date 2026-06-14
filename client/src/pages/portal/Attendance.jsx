@@ -78,7 +78,7 @@ export default function PortalAttendance() {
                   key={s}
                   onClick={() => setStatusFilter(s)}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
-                    statusFilter === s ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+                    statusFilter === s ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   {s}
@@ -91,7 +91,8 @@ export default function PortalAttendance() {
         {filtered.length === 0 ? (
           <div className="text-center py-8 text-sm text-gray-400">No classes match the filters.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -136,6 +137,41 @@ export default function PortalAttendance() {
               </tbody>
             </table>
           </div>
+          {/* Mobile: stacked cards instead of a side-scrolling table */}
+          <div className="md:hidden space-y-3">
+            {filtered.map((r) => (
+              <div
+                key={r.id}
+                className={`rounded-lg border p-3 ${r.status === 'absent' ? 'border-red-200 bg-red-50/50' : 'border-gray-200'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-900">
+                    {r.date
+                      ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' })
+                      : '-'}
+                  </span>
+                  {(r.status === 'present' || r.status === 'late') && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium flex-shrink-0">
+                      <Check className="w-3 h-3" /> Present
+                    </span>
+                  )}
+                  {r.status === 'absent' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium flex-shrink-0">
+                      <X className="w-3 h-3" /> Absent
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-700 mt-1">{r.class_name || (r.camp_id ? 'Camp' : 'Ad-hoc')}</p>
+                {r.topic && (
+                  <p className="text-xs text-gray-500 mt-1"><span className="text-gray-400">Topic: </span>{r.topic}</p>
+                )}
+                {r.notes && (
+                  <p className="text-xs text-gray-500 mt-0.5"><span className="text-gray-400">Notes: </span>{r.notes}</p>
+                )}
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
     </div>

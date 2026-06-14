@@ -8,6 +8,42 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // --- Themeable palettes (Appearance settings) -------------------------
+        // indigo (accent) + gray (surfaces/text) read CSS variables holding
+        // SPACE-SEPARATED RGB channels, wrapped so Tailwind's `<alpha-value>`
+        // placeholder still works (so bg-indigo-50/40, bg-gray-200/60, etc. keep
+        // their opacity). The stock Tailwind channels are the fallback, so with
+        // no variables set the app looks exactly as before.
+        //   - Accent: utils/theme.js sets --c-indigo-* to re-skin the accent.
+        //   - Dark mode: the .dark block in index.css remaps --c-gray-*.
+        // `white` is deliberately NOT themed — text-white on coloured buttons and
+        // white overlays must stay white; dark surfaces are handled by explicit
+        // .dark overrides in index.css instead.
+        indigo: {
+          50:  'rgb(var(--c-indigo-50, 238 242 255) / <alpha-value>)',
+          100: 'rgb(var(--c-indigo-100, 224 231 255) / <alpha-value>)',
+          200: 'rgb(var(--c-indigo-200, 199 210 254) / <alpha-value>)',
+          300: 'rgb(var(--c-indigo-300, 165 180 252) / <alpha-value>)',
+          400: 'rgb(var(--c-indigo-400, 129 140 248) / <alpha-value>)',
+          500: 'rgb(var(--c-indigo-500, 99 102 241) / <alpha-value>)',
+          600: 'rgb(var(--c-indigo-600, 79 70 229) / <alpha-value>)',
+          700: 'rgb(var(--c-indigo-700, 67 56 202) / <alpha-value>)',
+          800: 'rgb(var(--c-indigo-800, 55 48 163) / <alpha-value>)',
+          900: 'rgb(var(--c-indigo-900, 49 46 129) / <alpha-value>)',
+        },
+        gray: {
+          50:  'rgb(var(--c-gray-50, 249 250 251) / <alpha-value>)',
+          100: 'rgb(var(--c-gray-100, 243 244 246) / <alpha-value>)',
+          200: 'rgb(var(--c-gray-200, 229 231 235) / <alpha-value>)',
+          300: 'rgb(var(--c-gray-300, 209 213 219) / <alpha-value>)',
+          400: 'rgb(var(--c-gray-400, 156 163 175) / <alpha-value>)',
+          500: 'rgb(var(--c-gray-500, 107 114 128) / <alpha-value>)',
+          600: 'rgb(var(--c-gray-600, 75 85 99) / <alpha-value>)',
+          700: 'rgb(var(--c-gray-700, 55 65 81) / <alpha-value>)',
+          800: 'rgb(var(--c-gray-800, 31 41 55) / <alpha-value>)',
+          900: 'rgb(var(--c-gray-900, 17 24 39) / <alpha-value>)',
+        },
+
         // Light theme 3 (from reference repo)
         'light-side-bar': '#E9E9E9',
         'light-menu-bar': '#F2F2F2',

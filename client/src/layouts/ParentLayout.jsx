@@ -130,7 +130,7 @@ export default function ParentLayout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
                     isActive
-                      ? 'bg-indigo-50 text-indigo-700'
+                      ? 'bg-indigo-50 text-gray-900 dark:bg-indigo-600 dark:text-white'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`
                 }
@@ -145,10 +145,10 @@ export default function ParentLayout() {
         <div className="absolute bottom-4 left-3 right-3 space-y-2">
           {user && (
             <div className="bg-indigo-50 rounded-lg p-3">
-              <p className="text-xs text-indigo-500 font-medium truncate">
+              <p className="text-xs text-gray-900 font-medium truncate">
                 {user.first_name || user.email}
               </p>
-              <p className="text-xs text-indigo-400 truncate">{user.email}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
             </div>
           )}
           <button

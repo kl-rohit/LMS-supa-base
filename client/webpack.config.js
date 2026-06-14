@@ -63,6 +63,7 @@ module.exports = (_env, argv) => {
     plugins: [
       new HtmlWebpackPlugin({
         template: './src/index.html',
+        templateParameters: { PUBLIC_URL },
       }),
       new webpack.DefinePlugin({
         'process.env.API_BASE': JSON.stringify(API_BASE),

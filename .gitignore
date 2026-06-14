@@ -6,6 +6,9 @@ node_modules/
 client/dist/
 functions/*/dist/
 
+# Generated at deploy time by deploy.sh (git SHA stamp for /api/health)
+functions/api/version.json
+
 # Catalyst secrets — must NEVER be committed (env vars, ZAID, etc).
 # Keep catalyst-config.example.json in git with placeholder values instead.
 functions/*/catalyst-config.json

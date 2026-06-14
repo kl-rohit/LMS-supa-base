@@ -7,6 +7,13 @@ const { requireAuth, requireAdmin } = require('./middleware/auth');
 const { requireParent } = require('./middleware/parent');
 const { resolveOrg, requireOrgId } = require('./middleware/org');
 
+// Build version — written by deploy.sh at deploy time (git SHA + build time).
+// Absent in dev / fresh checkouts; fall back to 'dev' so /api/health never errors.
+let version = { commit: 'dev', builtAt: null };
+try {
+  version = require('./version.json');
+} catch (_e) { /* no version.json — running locally */ }
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -39,7 +46,7 @@ app.get('/', (_req, res) => {
     ],
   });
 });
-app.get('/api/health', (_req, res) => res.json({ ok: true, function: 'api' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, function: 'api', commit: version.commit, builtAt: version.builtAt }));
 
 // /api/auth — public; /me returns 401 itself when logged out.
 app.use('/api/auth', require('./routes/auth'));

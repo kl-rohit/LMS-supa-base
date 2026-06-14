@@ -57,6 +57,8 @@ export default function Attendance() {
   const [savingEdit, setSavingEdit] = useState(false);
   // Marked attendance for the selected date (across all classes)
   const [dateAttendance, setDateAttendance] = useState([]);
+  // Post-record view: filter the "Marked attendance" list by status to cut clutter.
+  const [recordStatusFilter, setRecordStatusFilter] = useState('all'); // all | present | absent
 
   function formatDateLocal(date) {
     const y = date.getFullYear();
@@ -631,36 +633,36 @@ export default function Attendance() {
 
       {/* Date Picker */}
       <div className="card">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
-            <CalendarDays className="w-5 h-5 text-indigo-600" />
+            <CalendarDays className="w-5 h-5 text-indigo-600 flex-shrink-0" />
             <h2 className="text-lg font-semibold text-gray-900">Mark Attendance</h2>
           </div>
-          <div className="flex items-center gap-2">
-            {selectedDate !== formatDateLocal(new Date()) && (
-              <button
-                onClick={() => setSelectedDate(formatDateLocal(new Date()))}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                title="Jump to today"
-              >
-                Today
-              </button>
-            )}
-            <button onClick={() => changeDate(-1)} className="p-2 rounded-lg hover:bg-gray-100">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => changeDate(-1)} className="p-2 rounded-lg hover:bg-gray-100 flex-shrink-0">
               <ChevronLeft className="w-4 h-4 text-gray-600" />
             </button>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="input-field w-auto"
+              className="input-field w-auto min-w-0 flex-1 sm:flex-none"
             />
-            <button onClick={() => changeDate(1)} className="p-2 rounded-lg hover:bg-gray-100">
+            <button onClick={() => changeDate(1)} className="p-2 rounded-lg hover:bg-gray-100 flex-shrink-0">
               <ChevronRight className="w-4 h-4 text-gray-600" />
             </button>
+            {selectedDate !== formatDateLocal(new Date()) && (
+              <button
+                onClick={() => setSelectedDate(formatDateLocal(new Date()))}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors flex-shrink-0"
+                title="Jump to today"
+              >
+                Today
+              </button>
+            )}
           </div>
         </div>
-        <p className="text-sm text-gray-500 mt-1 ml-8">{dayName}</p>
+        <p className="text-sm text-gray-500 mt-1 sm:ml-8">{dayName}</p>
       </div>
 
       {/* Classes for the day */}
@@ -676,7 +678,7 @@ export default function Attendance() {
               <button
                 onClick={() => setClassMode('today')}
                 className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                  classMode === 'today' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+                  classMode === 'today' ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Today
@@ -684,7 +686,7 @@ export default function Attendance() {
               <button
                 onClick={() => setClassMode('any')}
                 className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                  classMode === 'any' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+                  classMode === 'any' ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Any class
@@ -950,14 +952,13 @@ export default function Attendance() {
             />
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto hidden md:block">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="table-header">Student</th>
                       <th className="table-header text-center">Status</th>
                       <th className="table-header">What was taught</th>
-                      <th className="table-header text-right">Fee</th>
                       <th className="table-header text-center w-16"></th>
                     </tr>
                   </thead>
@@ -1000,29 +1001,17 @@ export default function Attendance() {
                           </div>
                         </td>
                         <td className="table-cell min-w-[280px]">
-                          <textarea
-                            value={record.topic}
-                            onChange={(e) => updateRecord(idx, 'topic', e.target.value)}
-                            rows={2}
-                            className="input-field text-sm resize-y leading-snug"
-                            placeholder="What was taught..."
-                            title={record.topic}
-                          />
-                        </td>
-                        <td className="table-cell text-right">
-                          {record.status === 'present' ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <span className="text-gray-400 text-sm">{'\u20B9'}</span>
-                              <input
-                                type="number"
-                                value={record.fee_charged}
-                                onChange={(e) => updateRecord(idx, 'fee_charged', Number(e.target.value))}
-                                className="input-field text-sm w-24 text-right"
-                                min="0"
-                              />
-                            </div>
+                          {record.status === 'absent' ? (
+                            <span className="text-gray-400 text-sm">—</span>
                           ) : (
-                            <span className="text-gray-400 text-sm">-</span>
+                            <textarea
+                              value={record.topic}
+                              onChange={(e) => updateRecord(idx, 'topic', e.target.value)}
+                              rows={2}
+                              className="input-field text-sm resize-y leading-snug"
+                              placeholder="What was taught..."
+                              title={record.topic}
+                            />
                           )}
                         </td>
                         <td className="table-cell text-center">
@@ -1040,6 +1029,68 @@ export default function Attendance() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile: stacked cards instead of a side-scrolling table */}
+              <div className="md:hidden space-y-3">
+                {attendanceRecords.map((record, idx) => (
+                  <div
+                    key={record.student_id}
+                    className={`rounded-lg border p-3 ${record.status === 'absent' ? 'border-red-200 bg-red-50/50' : 'border-gray-200'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium text-gray-900 truncate">{record.student_name}</span>
+                        {record.absent_streak >= 2 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium flex-shrink-0">
+                            <AlertTriangle className="w-3 h-3" />
+                            {record.absent_streak}
+                          </span>
+                        )}
+                      </div>
+                      {record.existing_id && (
+                        <button
+                          onClick={() => deleteAttendanceRecord(idx)}
+                          className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+                          title="Delete attendance record"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <button
+                        onClick={() => updateRecord(idx, 'status', 'present')}
+                        className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          record.status === 'present'
+                            ? 'bg-green-500 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-600'
+                        }`}
+                      >
+                        <Check className="w-4 h-4" /> Present
+                      </button>
+                      <button
+                        onClick={() => updateRecord(idx, 'status', 'absent')}
+                        className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          record.status === 'absent'
+                            ? 'bg-red-500 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600'
+                        }`}
+                      >
+                        <X className="w-4 h-4" /> Absent
+                      </button>
+                    </div>
+                    {record.status !== 'absent' && (
+                      <textarea
+                        value={record.topic}
+                        onChange={(e) => updateRecord(idx, 'topic', e.target.value)}
+                        rows={2}
+                        className="input-field text-sm resize-y leading-snug mb-2"
+                        placeholder="What was taught..."
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
 
               {/* Summary & Submit */}
@@ -1091,12 +1142,33 @@ export default function Attendance() {
               ({dateAttendance.length} record{dateAttendance.length === 1 ? '' : 's'})
             </span>
           </div>
-          {dateAttendance.length > 0 && (
-            <span className="font-semibold text-indigo-700 text-sm">
-              <IndianRupee className="w-4 h-4 inline mr-0.5" />
-              {dateTotalFee.toLocaleString('en-IN')}
-            </span>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            {dateAttendance.length > 0 && (
+              <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'present', label: `Present (${dateAttendance.filter((r) => r.status === 'present' || r.status === 'late').length})` },
+                  { key: 'absent', label: `Absent (${dateAttendance.filter((r) => r.status === 'absent').length})` },
+                ].map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setRecordStatusFilter(opt.key)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      recordStatusFilter === opt.key ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {dateAttendance.length > 0 && (
+              <span className="font-semibold text-indigo-700 text-sm">
+                <IndianRupee className="w-4 h-4 inline mr-0.5" />
+                {dateTotalFee.toLocaleString('en-IN')}
+              </span>
+            )}
+          </div>
         </div>
 
         {dateAttendance.length === 0 ? (
@@ -1107,7 +1179,22 @@ export default function Attendance() {
           />
         ) : (
           <div className="space-y-3">
+            {recordStatusFilter !== 'all' && !dateAttendance.some((r) =>
+              recordStatusFilter === 'present' ? (r.status === 'present' || r.status === 'late') : r.status === 'absent'
+            ) && (
+              <div className="text-center py-6 text-sm text-gray-400">
+                No {recordStatusFilter} records for {dayName}.
+              </div>
+            )}
             {dateAttendanceGroups.map((group) => {
+              // Apply the status filter. 'present' includes 'late' (both are
+              // "attended" — they match the green pill in the rows below).
+              const visibleRecords = group.records.filter((r) => {
+                if (recordStatusFilter === 'present') return r.status === 'present' || r.status === 'late';
+                if (recordStatusFilter === 'absent') return r.status === 'absent';
+                return true;
+              });
+              if (visibleRecords.length === 0) return null;
               const groupTotal = group.records.reduce(
                 (s, r) => s + (Number(r.fee_charged) || 0),
                 0
@@ -1144,12 +1231,16 @@ export default function Attendance() {
                     </div>
                   </div>
                   <div className="divide-y divide-gray-100">
-                    {group.records.map((rec) => (
+                    {visibleRecords.map((rec) => (
                       <div key={rec.id} className="flex items-center justify-between px-4 py-2 text-sm">
                         <div className="flex-1 min-w-0">
                           <span className="font-medium text-gray-900">{rec.student_name}</span>
-                          {rec.topic && (
+                          {rec.topic ? (
                             <span className="text-gray-500 ml-2 truncate">&mdash; {rec.topic}</span>
+                          ) : (rec.status === 'present' || rec.status === 'late') && (
+                            <span className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 text-xs font-medium align-middle">
+                              <AlertTriangle className="w-3 h-3" /> no topic
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-3 ml-2">
@@ -1236,16 +1327,18 @@ export default function Attendance() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Topic taught</label>
-              <input
-                type="text"
-                value={editForm.topic}
-                onChange={(e) => setEditForm({ ...editForm, topic: e.target.value })}
-                placeholder="e.g. Raag Yaman — alaap"
-                className="input-field"
-              />
-            </div>
+            {editForm.status !== 'absent' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Topic taught</label>
+                <input
+                  type="text"
+                  value={editForm.topic}
+                  onChange={(e) => setEditForm({ ...editForm, topic: e.target.value })}
+                  placeholder="e.g. Raag Yaman — alaap"
+                  className="input-field"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes / discussed</label>

@@ -2,8 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Veena - Student Tracker</title>
+
+    <!-- Speed up the parent-portal video player: warm up TCP/TLS to YouTube's
+         hosts so the IFrame API + first video segment load faster. -->
+    <link rel="preconnect" href="https://www.youtube.com" />
+    <link rel="preconnect" href="https://www.youtube-nocookie.com" />
+    <link rel="preconnect" href="https://i.ytimg.com" />
+    <link rel="preconnect" href="https://s.ytimg.com" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="<%= PUBLIC_URL %>manifest.webmanifest" />
+    <meta name="theme-color" content="#4F46E5" />
+    <link rel="icon" type="image/png" sizes="192x192" href="<%= PUBLIC_URL %>icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="<%= PUBLIC_URL %>icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Veena" />
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body class="bg-gray-50">
     <div id="root"></div>

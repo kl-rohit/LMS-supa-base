@@ -68,6 +68,10 @@ export default function CoursePlayer() {
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // iOS Safari cannot put a <div>/<iframe> into native fullscreen (only <video>),
+  // so the embedded YouTube player can't go native-fullscreen there. Fall back to
+  // a CSS "pseudo-fullscreen" that pins the player over the viewport.
+  const [pseudoFs, setPseudoFs] = useState(false);
   // Playback speed (YouTube IFrame API supports 0.25 / 0.5 / 0.75 / 1 / 1.25 / 1.5 / 1.75 / 2)
   // Music-relevant choices: 0.5x for slow-along practice, 1.25/1.5x for review.
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -92,6 +96,13 @@ export default function CoursePlayer() {
   // Keep the latest lesson id in a ref so the beforeunload handler always has it.
   const currentLessonIdRef = useRef(null);
   useEffect(() => { currentLessonIdRef.current = currentLessonId; }, [currentLessonId]);
+
+  // ----- Preload the YouTube IFrame API on mount -----
+  // The API script (~50KB) used to only start downloading once the player
+  // mounted — i.e. AFTER the course fetch resolved. Kicking it off here lets the
+  // script download in parallel with the lessons fetch, so the player is ready
+  // sooner and the "loading…" gap shrinks noticeably.
+  useEffect(() => { loadYouTubeAPI(); }, []);
 
   // ----- Initial load -----
   useEffect(() => {
@@ -269,10 +280,28 @@ export default function CoursePlayer() {
 
   // ----- Fullscreen handling -----
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const onChange = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
     document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
   }, []);
+
+  // ----- CSS pseudo-fullscreen (iOS fallback) -----
+  // Lock body scroll while pinned over the viewport, and let Escape exit.
+  useEffect(() => {
+    if (!pseudoFs) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') setPseudoFs(false); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [pseudoFs]);
 
   // ----- Keyboard shortcuts -----
   // Spacebar = play/pause
@@ -391,10 +420,26 @@ export default function CoursePlayer() {
   const toggleFullscreen = async () => {
     const el = playerWrapperRef.current;
     if (!el) return;
+    // If we're in CSS pseudo-fullscreen (iOS), just toggle it back off.
+    if (pseudoFs) { setPseudoFs(false); return; }
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl) {
+      try {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } catch {}
+      return;
+    }
+    // Entering: prefer the native Fullscreen API (desktop Chrome/Firefox/Safari).
     try {
-      if (!document.fullscreenElement) await el.requestFullscreen();
-      else await document.exitFullscreen();
+      if (el.requestFullscreen) { await el.requestFullscreen(); return; }
+      if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); return; }
     } catch {}
+    // iOS Safari can't fullscreen a <div>/<iframe> (only <video>), so the
+    // native Fullscreen API is unavailable on the wrapper. We keep our custom
+    // player (no native YT controls = no sharing/open-in-app) and instead pin
+    // it over the viewport with CSS.
+    setPseudoFs(true);
   };
 
   const seekTo = (seconds) => {
@@ -484,8 +529,8 @@ export default function CoursePlayer() {
           <div
             ref={playerWrapperRef}
             className={`card p-0 overflow-hidden ${isDocLesson ? 'bg-gray-100' : 'bg-black'} relative group select-none ${
-              isFullscreen ? 'flex items-center justify-center !rounded-none border-none' : ''
-            }`}
+              (isFullscreen || pseudoFs) ? 'flex items-center justify-center !rounded-none border-none' : ''
+            } ${pseudoFs ? 'fixed inset-0 z-[60] !bg-black' : ''}`}
             onContextMenu={(e) => e.preventDefault()}
           >
             {/* Document iframe — only when current lesson is a doc with a valid URL */}
@@ -512,7 +557,7 @@ export default function CoursePlayer() {
             {!isDocLesson && currentYtId ? (
               <div
                 className="aspect-video w-full relative"
-                style={isFullscreen ? {
+                style={(isFullscreen || pseudoFs) ? {
                   // Fill whichever dimension hits first while preserving 16:9.
                   width: 'min(100vw, 177.78vh)',
                   height: 'min(100vh, 56.25vw)',
@@ -681,9 +726,9 @@ export default function CoursePlayer() {
                       type="button"
                       onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
                       className="p-1.5 rounded hover:bg-white/10"
-                      aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                      aria-label={(isFullscreen || pseudoFs) ? 'Exit fullscreen' : 'Enter fullscreen'}
                     >
-                      {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                      {(isFullscreen || pseudoFs) ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                     </button>
                   </div>
                 </div>

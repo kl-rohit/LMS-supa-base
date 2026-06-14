@@ -24,6 +24,10 @@ import {
   ShieldCheck,
   Camera,
   Image as ImageIcon,
+  Palette,
+  Sun,
+  Moon,
+  Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -31,6 +35,7 @@ import Loader from '../components/Loader';
 import TemplatesEditor from '../components/TemplatesEditor';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { invalidateOrgBranding } from '../hooks/useOrgBranding';
+import { PRESETS, applyTheme, saveTheme } from '../utils/theme';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -55,10 +60,14 @@ const EMPTY_SETTINGS = {
   'portal.show_lessons':       'true',
   'portal.show_fees':          'true',
   'portal.allow_profile_edit': 'true',
+  // Appearance — accent theme ('default' | preset id | '#hex') + light/dark.
+  'appearance.accent': 'default',
+  'appearance.mode':   'light',
 };
 
 const TABS = [
   { id: 'school',       label: 'School',       icon: School },
+  { id: 'appearance',   label: 'Appearance',   icon: Palette },
   { id: 'billing',      label: 'Billing',      icon: IndianRupee },
   { id: 'modules',      label: 'Modules',      icon: ToggleLeft },
   { id: 'templates',    label: 'Templates',    icon: MessageSquare },
@@ -78,7 +87,13 @@ export default function Settings() {
       try {
         const { settings } = await api.get('/settings/app');
         if (cancelled) return;
-        setForm({ ...EMPTY_SETTINGS, ...(settings || {}) });
+        const merged = { ...EMPTY_SETTINGS, ...(settings || {}) };
+        setForm(merged);
+        // Reconcile the server's saved appearance with this device: apply it
+        // and cache it so the theme follows the academy across devices.
+        const theme = { accent: merged['appearance.accent'], mode: merged['appearance.mode'] };
+        applyTheme(theme);
+        saveTheme(theme);
       } catch (e) {
         toast.error('Failed to load settings: ' + e.message);
       } finally {
@@ -123,7 +138,7 @@ export default function Settings() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-1">
+        <nav className="-mb-px flex flex-wrap gap-x-1 gap-y-0">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -133,7 +148,7 @@ export default function Settings() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-700'
+                    ? 'border-indigo-600 text-indigo-700 dark:text-white'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
@@ -147,6 +162,7 @@ export default function Settings() {
 
       {/* Tab content */}
       {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
+      {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
       {activeTab === 'billing'      && <BillingTab form={form} set={set} />}
       {activeTab === 'modules'      && <ModulesTab form={form} set={set} />}
       {activeTab === 'templates'    && <TemplatesTab />}
@@ -294,6 +310,122 @@ function BillingTab({ form, set }) {
             placeholder="0 = no minimum"
           />
         </Field>
+      </div>
+    </div>
+  );
+}
+
+function AppearanceTab({ form, setForm }) {
+  const accent = form['appearance.accent'] || 'default';
+  const mode = form['appearance.mode'] || 'light';
+
+  // Apply changes live (instant preview) AND cache to localStorage so the look
+  // survives a reload even before the user hits Save (which persists to the
+  // backend for cross-device sync). The bottom Save bar sends `form`, which
+  // already carries these keys.
+  const update = (patch) => {
+    const next = {
+      accent: patch.accent !== undefined ? patch.accent : accent,
+      mode: patch.mode !== undefined ? patch.mode : mode,
+    };
+    setForm((f) => ({ ...f, 'appearance.accent': next.accent, 'appearance.mode': next.mode }));
+    applyTheme(next);
+    saveTheme(next);
+  };
+
+  const isCustom = accent !== 'default' && !PRESETS.some((p) => p.id === accent);
+  const customValue = isCustom ? accent : '#4f46e5';
+
+  return (
+    <div className="space-y-5">
+      {/* Accent colour */}
+      <div className="card space-y-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Accent colour</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Recolours buttons, links, the active sidebar item, and the app/browser
+            theme colour. Pick a preset or choose your own.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+          {PRESETS.map((p) => {
+            const selected = accent === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => update({ accent: p.id })}
+                className="flex flex-col items-center gap-1.5 group"
+                title={p.label}
+              >
+                <span
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform group-hover:scale-105 ${selected ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
+                  style={{ backgroundColor: p.swatch }}
+                >
+                  {selected && <Check className="w-5 h-5 text-white" />}
+                </span>
+                <span className={`text-xs ${selected ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <label className="flex items-center gap-3">
+            <span
+              className={`w-10 h-10 rounded-full flex items-center justify-center ${isCustom ? 'ring-2 ring-offset-2 ring-gray-400' : 'border border-gray-200'}`}
+              style={{ backgroundColor: customValue }}
+            >
+              {isCustom && <Check className="w-5 h-5 text-white" />}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-gray-700">Custom colour</span>
+              <span className="block text-xs text-gray-500">Pick any colour — the full shade range is generated for you.</span>
+            </span>
+            <input
+              type="color"
+              value={customValue}
+              onChange={(e) => update({ accent: e.target.value })}
+              className="ml-auto w-12 h-9 rounded-md border border-gray-300 bg-white cursor-pointer p-0.5"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Light / dark mode */}
+      <div className="card space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Theme mode</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Switch the whole app between light and dark.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 max-w-sm">
+          {[
+            { id: 'light', label: 'Light', icon: Sun },
+            { id: 'dark', label: 'Dark', icon: Moon },
+          ].map((opt) => {
+            const Icon = opt.icon;
+            const selected = mode === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => update({ mode: opt.id })}
+                className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                  selected
+                    ? 'border-indigo-600 bg-indigo-50 text-gray-900 dark:bg-indigo-600 dark:text-white'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <Icon className="w-4 h-4" /> {opt.label}
+                {selected && <Check className="w-4 h-4" />}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-gray-400">
+          Saved per device immediately. Hit <span className="font-medium">Save changes</span> to sync it to your account so it applies on other devices too.
+        </p>
       </div>
     </div>
   );

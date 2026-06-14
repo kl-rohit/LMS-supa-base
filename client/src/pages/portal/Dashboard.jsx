@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Check, IndianRupee, PlayCircle, ChevronRight } from 'lucide-react';
+import { Calendar, Check, IndianRupee, PlayCircle, ChevronRight, UserX, LogOut } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
+import { useAuth } from '../../contexts/AuthContext';
 import { extractYouTubeId, ytThumbnail, formatDuration } from '../../utils/youtube';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 export default function PortalDashboard() {
+  const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState(null);
   const [fees, setFees] = useState(null);
@@ -46,12 +48,33 @@ export default function PortalDashboard() {
 
   if (loading) return <Loader />;
   if (!student) {
+    const signedInEmail = user?.email || '';
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-700 font-medium">Account not set up yet</p>
-        <p className="text-sm text-gray-500 mt-1">
-          Your teacher hasn't linked a student to this login. Please contact them.
+      <div className="max-w-md mx-auto text-center py-12 px-4">
+        <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+          <UserX className="w-7 h-7" />
+        </div>
+        <p className="text-gray-900 font-semibold text-lg">Account not set up yet</p>
+        <p className="text-sm text-gray-500 mt-2">
+          Your teacher hasn't linked a student to this login.
+          {signedInEmail && (
+            <> Share this exact email with them so they can connect you:</>
+          )}
         </p>
+        {signedInEmail && (
+          <div className="mt-3 inline-block bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-800 break-all">
+            {signedInEmail}
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-4">
+          If you were invited with a different email, sign out and sign back in with that one.
+        </p>
+        <button
+          onClick={signOut}
+          className="mt-5 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+        >
+          <LogOut className="w-4 h-4" /> Sign out
+        </button>
       </div>
     );
   }

@@ -331,7 +331,7 @@ export default function Reports() {
       <h2 className="page-header mb-0">Reports</h2>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex flex-wrap border-b border-gray-200">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -340,7 +340,7 @@ export default function Reports() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-indigo-600 text-indigo-600'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-white'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -523,7 +523,7 @@ export default function Reports() {
               {studentReport.monthly_breakdown && studentReport.monthly_breakdown.length > 0 && (
                 <div className="card">
                   <h3 className="font-semibold text-gray-900 mb-4">Monthly Breakdown</h3>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto hidden md:block">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
@@ -556,6 +556,30 @@ export default function Reports() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Mobile cards */}
+                  <div className="md:hidden divide-y divide-gray-100">
+                    {studentReport.monthly_breakdown.map((m, idx) => (
+                      <div key={idx} className="py-3 first:pt-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-medium text-gray-900">{m.month_name || `${MONTHS[(m.month || 1) - 1]} ${m.year}`}</span>
+                          <span className="font-semibold text-gray-900">{'\u20B9'}{Number(m.total_fees || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>{m.total_classes || 0} classes</span>
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${(m.attendance_rate || 0) >= 80 ? 'bg-green-500' : (m.attendance_rate || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                style={{ width: `${m.attendance_rate || 0}%` }}
+                              />
+                            </div>
+                            <span>{Math.round(m.attendance_rate || 0)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   {/* Visual Chart */}
@@ -653,7 +677,7 @@ export default function Reports() {
                               onClick={() => setHistoryStatusFilter(s)}
                               className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-colors ${
                                 historyStatusFilter === s
-                                  ? 'bg-indigo-100 text-indigo-700'
+                                  ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
                                   : 'text-gray-500 hover:text-gray-700'
                               }`}
                             >
@@ -666,7 +690,8 @@ export default function Reports() {
                     {records.length === 0 ? (
                       <div className="text-center py-6 text-sm text-gray-400">No classes match the filters.</div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <>
+                      <div className="overflow-x-auto hidden md:block">
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
@@ -735,6 +760,53 @@ export default function Reports() {
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Mobile cards */}
+                      <div className="md:hidden space-y-3">
+                        {records.map((r, idx) => (
+                          <div key={idx} className={`rounded-lg border p-3 ${r.status === 'absent' ? 'border-red-100 bg-red-50/40' : 'border-gray-100'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {r.date
+                                    ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' })
+                                    : '-'}
+                                </div>
+                                <div className="text-xs text-gray-500">{r.class_name || (r.camp_id ? 'Camp' : 'Ad-hoc')}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {(r.status === 'present' || r.status === 'late') && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                                    <Check className="w-3 h-3" /> Present
+                                  </span>
+                                )}
+                                {r.status === 'absent' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                                    <X className="w-3 h-3" /> Absent
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => openEdit(r)}
+                                  className="p-1 rounded-md hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors"
+                                  title="Edit class record"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            {r.topic && (
+                              <p className="mt-2 text-sm text-gray-700"><span className="text-gray-400">Topic: </span>{r.topic}</p>
+                            )}
+                            {r.notes && (
+                              <p className="mt-1 text-sm text-gray-700"><span className="text-gray-400">Notes: </span>{r.notes}</p>
+                            )}
+                            {(r.status === 'present' || r.status === 'late') && (
+                              <p className="mt-1 text-sm text-gray-700"><span className="text-gray-400">Fee: </span>{`₹${Number(r.fee_charged || 0).toLocaleString('en-IN')}`}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      </>
                     )}
                   </div>
                 );
@@ -817,7 +889,7 @@ export default function Reports() {
                   <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
                     <h3 className="font-semibold text-gray-900">Student Summary</h3>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto hidden md:block">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
@@ -861,6 +933,39 @@ export default function Reports() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Mobile cards */}
+                  <div className="md:hidden divide-y divide-gray-100">
+                    {monthlyReport.students.map((s, idx) => (
+                      <div key={idx} className="px-4 py-3">
+                        <div className="flex items-center justify-between mb-1.5 gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedStudentId(String(s.student_id || s.id));
+                              setActiveTab('student');
+                            }}
+                            className="font-medium text-indigo-600 hover:underline text-left min-w-0 truncate"
+                            title="View this student's full report"
+                          >
+                            {s.student_name || s.name}
+                          </button>
+                          <span className="font-semibold text-gray-900 shrink-0">{'\u20B9'}{Number(s.total_fees || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>{s.total_classes || 0} classes</span>
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${(s.attendance_rate || 0) >= 80 ? 'bg-green-500' : (s.attendance_rate || 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                style={{ width: `${Math.min(s.attendance_rate || 0, 100)}%` }}
+                              />
+                            </div>
+                            <span>{Math.round(s.attendance_rate || 0)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1200,7 +1305,8 @@ export default function Reports() {
                       message="Once parents start watching lessons, their progress will appear here."
                     />
                   ) : (
-                    <div className="overflow-x-auto">
+                    <>
+                    <div className="overflow-x-auto hidden md:block">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
                           <tr>
@@ -1252,6 +1358,42 @@ export default function Reports() {
                         </tbody>
                       </table>
                     </div>
+                    {/* Mobile: stacked cards instead of a side-scrolling table */}
+                    <div className="md:hidden space-y-3">
+                      {filtered.map((r, idx) => {
+                        const isComplete = r.percent_complete >= 90;
+                        return (
+                          <div key={idx} className="rounded-lg border border-gray-200 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{r.student_name || '—'}</p>
+                                <p className="text-xs text-gray-500 truncate">{r.course_name || '—'}</p>
+                              </div>
+                              {isComplete && <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />}
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${isComplete ? 'bg-green-500' : r.percent_complete >= 50 ? 'bg-indigo-500' : 'bg-amber-500'}`}
+                                  style={{ width: `${r.percent_complete}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-gray-600 flex-shrink-0">{r.percent_complete}%</span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                              <span>{r.lessons_completed}/{r.lessons_total} lessons</span>
+                              <span>{r.total_watched_minutes > 0 ? `${r.total_watched_minutes} min` : '—'}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-400">
+                              {r.last_activity_at
+                                ? new Date(String(r.last_activity_at).replace(' ', 'T')).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                                : 'Never opened'}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    </>
                   )}
                 </div>
               </>

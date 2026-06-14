@@ -149,6 +149,13 @@ const APP_SETTINGS_DEFAULTS = {
   'portal.show_lessons':      'true',
   'portal.show_fees':         'true',
   'portal.allow_profile_edit':'true',
+
+  // ---- Appearance (Phase 4) --------------------------------------------
+  // Accent theme + light/dark mode. accent is 'default' (stock indigo), a
+  // preset id (e.g. 'emerald'), or a custom '#rrggbb'. Applied client-side
+  // via utils/theme.js — also cached in localStorage for instant boot.
+  'appearance.accent': 'default',
+  'appearance.mode':   'light',
 };
 
 const APP_SETTINGS_KEYS = Object.keys(APP_SETTINGS_DEFAULTS);

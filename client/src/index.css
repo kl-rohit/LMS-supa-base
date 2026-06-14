@@ -2,6 +2,152 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dark mode — remap the gray CSS vars (RGB triplets) that tailwind.config.js
+ * points the gray utilities at. Low weights (backgrounds, borders) go dark;
+ * high weights (text) go light, mirroring how the app uses them (bg-gray-50,
+ * border-gray-200 vs text-gray-700 / text-gray-900). The indigo accent vars are
+ * left alone so the chosen accent looks the same in both modes. */
+.dark {
+  /* Softer, neutral charcoal (Apple/Zoho-style) rather than near-black navy —
+   * the app background sits a notch above black and cards lift above it. */
+  --c-gray-50:  30 33 38;    /* #1e2126 app background (bg-gray-50) — below cards */
+  --c-gray-100: 52 57 65;    /* #343941 hover fills + hairline borders */
+  --c-gray-200: 64 70 80;    /* #404650 borders (border-gray-200) */
+  --c-gray-300: 82 89 100;   /* #525964 input borders */
+  --c-gray-400: 150 158 170; /* muted icons / placeholder */
+  --c-gray-500: 178 186 198; /* secondary text */
+  --c-gray-600: 204 211 221; /* body text (text-gray-600) */
+  --c-gray-700: 222 227 234; /* text-gray-700 */
+  --c-gray-800: 235 238 243; /* default body text (text-gray-800) */
+  --c-gray-900: 246 248 251; /* headings (text-gray-900) */
+}
+
+.dark body {
+  background-color: rgb(var(--c-gray-50));
+}
+
+/* `white` isn't themed (so text-white + white overlays stay white), so darken
+ * the white SURFACES explicitly: the bg-white utility plus the @apply-based
+ * component classes that bake in bg-white (.card/.input-field/.btn-secondary).
+ * #1b2430 sits just above the app background for a subtle card lift. */
+.dark .bg-white,
+.dark .card,
+.dark .input-field,
+.dark .select-field,
+.dark .btn-secondary {
+  background-color: #2b2f36; /* elevated surface, a notch above the app bg */
+}
+
+/* Coloured tint utilities (red/green/blue/etc.) aren't themed, so in dark mode
+ * a light tint surface (bg-*-50/100/200) keeps light gray TEXT illegible, and
+ * dark coloured text (text-*-600/700/800) on a now-dark card disappears. Fix
+ * both as a coherent pair per hue: light tint bg → a dark translucent tint of
+ * the same hue; coloured text → the light (-300) shade. SOLID action buttons
+ * (bg-*-500/600/700, e.g. Present/Save) are left untouched — saturated colour +
+ * white text already reads fine on dark. Borders soften to a translucent hue. */
+.dark .bg-red-50    { background-color: rgba(248, 113, 113, 0.10); }
+.dark .bg-red-100   { background-color: rgba(248, 113, 113, 0.18); }
+.dark .bg-red-50\/50 { background-color: rgba(248, 113, 113, 0.08); }
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-800 { color: #fca5a5; }
+.dark .border-red-100,
+.dark .border-red-200,
+.dark .border-red-300 { border-color: rgba(248, 113, 113, 0.30); }
+
+.dark .bg-green-50  { background-color: rgba(74, 222, 128, 0.10); }
+.dark .bg-green-100 { background-color: rgba(74, 222, 128, 0.18); }
+.dark .bg-green-200 { background-color: rgba(74, 222, 128, 0.24); }
+.dark .text-green-600,
+.dark .text-green-700,
+.dark .text-green-800 { color: #86efac; }
+.dark .border-green-100,
+.dark .border-green-200,
+.dark .border-green-300 { border-color: rgba(74, 222, 128, 0.30); }
+
+.dark .bg-emerald-50  { background-color: rgba(52, 211, 153, 0.10); }
+.dark .bg-emerald-100 { background-color: rgba(52, 211, 153, 0.18); }
+.dark .text-emerald-600,
+.dark .text-emerald-700,
+.dark .text-emerald-800 { color: #6ee7b7; }
+.dark .border-emerald-50 { border-color: rgba(52, 211, 153, 0.25); }
+
+.dark .bg-blue-50   { background-color: rgba(96, 165, 250, 0.10); }
+.dark .bg-blue-100  { background-color: rgba(96, 165, 250, 0.18); }
+.dark .text-blue-600,
+.dark .text-blue-700,
+.dark .text-blue-800 { color: #93c5fd; }
+.dark .border-blue-50 { border-color: rgba(96, 165, 250, 0.25); }
+
+.dark .bg-purple-50  { background-color: rgba(192, 132, 252, 0.10); }
+.dark .bg-purple-100 { background-color: rgba(192, 132, 252, 0.18); }
+.dark .text-purple-600,
+.dark .text-purple-700,
+.dark .text-purple-800 { color: #d8b4fe; }
+.dark .border-purple-50 { border-color: rgba(192, 132, 252, 0.25); }
+
+.dark .bg-cyan-50  { background-color: rgba(34, 211, 238, 0.10); }
+.dark .bg-cyan-100 { background-color: rgba(34, 211, 238, 0.18); }
+.dark .border-cyan-50 { border-color: rgba(34, 211, 238, 0.25); }
+
+.dark .bg-amber-50  { background-color: rgba(251, 191, 36, 0.10); }
+.dark .bg-amber-100 { background-color: rgba(251, 191, 36, 0.18); }
+.dark .bg-amber-200 { background-color: rgba(251, 191, 36, 0.24); }
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 { color: #fcd34d; }
+.dark .border-amber-50,
+.dark .border-amber-100,
+.dark .border-amber-200,
+.dark .border-amber-300 { border-color: rgba(251, 191, 36, 0.30); }
+
+.dark .bg-yellow-50 { background-color: rgba(250, 204, 21, 0.10); }
+.dark .text-yellow-700 { color: #fde047; }
+
+.dark .bg-pink-50  { background-color: rgba(244, 114, 182, 0.10); }
+.dark .bg-pink-100 { background-color: rgba(244, 114, 182, 0.18); }
+.dark .text-pink-600,
+.dark .text-pink-700,
+.dark .text-pink-800 { color: #f9a8d4; }
+.dark .border-pink-100,
+.dark .border-pink-200 { border-color: rgba(244, 114, 182, 0.30); }
+
+.dark .bg-rose-100 { background-color: rgba(251, 113, 133, 0.18); }
+.dark .text-rose-600 { color: #fda4af; }
+
+/* Hover backgrounds are a SEPARATE Tailwind selector (.hover\:bg-x:hover), so
+ * the static overrides above don't catch them and the light tint flashes back
+ * on hover. Re-skin the coloured hovers here (gray hovers already read the
+ * themed --c-gray vars, so they need no override). */
+.dark .hover\:bg-red-50:hover      { background-color: rgba(248, 113, 113, 0.16); }
+.dark .hover\:bg-red-100:hover     { background-color: rgba(248, 113, 113, 0.24); }
+.dark .hover\:bg-green-50:hover    { background-color: rgba(74, 222, 128, 0.16); }
+.dark .hover\:bg-green-100:hover   { background-color: rgba(74, 222, 128, 0.24); }
+.dark .hover\:bg-green-200:hover   { background-color: rgba(74, 222, 128, 0.30); }
+.dark .hover\:bg-amber-50:hover    { background-color: rgba(251, 191, 36, 0.16); }
+.dark .hover\:bg-amber-100:hover   { background-color: rgba(251, 191, 36, 0.24); }
+.dark .hover\:bg-blue-100:hover    { background-color: rgba(96, 165, 250, 0.24); }
+.dark .hover\:bg-purple-100:hover  { background-color: rgba(192, 132, 252, 0.24); }
+.dark .hover\:bg-emerald-100:hover { background-color: rgba(52, 211, 153, 0.24); }
+.dark .hover\:bg-cyan-100:hover    { background-color: rgba(34, 211, 238, 0.24); }
+
+/* Accent (indigo) light tints aren't remapped in dark mode — they follow the
+ * chosen accent, so a static bg-indigo-50 would stay light. Render them as a
+ * translucent wash of the accent's mid shade instead, and lighten accent TEXT
+ * so it stays legible on dark. This also rescues a very dark custom accent
+ * (e.g. a deep maroon) whose -600/-700 text would otherwise vanish. */
+.dark .bg-indigo-50     { background-color: rgb(var(--c-indigo-400, 129 140 248) / 0.18); }
+.dark .bg-indigo-100    { background-color: rgb(var(--c-indigo-400, 129 140 248) / 0.26); }
+.dark .bg-indigo-50\/30 { background-color: rgb(var(--c-indigo-400, 129 140 248) / 0.12); }
+.dark .hover\:bg-indigo-50:hover  { background-color: rgb(var(--c-indigo-400, 129 140 248) / 0.24); }
+.dark .hover\:bg-indigo-100:hover { background-color: rgb(var(--c-indigo-400, 129 140 248) / 0.32); }
+.dark .text-indigo-500,
+.dark .text-indigo-600,
+.dark .text-indigo-700 { color: rgb(var(--c-indigo-400, 129 140 248)); }
+.dark .border-indigo-200 { border-color: rgb(var(--c-indigo-400, 129 140 248) / 0.35); }
+.dark .hover\:border-indigo-300:hover { border-color: rgb(var(--c-indigo-400, 129 140 248) / 0.5); }
+
 @layer base {
   body {
     @apply font-sans antialiased text-gray-800;

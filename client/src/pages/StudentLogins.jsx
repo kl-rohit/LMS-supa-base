@@ -185,7 +185,7 @@ export default function StudentLogins() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -276,6 +276,83 @@ export default function StudentLogins() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {rows.map(({ student, login }) => {
+            const waLink = login
+              ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email)
+              : null;
+            return (
+              <div key={student.id} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{student.name}</div>
+                    <div className="text-xs text-gray-500">{student.parent_name || '—'}</div>
+                  </div>
+                  {!login ? (
+                    <span className="text-xs text-gray-400 shrink-0">No login</span>
+                  ) : login.status === 'active' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium shrink-0">
+                      <Check className="w-3 h-3" /> Active
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium shrink-0">
+                      <X className="w-3 h-3" /> Disabled
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1.5 text-sm text-gray-700 break-all">
+                  {login
+                    ? (emailReveal.revealed ? login.email : maskEmail(login.email))
+                    : <span className="text-gray-400">No login yet</span>}
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  {!login ? (
+                    <button
+                      onClick={() => openCreate(student)}
+                      className="btn-primary btn-sm"
+                      title="Create login"
+                    >
+                      <Mail className="w-4 h-4" /> Create login
+                    </button>
+                  ) : (
+                    <>
+                      {waLink && (
+                        <a
+                          href={waLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-secondary btn-sm text-green-600"
+                          title="Send portal link via WhatsApp"
+                        >
+                          <MessageSquare className="w-4 h-4" /> WhatsApp
+                        </a>
+                      )}
+                      <button
+                        onClick={() => toggleStatus(login)}
+                        className="btn-secondary btn-sm text-amber-600"
+                        title={login.status === 'active' ? 'Disable login' : 'Enable login'}
+                      >
+                        <Power className="w-4 h-4" /> {login.status === 'active' ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(login.id)}
+                        className="btn-secondary btn-sm text-red-600"
+                        title="Delete login"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {rows.length === 0 && (
+            <div className="py-8 text-center text-sm text-gray-400">No students match the search.</div>
+          )}
         </div>
       </div>
 

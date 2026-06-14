@@ -195,7 +195,7 @@ export default function Groups() {
                 onClick={() => setStatusFilter(opt.key)}
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                   statusFilter === opt.key
-                    ? 'bg-indigo-100 text-indigo-700'
+                    ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}
               >

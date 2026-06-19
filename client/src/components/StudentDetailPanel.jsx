@@ -44,6 +44,22 @@ export default function StudentDetailPanel({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  // Swipe-down-to-dismiss (mobile). Tracked on the top toolbar / grab handle so
+  // it never fights with scrolling inside the body. A mostly-vertical downward
+  // drag past the threshold closes the panel.
+  const touchStart = useRef(null);
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e) => {
+    if (!touchStart.current) return;
+    const t = e.changedTouches[0];
+    const dy = t.clientY - touchStart.current.y;
+    const dx = t.clientX - touchStart.current.x;
+    touchStart.current = null;
+    if (dy > 70 && Math.abs(dy) > Math.abs(dx)) onClose();
+  };
 
   // Esc → close
   useEffect(() => {
@@ -128,8 +144,21 @@ export default function StudentDetailPanel({
         aria-label="Student details"
       >
         {/* Top toolbar — sticky. Identity + actions live here so the user
-            never has to scroll for Edit/WhatsApp. */}
-        <div className="border-b border-gray-200 bg-gradient-to-b from-indigo-50/60 to-white">
+            never has to scroll for Edit/WhatsApp. Swiping down anywhere on this
+            toolbar dismisses the panel on touch devices (the body scrolls, so
+            the gesture lives up here where it won't conflict). The gradient
+            color-stops aren't theme-remapped by index.css, so add explicit dark
+            stops — otherwise the bar stays light in dark mode and the gray
+            action icons become invisible against it. */}
+        <div
+          className="border-b border-gray-200 bg-gradient-to-b from-indigo-50/60 to-white dark:from-[#2b2f36] dark:to-[#2b2f36]"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          {/* Grab handle — mobile affordance hinting swipe-down-to-close */}
+          <div className="flex justify-center pt-2 lg:hidden">
+            <div className="h-1 w-10 rounded-full bg-gray-300" />
+          </div>
           {/* Action bar */}
           <div className="flex items-center justify-between px-4 pt-3">
             <button

@@ -17,7 +17,9 @@ import {
   Plus,
   Share2,
   Edit2,
+  UserMinus,
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
@@ -27,13 +29,26 @@ import { useConfirm } from '../contexts/ConfirmContext';
 
 export default function Attendance() {
   const confirm = useConfirm();
-  const [selectedDate, setSelectedDate] = useState(formatDateLocal(new Date()));
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Prefill from the timetable's "Mark attendance" action: ?date=YYYY-MM-DD&class=<id>.
+  // The date param (if valid) seeds selectedDate; the class param is held in
+  // pendingClassId until classes/students load, then auto-selected.
+  const initialDateParam = searchParams.get('date');
+  const [selectedDate, setSelectedDate] = useState(
+    initialDateParam && /^\d{4}-\d{2}-\d{2}$/.test(initialDateParam)
+      ? initialDateParam
+      : formatDateLocal(new Date())
+  );
+  const [pendingClassId, setPendingClassId] = useState(searchParams.get('class') || null);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState(null);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
+  // Which roster rows are actually members of the class's batch/group — only
+  // these expose a "remove from batch" action (extras / single students don't).
+  const [batchMemberIds, setBatchMemberIds] = useState(() => new Set());
   const [absenceAlerts, setAbsenceAlerts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [existingAttendance, setExistingAttendance] = useState([]);
@@ -78,6 +93,22 @@ export default function Attendance() {
       fetchDateAttendance();
     }
   }, [selectedDate]);
+
+  // Auto-select the class passed via ?class= (from the timetable "Mark
+  // attendance" action) once classes + students have loaded. We look in
+  // allClasses so it works even if the class isn't on the prefilled day's
+  // filtered list. After selecting, clear the query params so a manual
+  // date/class change later doesn't keep re-triggering this.
+  useEffect(() => {
+    if (!pendingClassId || loading) return;
+    if (allClasses.length === 0) return;
+    const match = allClasses.find((c) => String(c.id) === String(pendingClassId));
+    if (match) {
+      handleClassSelect(match);
+    }
+    setPendingClassId(null);
+    setSearchParams({}, { replace: true });
+  }, [pendingClassId, allClasses, loading]);
 
   const fetchData = async () => {
     try {
@@ -156,6 +187,7 @@ export default function Attendance() {
       let classStudents = [];
 
       if (isCamp) {
+        setBatchMemberIds(new Set()); // camps aren't batches — no batch removal
         // Camp's members were attached to the day payload by the backend.
         classStudents = (cls.members || []).map((m) => {
           const full = students.find((s) => s.id === (m.id || m.student_id));
@@ -172,25 +204,42 @@ export default function Attendance() {
         const existingResp = await api.get(`/attendance?class_id=${cls.id}&date=${selectedDate}`);
         existing = existingResp?.attendance || [];
 
-        // Determine students for this class
+        // Determine students for this class — the roster is the UNION of:
+        //   1. group members (for group classes / tuition batches),
+        //   2. extra individual students stored via ClassStudents (cls.student_ids),
+        //   3. the legacy single student (cls.student_id).
+        // A teacher may pick a batch AND add a few extra students, so we merge
+        // all three sources and de-dupe by student id (resolving full student
+        // objects from the loaded `students` array so fees calculate correctly).
+        const rosterMap = new Map();
+        const addStudent = (id) => {
+          if (id == null) return;
+          const key = String(id);
+          if (rosterMap.has(key)) return;
+          const full = students.find((s) => String(s.id) === key);
+          if (full) rosterMap.set(key, full);
+        };
+
+        const memberIdSet = new Set();
         if (cls.group_id) {
           try {
             const membersResp = await api.get(`/groups/${cls.group_id}/students`);
-            classStudents = (membersResp.students || []).map((m) => {
-              const full = students.find((s) => s.id === (m.student_id || m.id));
-              return full || m;
+            (membersResp.students || []).forEach((m) => {
+              const sid = m.student_id || m.id;
+              addStudent(sid);
+              if (sid != null) memberIdSet.add(String(sid));
             });
           } catch {
-            classStudents = [];
+            // ignore — extras / single below may still populate the roster
           }
-        } else if (Array.isArray(cls.student_ids) && cls.student_ids.length > 0) {
-          classStudents = cls.student_ids
-            .map((id) => students.find((s) => s.id === id))
-            .filter(Boolean);
-        } else if (cls.student_id) {
-          const student = students.find((s) => s.id === cls.student_id);
-          if (student) classStudents = [student];
         }
+        setBatchMemberIds(memberIdSet);
+        if (Array.isArray(cls.student_ids)) {
+          cls.student_ids.forEach((id) => addStudent(id));
+        }
+        if (cls.student_id) addStudent(cls.student_id);
+
+        classStudents = Array.from(rosterMap.values());
       }
       setExistingAttendance(existing);
 
@@ -402,6 +451,34 @@ export default function Attendance() {
       fetchDateAttendance();
     } catch (err) {
       toast.error('Failed to delete: ' + err.message);
+    }
+  };
+
+  // Remove a student from the selected class's batch (group). This drops them
+  // from EVERY class that uses the batch, not just this one — so confirm first.
+  // Uses the existing org-scoped GroupStudents delete endpoint.
+  const removeFromBatch = async (record) => {
+    if (!selectedClass?.group_id) return;
+    const batchName = selectedClass.group_name || 'this batch';
+    const ok = await confirm({
+      title: 'Remove from batch?',
+      message: `Remove ${record.student_name} from "${batchName}". They'll be dropped from every class that uses this batch. This does not delete the student.`,
+      confirmText: 'Remove from batch',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/groups/${selectedClass.group_id}/students/${record.student_id}`);
+      toast.success(`${record.student_name} removed from "${batchName}"`);
+      // Drop them from the current roster immediately, then refresh sources.
+      setAttendanceRecords((prev) => prev.filter((r) => r.student_id !== record.student_id));
+      setBatchMemberIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(record.student_id));
+        return next;
+      });
+      fetchClassesForDate();
+    } catch (err) {
+      toast.error('Failed to remove from batch: ' + err.message);
     }
   };
 
@@ -1015,15 +1092,26 @@ export default function Attendance() {
                           )}
                         </td>
                         <td className="table-cell text-center">
-                          {record.existing_id && (
-                            <button
-                              onClick={() => deleteAttendanceRecord(idx)}
-                              className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                              title="Delete attendance record"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          <div className="flex items-center justify-center gap-1">
+                            {record.existing_id && (
+                              <button
+                                onClick={() => deleteAttendanceRecord(idx)}
+                                className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Delete attendance record"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            {selectedClass?.group_id && batchMemberIds.has(String(record.student_id)) && (
+                              <button
+                                onClick={() => removeFromBatch(record)}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+                                title="Remove student from batch"
+                              >
+                                <UserMinus className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1048,15 +1136,26 @@ export default function Attendance() {
                           </span>
                         )}
                       </div>
-                      {record.existing_id && (
-                        <button
-                          onClick={() => deleteAttendanceRecord(idx)}
-                          className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
-                          title="Delete attendance record"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {record.existing_id && (
+                          <button
+                            onClick={() => deleteAttendanceRecord(idx)}
+                            className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Delete attendance record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {selectedClass?.group_id && batchMemberIds.has(String(record.student_id)) && (
+                          <button
+                            onClick={() => removeFromBatch(record)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+                            title="Remove student from batch"
+                          >
+                            <UserMinus className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <button

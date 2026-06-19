@@ -12,12 +12,14 @@ import {
   BarChart3,
   Menu,
   X,
-  Music2,
   Settings as SettingsIcon,
   LogOut,
   KeyRound,
   Video,
+  ClipboardList,
+  FileText,
   Shield,
+  HelpCircle,
 } from 'lucide-react';
 
 // Eagerly load only Login (everyone needs it immediately) and ParentLayout
@@ -26,6 +28,7 @@ import {
 // first-load JS is the small shell + the destination route.
 import Login from './pages/Login';
 import ParentLayout from './layouts/ParentLayout';
+import NotificationBell from './components/NotificationBell';
 
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
 const Students       = lazy(() => import('./pages/Students'));
@@ -38,9 +41,13 @@ const Reports        = lazy(() => import('./pages/Reports'));
 const Settings       = lazy(() => import('./pages/Settings'));
 const StudentLogins  = lazy(() => import('./pages/StudentLogins'));
 const Lessons        = lazy(() => import('./pages/Lessons'));
+const Assignments    = lazy(() => import('./pages/Assignments'));
+const QuestionPapers = lazy(() => import('./pages/QuestionPapers'));
 const Platform       = lazy(() => import('./pages/Platform'));
+const Help           = lazy(() => import('./pages/Help'));
 
 import Loader from './components/Loader';
+import OnboardingTour from './components/OnboardingTour';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
@@ -59,8 +66,11 @@ const BASE_NAV = [
   { to: '/messages',       label: 'Messages',      icon: MessageSquare,   flag: 'modules.messages' },
   { to: '/reports',        label: 'Reports',       icon: BarChart3,       flag: 'modules.reports' },
   { to: '/lessons',        label: 'Lessons',       icon: Video,           flag: 'modules.lessons' },
+  { to: '/assignments',    label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
+  { to: '/question-papers',label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
   { to: '/student-logins', label: 'Parent Logins', icon: KeyRound,        flag: null },
   { to: '/settings',       label: 'Settings',      icon: SettingsIcon,    flag: null },
+  { to: '/help',           label: 'Help & Guide',  icon: HelpCircle,      flag: null },
 ];
 const PLATFORM_NAV = { to: '/platform', label: 'Platform Admin', icon: Shield, flag: null };
 
@@ -79,7 +89,7 @@ function TeacherLayout() {
   const { user, signOut } = useAuth();
   const { flags } = useModuleFlags();
   const branding = useOrgBranding();
-  const displayName = branding.name || 'Veena';
+  const displayName = branding.name || 'VidyaSetu';
 
   // Reflect the academy name in the browser tab title.
   useEffect(() => {
@@ -112,9 +122,11 @@ function TeacherLayout() {
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
-              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Music2 className="w-5 h-5 text-white" />
-              </div>
+              <img
+                src={`${process.env.PUBLIC_URL || '/'}logo.png`}
+                alt=""
+                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+              />
             )}
             <span className="text-xl font-bold text-gray-900 truncate">{displayName}</span>
           </div>
@@ -180,6 +192,14 @@ function TeacherLayout() {
           <h1 className="text-lg font-semibold text-gray-800 capitalize">
             {location.pathname.split('/')[1]?.replace(/-/g, ' ') || 'Dashboard'}
           </h1>
+          <div className="ml-auto">
+            <NotificationBell
+              listUrl="/notifications"
+              readUrl={(id) => `/notifications/${id}/read`}
+              readAllUrl="/notifications/read-all"
+              pushBase="/notifications"
+            />
+          </div>
         </header>
 
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
@@ -198,13 +218,20 @@ function TeacherLayout() {
               <Route path="/messages" element={<Messages />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/lessons" element={<Lessons />} />
+              <Route path="/assignments" element={<Assignments />} />
+              <Route path="/question-papers" element={<QuestionPapers />} />
               <Route path="/student-logins" element={<StudentLogins />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/help" element={<Help />} />
+              <Route path="/help/:slug" element={<Help />} />
               <Route path="/platform" element={<Platform />} />
             </Routes>
           </Suspense>
         </main>
       </div>
+
+      {/* First-login welcome tour (admin). Dismissal persisted per device. */}
+      <OnboardingTour variant="admin" helpPath="/help" />
     </div>
   );
 }

@@ -9,19 +9,39 @@
 // from showing up.
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CheckCircle2, PlayCircle, Lock, Play, Pause, Maximize2, Minimize2,
-  Volume2, VolumeX, List, ChevronRight, ChevronLeft,
-  PanelRightClose, PanelRightOpen, SkipForward, FileText,
+  Volume2, VolumeX, List, ChevronRight, ChevronLeft, ListChecks,
+  PanelRightClose, PanelRightOpen, SkipForward, FileText, Award, Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import EmptyState from '../../components/EmptyState';
+import LessonQuiz from '../../components/LessonQuiz';
+import { downloadCertificate } from '../../utils/certificate';
 import { extractYouTubeId, ytThumbnail, formatDuration, parseChapters, currentChapterIndex, driveEmbedUrl } from '../../utils/youtube';
 
 const UI_TICK_MS = 500;
 let YT_SCRIPT_LOADED = false;
+
+// iOS (incl. iPadOS, which masquerades as Mac) can't put a <div>/<iframe> into
+// native fullscreen — only a bare <video> — and in a standalone PWA the
+// Fullscreen API is unavailable entirely. On those we must use CSS
+// pseudo-fullscreen, NOT the native API (which silently no-ops there).
+const IS_IOS = typeof navigator !== 'undefined' && (
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
+function nativeFullscreenSupported(el) {
+  if (IS_IOS) return false;
+  if (typeof document === 'undefined') return false;
+  const enabled = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+  return !!enabled && !!(el && (el.requestFullscreen || el.webkitRequestFullscreen));
+}
 
 // Final-save URL: sendBeacon needs the absolute API path because the beacon
 // fires after React has unmounted. PUBLIC_URL on Catalyst = '/app/', so
@@ -72,13 +92,25 @@ export default function CoursePlayer() {
   // so the embedded YouTube player can't go native-fullscreen there. Fall back to
   // a CSS "pseudo-fullscreen" that pins the player over the viewport.
   const [pseudoFs, setPseudoFs] = useState(false);
+  // Track orientation so pseudo-fullscreen can rotate-to-landscape on a
+  // portrait phone (iframes can't go native-fullscreen on iOS).
+  const [isPortrait, setIsPortrait] = useState(
+    typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : false
+  );
   // Playback speed (YouTube IFrame API supports 0.25 / 0.5 / 0.75 / 1 / 1.25 / 1.5 / 1.75 / 2)
   // Music-relevant choices: 0.5x for slow-along practice, 1.25/1.5x for review.
   const [playbackRate, setPlaybackRate] = useState(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+  // Touch devices have no :hover, so the controls bar (which used group-hover)
+  // was invisible/unreachable on phones. Reveal it on tap + auto-hide while
+  // playing.
+  const [showControls, setShowControls] = useState(false);
+  const controlsHideRef = useRef(null);
   // Udemy-style "Next lesson" overlay — shown after the video ends or when a
   // completed lesson is paused.
   const [showNextOverlay, setShowNextOverlay] = useState(false);
+  // Certificate download in flight (fetch eligibility + lazy-load jsPDF).
+  const [certBusy, setCertBusy] = useState(false);
 
   const playerRef = useRef(null);
   const uiTickRef = useRef(null);
@@ -176,8 +208,8 @@ export default function CoursePlayer() {
     if (!currentLessonId) return;
     const lesson = lessons.find((l) => l.id === currentLessonId);
     if (!lesson) return;
-    // Document lessons don't use the YT player at all
-    if (lesson.content_type === 'document') {
+    // Document & quiz lessons don't use the YT player at all
+    if (lesson.content_type === 'document' || lesson.content_type === 'quiz') {
       setShowNextOverlay(false);
       return;
     }
@@ -280,26 +312,44 @@ export default function CoursePlayer() {
 
   // ----- Fullscreen handling -----
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+    const onChange = () => {
+      const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      setIsFullscreen(active);
+      // Whenever we leave native fullscreen by ANY route (our button, Escape,
+      // the Android system back gesture), drop the landscape lock so the page
+      // returns to its normal portrait orientation.
+      if (!active) {
+        try { window.screen?.orientation?.unlock?.(); } catch {}
+      }
+    };
     document.addEventListener('fullscreenchange', onChange);
     document.addEventListener('webkitfullscreenchange', onChange);
     return () => {
       document.removeEventListener('fullscreenchange', onChange);
       document.removeEventListener('webkitfullscreenchange', onChange);
+      // Safety net: release any lingering lock if the player unmounts mid-FS.
+      try { window.screen?.orientation?.unlock?.(); } catch {}
     };
   }, []);
 
-  // ----- CSS pseudo-fullscreen (iOS fallback) -----
-  // Lock body scroll while pinned over the viewport, and let Escape exit.
+  // ----- CSS pseudo-fullscreen (iOS / PWA fallback) -----
+  // Lock body scroll while pinned over the viewport, let Escape exit, and
+  // track orientation so we can rotate-to-landscape on a portrait phone.
   useEffect(() => {
     if (!pseudoFs) return;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => { if (e.key === 'Escape') setPseudoFs(false); };
+    const onResize = () => setIsPortrait(window.innerHeight >= window.innerWidth);
+    onResize();
     document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
     return () => {
       document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
     };
   }, [pseudoFs]);
 
@@ -401,7 +451,19 @@ export default function CoursePlayer() {
     return () => { cancelled = true; };
   }, [currentLessonId, lessons]);
 
+  // Reveal the controls bar (touch tap) and auto-hide after a few seconds
+  // while playing. Paused video keeps controls visible.
+  const revealControls = () => {
+    setShowControls(true);
+    clearTimeout(controlsHideRef.current);
+    controlsHideRef.current = setTimeout(() => {
+      try { if (playerRef.current?.getPlayerState?.() === window.YT?.PlayerState?.PLAYING) setShowControls(false); } catch {}
+    }, 3500);
+  };
+  useEffect(() => () => clearTimeout(controlsHideRef.current), []);
+
   const togglePlay = () => {
+    revealControls();
     if (!playerRef.current) return;
     try {
       if (isPlaying) playerRef.current.pauseVideo();
@@ -420,26 +482,45 @@ export default function CoursePlayer() {
   const toggleFullscreen = async () => {
     const el = playerWrapperRef.current;
     if (!el) return;
-    // If we're in CSS pseudo-fullscreen (iOS), just toggle it back off.
+    revealControls();
+    // If we're in CSS pseudo-fullscreen (iOS / PWA), just toggle it back off.
     if (pseudoFs) { setPseudoFs(false); return; }
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
     if (fsEl) {
+      // Release the landscape lock first (some engines ignore unlock once the
+      // fullscreen element is gone), then exit.
+      try { window.screen?.orientation?.unlock?.(); } catch {}
       try {
         if (document.exitFullscreen) await document.exitFullscreen();
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       } catch {}
       return;
     }
-    // Entering: prefer the native Fullscreen API (desktop Chrome/Firefox/Safari).
+    // iOS Safari / standalone PWA can't fullscreen a <div>/<iframe> (only a
+    // bare <video>), and the native API there silently no-ops — so the old
+    // `await el.requestFullscreen()` resolved without entering fullscreen and
+    // the button appeared to "do nothing". Go straight to the CSS pin there.
+    if (!nativeFullscreenSupported(el)) { setPseudoFs(true); return; }
+    // Desktop / Android Chrome: use the real Fullscreen API.
     try {
-      if (el.requestFullscreen) { await el.requestFullscreen(); return; }
-      if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); return; }
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } catch { setPseudoFs(true); return; }
+    // Android Chrome fullscreens the <div> but does NOT rotate the device, so a
+    // 16:9 video just letterboxes in portrait. Lock the orientation to
+    // landscape now that we're in fullscreen (the API requires it). This is the
+    // native equivalent of the iOS CSS rotate hack. Throws / rejects on desktop
+    // and where unsupported — swallow it (desktop fullscreen is fine as-is).
+    try {
+      const p = window.screen?.orientation?.lock?.('landscape');
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     } catch {}
-    // iOS Safari can't fullscreen a <div>/<iframe> (only <video>), so the
-    // native Fullscreen API is unavailable on the wrapper. We keep our custom
-    // player (no native YT controls = no sharing/open-in-app) and instead pin
-    // it over the viewport with CSS.
-    setPseudoFs(true);
+    // Some engines resolve requestFullscreen() without actually entering
+    // fullscreen — verify on the next frame and fall back to the CSS pin.
+    setTimeout(() => {
+      const active = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!active) setPseudoFs(true);
+    }, 200);
   };
 
   const seekTo = (seconds) => {
@@ -472,10 +553,35 @@ export default function CoursePlayer() {
   }
 
   const currentLesson = lessons.find((l) => l.id === currentLessonId);
+  const isQuizLesson = currentLesson?.content_type === 'quiz';
   const isDocLesson = currentLesson?.content_type === 'document';
-  const currentYtId = currentLesson && !isDocLesson ? extractYouTubeId(currentLesson.video_url) : null;
+  const currentYtId = currentLesson && !isDocLesson && !isQuizLesson ? extractYouTubeId(currentLesson.video_url) : null;
   const docEmbedUrl = isDocLesson ? driveEmbedUrl(currentLesson.content_url) : null;
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  // Pseudo-fullscreen sizing. On a portrait phone we rotate the whole stage
+  // 90° so the 16:9 video fills the screen in landscape — iframes can't go
+  // native-fullscreen on iOS / in a PWA, so this is the reliable path there.
+  // Landscape (or desktop native FS) just fills while preserving 16:9.
+  const rotatedFs = pseudoFs && isPortrait;
+  const stageStyle = rotatedFs
+    ? {
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        width: '100vh',
+        height: '100vw',
+        transform: 'translate(-50%, -50%) rotate(90deg)',
+        transformOrigin: 'center center',
+      }
+    : (isFullscreen || pseudoFs)
+    ? {
+        width: 'min(100vw, 177.78vh)',
+        height: 'min(100vh, 56.25vw)',
+        maxWidth: '100vw',
+        maxHeight: '100vh',
+      }
+    : undefined;
 
   // Chapters parsed from the lesson description (YouTube-style timestamps).
   const chapters = parseChapters(currentLesson?.description);
@@ -499,6 +605,46 @@ export default function CoursePlayer() {
     if (nextLesson) setCurrentLessonId(nextLesson.id);
   };
 
+  // Quiz passed → flip quiz_passed locally so completion gates + the sidebar
+  // update immediately without a refetch.
+  const handleQuizPassed = (lessonId) => {
+    setLessons((prev) => prev.map((l) => (l.id === lessonId ? { ...l, quiz_passed: true } : l)));
+  };
+
+  // Whether a lesson counts as "done" for course completion + the certificate.
+  // Mirrors the backend's lessonFullyDone (routes/portal.js):
+  //   • content lesson (video/document) → progress.completed
+  //   • quiz lesson with no questions → done (nothing to do)
+  //   • optional quiz lesson → done regardless (students may skip it)
+  //   • required quiz lesson → done only once passed
+  const lessonDone = (l) => {
+    if ((l.content_type || 'video') === 'quiz') {
+      if (!l.has_quiz) return true;
+      return l.quiz_required ? !!l.quiz_passed : true;
+    }
+    return !!l.progress?.completed;
+  };
+
+  // Course is fully complete when every lesson is done. Gates the certificate.
+  const allCourseComplete = lessons.length > 0 && lessons.every(lessonDone);
+
+  const downloadCert = async () => {
+    setCertBusy(true);
+    try {
+      const data = await api.get(`/portal/courses/${courseId}/certificate`);
+      await downloadCertificate(data.certificate);
+    } catch (err) {
+      const remaining = err?.response?.data?.remaining;
+      if (remaining > 0) {
+        toast.error(`Finish all lessons first — ${remaining} to go.`);
+      } else {
+        toast.error(err?.response?.data?.error || 'Could not generate certificate');
+      }
+    } finally {
+      setCertBusy(false);
+    }
+  };
+
   // "Mark as completed" for the active document lesson.
   const markDocCompleted = async () => {
     const lesson = lessons.find((l) => l.id === currentLessonId);
@@ -513,6 +659,30 @@ export default function CoursePlayer() {
 
   return (
     <div className="space-y-4">
+      {/* Pseudo-fullscreen chrome rendered straight to <body> via a portal.
+          This escapes the parent portal's scrolling <main> (and any ancestor
+          stacking context), so a full-viewport black backdrop reliably masks
+          the app header/sidebar — fixing the "header showing on the left"
+          sliver — and the single exit button sits at the TRUE screen corner
+          regardless of the rotate-to-landscape transform on the video stage. */}
+      {pseudoFs && typeof document !== 'undefined' && createPortal(
+        <>
+          <div className="fixed inset-0 bg-black z-[55]" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setPseudoFs(false)}
+            className="fixed z-[70] p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 active:scale-95"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+              right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
+            }}
+            aria-label="Exit fullscreen"
+          >
+            <Minimize2 className="w-5 h-5" />
+          </button>
+        </>,
+        document.body,
+      )}
       <div className="flex items-center gap-2">
         <button onClick={() => navigate('/portal/lessons')} className="p-2 rounded-lg hover:bg-gray-100">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -521,11 +691,36 @@ export default function CoursePlayer() {
           <h2 className="text-lg font-semibold text-gray-900 truncate">{course.name}</h2>
           {currentLesson && <p className="text-xs text-gray-500 truncate">{currentLesson.title}</p>}
         </div>
+        {allCourseComplete && (
+          <button
+            onClick={downloadCert}
+            disabled={certBusy}
+            className="btn-primary btn-sm flex-shrink-0 disabled:opacity-50"
+            title="Download your course completion certificate"
+          >
+            {certBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Award className="w-4 h-4" />}
+            <span className="hidden sm:inline">Certificate</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Player + custom controls — takes 3/4 of the row on desktop */}
         <div className="lg:col-span-3 space-y-3">
+          {/* Quiz lessons render the quiz as the main content (no video frame). */}
+          {isQuizLesson && currentLesson && (
+            <LessonQuiz
+              key={currentLesson.id}
+              lesson={currentLesson}
+              lessonId={currentLesson.id}
+              onPassed={handleQuizPassed}
+              nextLesson={nextLesson}
+              onNext={goToNextLesson}
+            />
+          )}
+
+          {!isQuizLesson && (
+          <>
           <div
             ref={playerWrapperRef}
             className={`card p-0 overflow-hidden ${isDocLesson ? 'bg-gray-100' : 'bg-black'} relative group select-none ${
@@ -556,20 +751,19 @@ export default function CoursePlayer() {
                 same DOM node during lesson-type switches. */}
             {!isDocLesson && currentYtId ? (
               <div
-                className="aspect-video w-full relative"
-                style={(isFullscreen || pseudoFs) ? {
-                  // Fill whichever dimension hits first while preserving 16:9.
-                  width: 'min(100vw, 177.78vh)',
-                  height: 'min(100vh, 56.25vw)',
-                  maxWidth: '100vw',
-                  maxHeight: '100vh',
-                } : undefined}
+                className={`relative ${rotatedFs ? '' : 'aspect-video w-full'}`}
+                style={stageStyle}
               >
                 <div ref={ytContainerRef} className="w-full h-full pointer-events-none" />
 
-                {/* Click anywhere on the video → play/pause */}
+                {/* Tap the video: if controls are hidden (touch), first tap
+                    just reveals them; otherwise toggle play/pause. */}
                 <button
-                  onClick={togglePlay}
+                  onClick={() => {
+                    const visible = showControls || pseudoFs || isFullscreen || !isPlaying;
+                    if (!visible) { revealControls(); return; }
+                    togglePlay();
+                  }}
                   onDoubleClick={toggleFullscreen}
                   className="absolute inset-0 z-10 w-full h-full cursor-pointer focus:outline-none"
                   aria-label={isPlaying ? 'Pause' : 'Play'}
@@ -595,7 +789,7 @@ export default function CoursePlayer() {
                   <div className="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full text-center">
                       <div className="flex items-center justify-center mb-3">
-                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center bg-green-100">
                           <CheckCircle2 className="w-6 h-6 text-green-600" />
                         </div>
                       </div>
@@ -656,8 +850,15 @@ export default function CoursePlayer() {
                   </div>
                 )}
 
-                {/* Custom controls bar */}
-                <div className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 pb-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Custom controls bar — visible on hover (desktop), on tap
+                    (touch, via showControls), and always while fullscreen. */}
+                <div
+                  className={`absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 pb-2 transition-opacity ${
+                    (showControls || pseudoFs || isFullscreen || !isPlaying) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  }`}
+                  style={pseudoFs ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' } : undefined}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {/* Seek bar */}
                   <div className="flex items-center gap-2 mb-2">
                     <input
@@ -722,14 +923,19 @@ export default function CoursePlayer() {
                         </div>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
-                      className="p-1.5 rounded hover:bg-white/10"
-                      aria-label={(isFullscreen || pseudoFs) ? 'Exit fullscreen' : 'Enter fullscreen'}
-                    >
-                      {(isFullscreen || pseudoFs) ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-                    </button>
+                    {/* While CSS-pinned (iOS/PWA) the dedicated floating exit
+                        button is the single exit affordance — hide this one so
+                        there aren't two exit icons on screen. */}
+                    {!pseudoFs && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+                        className="p-1.5 rounded hover:bg-white/10"
+                        aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                      >
+                        {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -839,6 +1045,9 @@ export default function CoursePlayer() {
               </div>
             </div>
           )}
+          </>
+          )}
+          {/* end !isQuizLesson — video/document player, info card & chapters */}
         </div>
 
         {/* Lessons sidebar */}
@@ -874,14 +1083,14 @@ export default function CoursePlayer() {
                     <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center justify-between">
                       <span>{g.name}</span>
                       <span className="text-gray-400 normal-case font-medium">
-                        {g.lessons.filter((l) => l.progress?.completed).length}/{g.lessons.length}
+                        {g.lessons.filter(lessonDone).length}/{g.lessons.length}
                       </span>
                     </div>
                   )}
                   <div className="divide-y divide-gray-100">
                     {g.lessons.map((l, idx) => {
                       const lpct = l.progress?.percent_complete || 0;
-                      const done = l.progress?.completed;
+                      const done = lessonDone(l);
                       const active = l.id === currentLessonId;
                       // Display lesson duration: if it's a chapter, use segment length
                       let displayDur = Number(l.duration_seconds) || 0;
@@ -889,7 +1098,8 @@ export default function CoursePlayer() {
                       const segEnd   = Number(l.end_seconds) || 0;
                       if (segEnd > 0) displayDur = segEnd - segStart;
                       const isDocItem = l.content_type === 'document';
-                      const ytId = !isDocItem ? extractYouTubeId(l.video_url) : null;
+                      const isQuizItem = l.content_type === 'quiz';
+                      const ytId = (!isDocItem && !isQuizItem) ? extractYouTubeId(l.video_url) : null;
                       return (
                         <button
                           key={l.id}
@@ -912,6 +1122,10 @@ export default function CoursePlayer() {
                                 <div className={`w-16 h-9 rounded bg-blue-50 flex items-center justify-center ${active ? 'ring-2 ring-indigo-500' : ''}`}>
                                   <FileText className="w-5 h-5 text-blue-500" />
                                 </div>
+                              ) : isQuizItem ? (
+                                <div className={`w-16 h-9 rounded bg-indigo-50 flex items-center justify-center ${active ? 'ring-2 ring-indigo-500' : ''}`}>
+                                  <ListChecks className="w-5 h-5 text-indigo-500" />
+                                </div>
                               ) : (
                                 <div className="w-16 h-9 rounded bg-gray-100 flex items-center justify-center">
                                   <PlayCircle className="w-4 h-4 text-gray-300" />
@@ -920,6 +1134,8 @@ export default function CoursePlayer() {
                               <div className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 shadow-sm">
                                 {done ? (
                                   <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                ) : isQuizItem ? (
+                                  <ListChecks className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
                                 ) : (
                                   <PlayCircle className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
                                 )}
@@ -929,6 +1145,8 @@ export default function CoursePlayer() {
                             <div className="sm:hidden flex-shrink-0 mt-1">
                               {done ? (
                                 <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              ) : isQuizItem ? (
+                                <ListChecks className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
                               ) : (
                                 <PlayCircle className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-gray-300'}`} />
                               )}
@@ -938,8 +1156,25 @@ export default function CoursePlayer() {
                                 {idx + 1}. {l.title}
                               </p>
                               <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
-                                {displayDur > 0 && <span>{formatDuration(displayDur)}</span>}
-                                {lpct > 0 && !done && <span>· {lpct}% watched</span>}
+                                {isQuizItem ? (
+                                  <>
+                                    <span className="inline-flex items-center gap-1 text-indigo-500 font-medium">
+                                      <ListChecks className="w-3.5 h-3.5" /> Quiz
+                                    </span>
+                                    {l.quiz_passed ? (
+                                      <span className="text-green-600">· Passed</span>
+                                    ) : l.quiz_required ? (
+                                      <span className="text-amber-600 font-medium">· Required</span>
+                                    ) : (
+                                      <span>· Optional</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {displayDur > 0 && <span>{formatDuration(displayDur)}</span>}
+                                    {lpct > 0 && !done && <span>· {lpct}% watched</span>}
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>

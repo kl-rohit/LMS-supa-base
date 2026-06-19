@@ -91,6 +91,76 @@ export default function Platform() {
     }
   };
 
+  const PLAN_LABELS = { trial: 'Trial', free: 'Free', core: 'Core', complete: 'Complete' };
+
+  const setOrgPlan = async (org, nextPlan) => {
+    const prev = org.plan;
+    const body = { plan: nextPlan };
+
+    // Trial: ask how many days the trial should run (default 14). Cancelling
+    // the prompt aborts the change.
+    if (nextPlan === 'trial') {
+      const input = window.prompt(`Trial length for "${org.name}" — number of days from today:`, '14');
+      if (input === null) {
+        // Cancelled — force a re-render so the <select> snaps back to the old plan.
+        setOrgs((list) => list.map((o) => (o.id === org.id ? { ...o } : o)));
+        return;
+      }
+      const days = parseInt(input, 10);
+      if (!Number.isFinite(days) || days <= 0 || days > 365) {
+        toast.error('Enter a whole number of days between 1 and 365.');
+        setOrgs((list) => list.map((o) => (o.id === org.id ? { ...o } : o)));
+        return;
+      }
+      body.trial_days = days;
+    }
+
+    try {
+      await api.put(`/platform/orgs/${org.id}`, body);
+      const suffix = nextPlan === 'trial' ? ` (${body.trial_days}-day trial)` : '';
+      toast.success(`${org.name} moved to the ${PLAN_LABELS[nextPlan] || nextPlan} plan${suffix}`);
+      // Re-fetch so derived fields (trial countdown, effective_plan) refresh.
+      fetchAll();
+    } catch (e) {
+      toast.error('Could not change plan: ' + e.message);
+      setOrgs((list) => list.map((o) => (o.id === org.id ? { ...o, plan: prev } : o)));
+    }
+  };
+
+  // Per-org student-cap override. Blank input → clear (revert to plan default).
+  const setOrgStudentLimit = async (org, raw) => {
+    const trimmed = String(raw ?? '').trim();
+    const current = org.max_students_override; // number or null
+
+    let payload;
+    if (trimmed === '') {
+      if (current == null) return; // already on plan default — nothing to do
+      payload = { max_students: null };
+    } else {
+      const n = parseInt(trimmed, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) {
+        toast.error('Enter a whole number ≥ 0, or leave blank for the plan default.');
+        fetchAll();
+        return;
+      }
+      if (n === current) return; // unchanged
+      payload = { max_students: n };
+    }
+
+    try {
+      await api.put(`/platform/orgs/${org.id}`, payload);
+      toast.success(
+        trimmed === ''
+          ? `${org.name}: student limit reset to plan default`
+          : `${org.name}: student limit set to ${trimmed}`
+      );
+      fetchAll();
+    } catch (e) {
+      toast.error('Could not update student limit: ' + e.message);
+      fetchAll();
+    }
+  };
+
   const createAcademy = async (e) => {
     e.preventDefault();
     const f = createForm;
@@ -299,6 +369,7 @@ export default function Platform() {
                   <th className="table-header">Org</th>
                   <th className="table-header">Slug</th>
                   <th className="table-header text-right">Members</th>
+                  <th className="table-header text-right">Students</th>
                   <th className="table-header">Plan</th>
                   <th className="table-header">Status</th>
                   <th className="table-header">Created</th>
@@ -318,10 +389,54 @@ export default function Platform() {
                     </td>
                     <td className="table-cell font-mono text-xs text-gray-500">{o.slug}</td>
                     <td className="table-cell text-right font-medium">{o.member_count || 0}</td>
+                    <td className="table-cell text-right font-medium">
+                      {(() => {
+                        const cap = o.max_students;            // effective cap (null = ∞)
+                        const used = o.student_count || 0;
+                        const over = cap != null && used >= cap;
+                        const planDefault = o.plan_max_students; // null = ∞
+                        return (
+                          <div className="flex items-center justify-end gap-1">
+                            <span className={over ? 'text-red-600' : 'text-gray-700'}>{used}</span>
+                            <span className="text-gray-400">/</span>
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={o.max_students_override ?? ''}
+                              placeholder={planDefault == null ? '∞' : String(planDefault)}
+                              onBlur={(e) => setOrgStudentLimit(o, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              className="w-14 text-xs text-right rounded-md border border-gray-200 bg-white px-1.5 py-1 font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              title="Custom student cap for this academy — leave blank to use the plan default"
+                            />
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="table-cell">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 uppercase tracking-wide font-medium">
-                        {o.plan || 'free'}
-                      </span>
+                      <select
+                        value={['trial', 'free', 'core', 'complete'].includes(o.plan) ? o.plan : 'legacy'}
+                        onChange={(e) => setOrgPlan(o, e.target.value)}
+                        className="text-xs rounded-md border border-gray-200 bg-white px-2 py-1 font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        title="Subscription plan — Trial & Complete unlock online learning modules; Free caps active students at 2"
+                      >
+                        <option value="trial">Trial (14-day full access)</option>
+                        <option value="free">Free (2 students)</option>
+                        <option value="core">Core</option>
+                        <option value="complete">Complete</option>
+                        {!['trial', 'free', 'core', 'complete'].includes(o.plan) && (
+                          <option value="legacy" disabled>{o.plan || 'free'} (legacy · full access)</option>
+                        )}
+                      </select>
+                      {o.trial && (
+                        <div className={`mt-1 text-[11px] ${o.trial.expired ? 'text-red-600' : 'text-amber-600'}`}>
+                          {o.trial.expired
+                            ? 'Trial expired → Free'
+                            : o.trial.daysLeft != null
+                              ? `${o.trial.daysLeft} day${o.trial.daysLeft === 1 ? '' : 's'} left`
+                              : 'On trial'}
+                        </div>
+                      )}
                     </td>
                     <td className="table-cell">
                       <span className={

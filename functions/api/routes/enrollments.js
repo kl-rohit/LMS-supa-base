@@ -2,6 +2,7 @@
 
 const router = require('express').Router();
 const { insert, getById, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { createNotifications } = require('../lib/notify');
 
 // GET /api/enrollments?course_id=X
 router.get('/', async (req, res) => {
@@ -88,6 +89,23 @@ router.post('/', async (req, res) => {
         created.push(normalize(row));
       } catch (err) { console.error('enrollment failed', sid, err.message); }
     }
+    // Notify the newly-enrolled students (best-effort).
+    if (created.length) {
+      try {
+        const courseName = course.title || course.name || 'a course';
+        await createNotifications(req, {
+          orgId: Number(req.orgId),
+          studentIds: created.map((c) => String(c.student_id)),
+          type: 'enrollment',
+          title: 'You’ve been enrolled',
+          body: `You now have access to “${courseName}”.`,
+          link: '/portal/courses',
+        });
+      } catch (notifyErr) {
+        console.error('[enrollments] notify failed:', notifyErr.message);
+      }
+    }
+
     res.status(201).json({ enrollments: created, count: created.length });
   } catch (e) {
     res.status(500).json({ error: 'Failed to enroll', detail: e.message });

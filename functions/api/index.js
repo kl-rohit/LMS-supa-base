@@ -6,6 +6,7 @@ const cors = require('cors');
 const { requireAuth, requireAdmin } = require('./middleware/auth');
 const { requireParent } = require('./middleware/parent');
 const { resolveOrg, requireOrgId } = require('./middleware/org');
+const { requireModule } = require('./middleware/entitlement');
 
 // Build version — written by deploy.sh at deploy time (git SHA + build time).
 // Absent in dev / fresh checkouts; fall back to 'dev' so /api/health never errors.
@@ -38,6 +39,7 @@ app.get('/', (_req, res) => {
       '/api/student-logins (admin)',
       '/api/courses (admin)',
       '/api/lessons (admin)',
+      '/api/quizzes (admin)',
       '/api/enrollments (admin)',
       '/api/settings (admin)',
       '/api/platform (platform admin — multi-tenancy)',
@@ -79,10 +81,16 @@ app.use('/api/dashboard',      requireAuth, resolveOrg, requireOrgId, require('.
 app.use('/api/import',         requireAuth, resolveOrg, requireOrgId, require('./routes/import'));
 app.use('/api/camps',          requireAuth, resolveOrg, requireOrgId, require('./routes/camps'));
 app.use('/api/student-logins', requireAuth, resolveOrg, requireOrgId, require('./routes/student-logins'));
-app.use('/api/courses',        requireAuth, resolveOrg, requireOrgId, require('./routes/courses'));
-app.use('/api/lessons',        requireAuth, resolveOrg, requireOrgId, require('./routes/lessons'));
-app.use('/api/enrollments',    requireAuth, resolveOrg, requireOrgId, require('./routes/enrollments'));
+// Premium routes (Complete plan) — gated by requireModule. quizzes, courses
+// and enrollments all ride on the Lessons module entitlement.
+app.use('/api/courses',        requireAuth, resolveOrg, requireOrgId, requireModule('lessons'),         require('./routes/courses'));
+app.use('/api/lessons',        requireAuth, resolveOrg, requireOrgId, requireModule('lessons'),         require('./routes/lessons'));
+app.use('/api/quizzes',        requireAuth, resolveOrg, requireOrgId, requireModule('lessons'),         require('./routes/quizzes'));
+app.use('/api/enrollments',    requireAuth, resolveOrg, requireOrgId, requireModule('lessons'),         require('./routes/enrollments'));
+app.use('/api/assignments',    requireAuth, resolveOrg, requireOrgId, requireModule('assignments'),     require('./routes/assignments'));
+app.use('/api/question-papers',requireAuth, resolveOrg, requireOrgId, requireModule('question_papers'), require('./routes/questionpapers'));
 app.use('/api/settings',       requireAuth, resolveOrg, requireOrgId, require('./routes/settings'));
 app.use('/api/organization',   requireAuth, resolveOrg, requireOrgId, require('./routes/organization'));
+app.use('/api/notifications',  requireAuth, resolveOrg, requireOrgId, require('./routes/notifications'));
 
 module.exports = app;

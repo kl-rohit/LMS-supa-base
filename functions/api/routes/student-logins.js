@@ -15,6 +15,7 @@
 const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
 const { getById, update, zcql, unwrap } = require('../db/catalystDb');
+const { parentKey, setFlag } = require('../lib/onboarding');
 
 // Shape we return to the React app for each login row.
 function toLogin(student) {
@@ -92,6 +93,10 @@ router.post('/', async (req, res) => {
       login_user_id: String(userId),
       login_status: 'active',
     });
+
+    // Mark the parent welcome tour as pending for this newly-activated login so
+    // the parent sees it once on first sign-in (cleared when they dismiss it).
+    await setFlag(req, req.orgId, parentKey(student_id), 'true');
 
     res.status(201).json({
       login: toLogin(updated),

@@ -17,6 +17,8 @@ const DEFAULTS = {
   'modules.camps':          false, // off by default — opt-in
   'modules.groups':         true,
   'modules.student_photos': true,
+  'modules.assignments':    false, // off by default — opt-in
+  'modules.question_papers': false, // off by default — opt-in
   // Parent portal
   'portal.show_lessons':       true,
   'portal.show_fees':          true,
@@ -29,21 +31,41 @@ function parseBool(v, fallback) {
   return fallback;
 }
 
+// Premium modules gated by the subscription plan (see functions/api/lib/plans.js).
+// A module that isn't entitled is forced OFF regardless of the admin toggle.
+const PREMIUM = ['lessons', 'assignments', 'question_papers'];
+
 export function useModuleFlags() {
   const [flags, setFlags] = useState(DEFAULTS);
+  const [plan, setPlan] = useState('complete');           // grandfather default
+  const [entitlements, setEntitlements] = useState({});   // { lessons: bool, ... }
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { settings } = await api.get('/settings/app');
+        const res = await api.get('/settings/app');
         if (cancelled) return;
+        const settings = res?.settings || {};
+        const ent = res?.entitlements || {};
         const next = { ...DEFAULTS };
         for (const k of Object.keys(DEFAULTS)) {
           next[k] = parseBool(settings?.[k], DEFAULTS[k]);
         }
+        // Effective state = entitled AND enabled. A plan that doesn't unlock a
+        // premium module hides it even if the stored flag says 'true'.
+        for (const mod of PREMIUM) {
+          // entitlements omitted (older server) → treat as entitled (no regression).
+          const entitled = ent[mod] === undefined ? true : !!ent[mod];
+          if (!entitled) next[`modules.${mod}`] = false;
+        }
+        // Portal lessons depend on the Lessons module being unlocked.
+        if (ent.lessons === false) next['portal.show_lessons'] = false;
+
         setFlags(next);
+        setEntitlements(ent);
+        if (res?.plan) setPlan(res.plan);
       } catch {
         // Use defaults — every module visible — so the app doesn't go dark.
       } finally {
@@ -53,5 +75,5 @@ export function useModuleFlags() {
     return () => { cancelled = true; };
   }, []);
 
-  return { flags, loaded };
+  return { flags, plan, entitlements, loaded };
 }

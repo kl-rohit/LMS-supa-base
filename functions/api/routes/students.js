@@ -1,8 +1,41 @@
 // /api/students — CRUD against Catalyst Data Store table "Students".
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, unwrap, normalize, q, appFor, safeId } = require('../db/catalystDb');
+const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize, q, appFor, safeId } = require('../db/catalystDb');
 const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
+const { planMaxStudents, normalizePlan } = require('../lib/plans');
+
+// Active-student cap helper. Returns null when the org is within its plan
+// limit (or the plan is unlimited / caller is platform admin); otherwise
+// returns a 402-ready body describing the limit. `delta` is how many active
+// students the pending action adds (1 for create / reactivate).
+async function studentCapBlock(req, delta = 1) {
+  // Bypass ONLY during cross-org support impersonation (platform admin viewing
+  // a foreign org via ?org=, where resolveOrg sets orgRole='platform_admin').
+  // When the platform owner operates their OWN academy (a real membership →
+  // orgRole is 'owner'/'teacher'/etc.), the cap applies like any other user.
+  if (req.orgRole === 'platform_admin') return null;
+  const cap = req.orgMaxStudents != null ? req.orgMaxStudents : planMaxStudents(req.orgPlan);
+  if (cap == null) return null; // unlimited
+  let count = 0;
+  try {
+    const rows = await zcql(
+      req,
+      `SELECT COUNT(ROWID) AS total FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.status = 'active'`
+    );
+    count = rows[0]?.Students?.total || 0;
+  } catch { return null; } // fail open — never block on a count hiccup
+  if (count + delta > cap) {
+    return {
+      error: 'student_limit_reached',
+      limit: cap,
+      count,
+      plan: normalizePlan(req.orgPlan),
+      message: `Your plan allows up to ${cap} active student${cap === 1 ? '' : 's'}. Upgrade to add more.`,
+    };
+  }
+  return null;
+}
 
 // IMPORTANT: declare specific paths (debug/tables, inactive) BEFORE the /:id
 // catch-all so Express routes them correctly.
@@ -79,7 +112,10 @@ router.get('/', async (req, res) => {
     const orgFilter = `Students.org_id = ${Number(req.orgId)}`;
     if (!search && !status && !limit) {
       // Avoid getAll() (table-wide) — it'd return other orgs' rows.
-      const rows = await zcql(req, `SELECT * FROM Students WHERE ${orgFilter} ORDER BY Students.name ASC`);
+      // zcqlAll drains page-by-page so academies with >300 students aren't
+      // silently truncated by ZCQL's 300-row cap (the student pickers across
+      // Classes, Enrollments, Attendance, etc. all consume this list).
+      const rows = await zcqlAll(req, `SELECT * FROM Students WHERE ${orgFilter} ORDER BY Students.name ASC`, 'Students');
       return res.json({ students: unwrap(rows, 'Students').map(normalize) });
     }
     const where = [orgFilter];
@@ -101,7 +137,7 @@ router.get('/', async (req, res) => {
         pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
       });
     }
-    const rows = await zcql(req, `SELECT * FROM Students ${whereSql} ORDER BY Students.name ASC`);
+    const rows = await zcqlAll(req, `SELECT * FROM Students ${whereSql} ORDER BY Students.name ASC`, 'Students');
     res.json({ students: unwrap(rows, 'Students').map(normalize) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch students', detail: e.message });
@@ -153,6 +189,12 @@ router.post('/', async (req, res) => {
     if (!name || !parent_name || !mobile_number) {
       return res.status(400).json({ error: 'name, parent_name, and mobile_number are required' });
     }
+    // Plan cap: only ACTIVE students count toward the limit. Creating an
+    // inactive student is always allowed (e.g. archiving an old roster).
+    if ((status || 'active') === 'active') {
+      const block = await studentCapBlock(req, 1);
+      if (block) return res.status(402).json(block);
+    }
     const payload = {
       name, parent_name, mobile_number,
       fee_online: fee_online || 0,
@@ -192,6 +234,12 @@ router.put('/:id', async (req, res) => {
       status, notes, date_of_birth,
       email, address, father_name, mother_name, photo_url,
     } = req.body;
+    // Reactivating an inactive student counts against the plan cap. (A no-op
+    // re-save of an already-active student doesn't add to the count.)
+    if (status === 'active' && (existing.status || 'active') !== 'active') {
+      const block = await studentCapBlock(req, 1);
+      if (block) return res.status(402).json(block);
+    }
     const patch = {};
     if (name !== undefined)                  patch.name                  = name;
     if (parent_name !== undefined)           patch.parent_name           = parent_name;

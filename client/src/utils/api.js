@@ -59,7 +59,10 @@ async function request(url, options = {}) {
     let errorMessage = `HTTP ${response.status}`;
     try {
       const errorData = await response.json();
-      errorMessage = errorData.error || errorData.message || errorMessage;
+      // Prefer a human-readable `message` when present (e.g. plan-limit 402s
+      // carry a machine code in `error` + friendly copy in `message`); fall
+      // back to `error` for endpoints that only set that.
+      errorMessage = errorData.message || errorData.error || errorMessage;
     } catch {
       // Could not parse error response
     }

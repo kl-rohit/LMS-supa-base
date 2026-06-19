@@ -8,17 +8,21 @@ import {
   ClipboardCheck,
   IndianRupee,
   Video,
+  ClipboardList,
+  FileText,
   Menu,
   X,
-  Music2,
   LogOut,
   UserCircle2,
+  HelpCircle,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 import { useOrgBranding } from '../hooks/useOrgBranding';
 import api from '../utils/api';
 import Loader from '../components/Loader';
+import NotificationBell from '../components/NotificationBell';
+import OnboardingTour from '../components/OnboardingTour';
 
 // Lazy-load each portal route so parents only download what they visit.
 const PortalDashboard  = lazy(() => import('../pages/portal/Dashboard'));
@@ -27,15 +31,21 @@ const PortalFees       = lazy(() => import('../pages/portal/Fees'));
 const PortalCourses    = lazy(() => import('../pages/portal/Courses'));
 const PortalProfile    = lazy(() => import('../pages/portal/Profile'));
 const CoursePlayer     = lazy(() => import('../pages/portal/CoursePlayer'));
+const PortalAssignments = lazy(() => import('../pages/portal/Assignments'));
+const PortalPapers      = lazy(() => import('../pages/portal/QuestionPapers'));
+const PortalHelp        = lazy(() => import('../pages/portal/Help'));
 
 // Each nav item has a `flag` — the AppSettings toggle that gates it. The
 // portal nav respects the academy's per-org visibility choices.
 const ALL_NAV = [
   { to: '/portal/dashboard',  label: 'Overview',      icon: LayoutDashboard, flag: null },
   { to: '/portal/lessons',    label: 'My Lessons',    icon: Video,           flag: 'portal.show_lessons' },
+  { to: '/portal/assignments',label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
+  { to: '/portal/papers',     label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
   { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck,  flag: null },
   { to: '/portal/fees',       label: 'Fees',          icon: IndianRupee,     flag: 'portal.show_fees' },
   { to: '/portal/profile',    label: 'My Profile',    icon: UserCircle2,     flag: null },
+  { to: '/portal/help',       label: 'Help & Guide',  icon: HelpCircle,      flag: null },
 ];
 
 function visibleNav(flags) {
@@ -49,7 +59,7 @@ export default function ParentLayout() {
   const { flags } = useModuleFlags();
   const navItems = visibleNav(flags);
   const branding = useOrgBranding();
-  const displayName = branding.name || 'Veena';
+  const displayName = branding.name || 'VidyaSetu';
   const [studentName, setStudentName] = useState('');
   // Reflect the academy name in the browser tab title.
   useEffect(() => {
@@ -98,9 +108,11 @@ export default function ParentLayout() {
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
-              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Music2 className="w-5 h-5 text-white" />
-              </div>
+              <img
+                src={`${process.env.PUBLIC_URL || '/'}logo.png`}
+                alt=""
+                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+              />
             )}
             <span className="text-xl font-bold text-gray-900 truncate">{displayName}</span>
           </div>
@@ -170,6 +182,9 @@ export default function ParentLayout() {
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-semibold text-gray-800">{currentLabel}</h1>
+          <div className="ml-auto">
+            <NotificationBell />
+          </div>
         </header>
 
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
@@ -179,13 +194,20 @@ export default function ParentLayout() {
               <Route path="dashboard" element={<PortalDashboard />} />
               <Route path="lessons" element={<PortalCourses />} />
               <Route path="lessons/:courseId" element={<CoursePlayer />} />
+              <Route path="assignments" element={<PortalAssignments />} />
+              <Route path="papers" element={<PortalPapers />} />
               <Route path="attendance" element={<PortalAttendance />} />
               <Route path="fees" element={<PortalFees />} />
               <Route path="profile" element={<PortalProfile />} />
+              <Route path="help" element={<PortalHelp />} />
+              <Route path="help/:slug" element={<PortalHelp />} />
             </Routes>
           </Suspense>
         </main>
       </div>
+
+      {/* First-login welcome tour (parent). Dismissal persisted per device. */}
+      <OnboardingTour variant="parent" helpPath="/portal/help" />
     </div>
   );
 }

@@ -4,7 +4,7 @@
 // - Logged in but wrong role → redirect to that role's home (no "access denied" page)
 // - Still loading session → spinner
 
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Loader from './Loader';
 
@@ -19,7 +19,6 @@ export function roleHome(appRole) {
 
 export default function RequireAuth({ children, role }) {
   const { user, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
     return (
@@ -30,7 +29,17 @@ export default function RequireAuth({ children, role }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    // No session → send to the public marketing/landing page (a static file
+    // outside the SPA router). The landing page's "Sign in" button points at
+    // /app/login, so there's no redirect loop. Logged-in users never reach
+    // here — they fall through to their dashboard/portal home below.
+    const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
+    window.location.replace(`${base}/landing.html`);
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader />
+      </div>
+    );
   }
 
   // Wrong role for this branch — send them to their own home.

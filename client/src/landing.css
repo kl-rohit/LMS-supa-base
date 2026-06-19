@@ -1,0 +1,7 @@
+/* Input for the static landing page's compiled Tailwind stylesheet.
+ * Output (purged + minified) → dist/landing.css, linked from public/landing.html.
+ * The page's bespoke CSS (gradients, logo fallback, animations) stays in the
+ * inline <style> in landing.html. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

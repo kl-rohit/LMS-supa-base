@@ -14,6 +14,8 @@ import {
   Wifi,
   Tent,
   Archive,
+  CalendarRange,
+  List,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -22,6 +24,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import Timetable from '../components/Timetable';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -46,6 +49,7 @@ export default function Classes() {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [workingHours, setWorkingHours] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
@@ -54,6 +58,8 @@ export default function Classes() {
   const [deleteDialog, setDeleteDialog] = useState({ open: false, cls: null });
   const [typeFilter, setTypeFilter] = useState('all');
   const [studentSearch, setStudentSearch] = useState('');
+  // Schedule sub-view: 'timetable' (date-aware time-grid) | 'list' (day cards)
+  const [scheduleView, setScheduleView] = useState('timetable');
 
   // ----- Camps tab state -----
   // activeTab: 'schedule' (weekly grid) | 'camps' (camps list)
@@ -88,14 +94,16 @@ export default function Classes() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [classesData, studentsData, groupsData] = await Promise.all([
+      const [classesData, studentsData, groupsData, settingsData] = await Promise.all([
         api.get('/classes'),
         api.get('/students'),
         api.get('/groups'),
+        api.get('/settings/app').catch(() => null),
       ]);
       setClasses(classesData.classes || []);
       setStudents((studentsData.students || []).filter((s) => s.status === 'active'));
       setGroups(groupsData.groups || []);
+      setWorkingHours(settingsData?.settings?.['schedule.working_hours'] ?? '');
     } catch (err) {
       toast.error('Failed to load data: ' + err.message);
     } finally {
@@ -265,15 +273,71 @@ export default function Classes() {
     return `${hours}h ${mins}m`;
   };
 
-  const toggleStudentSelection = (id) => {
+  // Member ids (as strings) of a given group, read from the `members` array
+  // that GET /groups attaches to each group.
+  const groupMemberIds = (gid) => {
+    if (!gid) return [];
+    const g = groups.find((gr) => String(gr.id) === String(gid));
+    return Array.isArray(g?.members)
+      ? g.members.map((m) => String(m.id ?? m.student_id)).filter(Boolean)
+      : [];
+  };
+
+  // For a group-type class the selected batch's members are part of the roster
+  // automatically (managed in Groups, kept dynamic by the attendance union).
+  // We surface them as "locked" rows so the teacher sees they're included.
+  const batchMemberIds = isGroupType(form.class_type) ? groupMemberIds(form.group_id) : [];
+  const batchMemberSet = new Set(batchMemberIds);
+
+  // Add a student to the roster (the explicit student_ids list). Re-selecting a
+  // student who is already associated — either added directly or coming from the
+  // selected batch — surfaces a notice instead of silently toggling them off.
+  const selectStudent = (id) => {
+    const key = String(id);
+    if (batchMemberSet.has(key)) {
+      toast('Student already associated via the batch', { icon: 'ℹ️' });
+      return;
+    }
+    if (form.student_ids.some((sid) => String(sid) === key)) {
+      toast('Student already associated', { icon: 'ℹ️' });
+      return;
+    }
+    setForm((prev) => ({ ...prev, student_ids: [...prev.student_ids, id] }));
+  };
+
+  // Remove a student from this class's roster (the extras / individual list).
+  const removeStudent = (id) => {
+    const key = String(id);
+    setForm((prev) => ({
+      ...prev,
+      student_ids: prev.student_ids.filter((sid) => String(sid) !== key),
+    }));
+  };
+
+  // Bulk-add every member of a group into the roster (individual classes use
+  // this as a shortcut). Skips anyone already associated and reports both how
+  // many were added and how many were already present.
+  const addStudentsFromGroup = (gid) => {
+    const memberIds = groupMemberIds(gid);
+    if (!memberIds.length) {
+      toast('That group has no members yet');
+      return;
+    }
     setForm((prev) => {
-      const has = prev.student_ids.some((sid) => String(sid) === String(id));
-      return {
-        ...prev,
-        student_ids: has
-          ? prev.student_ids.filter((sid) => String(sid) !== String(id))
-          : [...prev.student_ids, id],
-      };
+      const have = new Set(prev.student_ids.map(String));
+      const merged = [...prev.student_ids];
+      let added = 0;
+      let dup = 0;
+      memberIds.forEach((id) => {
+        if (have.has(id)) { dup++; return; }
+        merged.push(id);
+        have.add(id);
+        added++;
+      });
+      if (added) toast.success(`Added ${added} student${added > 1 ? 's' : ''} from the group`);
+      if (dup && !added) toast('All of that group is already associated', { icon: 'ℹ️' });
+      else if (dup) toast(`${dup} already associated`, { icon: 'ℹ️' });
+      return { ...prev, student_ids: merged };
     });
   };
 
@@ -281,23 +345,33 @@ export default function Classes() {
     s.name.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
+  // Auto-name a slot from its batch/student when the teacher leaves the name
+  // blank (tuition mode — single subject, so the roster is the useful label).
+  const deriveName = (isGroup) => {
+    if (isGroup) {
+      const g = groups.find((gr) => String(gr.id) === String(form.group_id));
+      const base = g?.name || 'Batch';
+      return form.student_ids.length ? `${base} +${form.student_ids.length}` : base;
+    }
+    const first = students.find((s) => String(s.id) === String(form.student_ids[0]))?.name;
+    if (!first) return 'Class';
+    return form.student_ids.length > 1 ? `${first} +${form.student_ids.length - 1}` : first;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast.error('Class name is required');
-      return;
-    }
-
     const isGroup = isGroupType(form.class_type);
 
     if (isGroup && !form.group_id) {
-      toast.error('Please select a group');
+      toast.error('Please select a batch');
       return;
     }
     if (!isGroup && form.student_ids.length === 0) {
       toast.error('Please select at least one student');
       return;
     }
+
+    const finalName = form.name.trim() || deriveName(isGroup);
 
     try {
       setSaving(true);
@@ -306,47 +380,25 @@ export default function Classes() {
       const diffMinutes = (eh * 60 + em) - (sh * 60 + sm);
       const durationHours = diffMinutes > 0 ? diffMinutes / 60 : 1;
 
+      // student_ids carries the roster for individual classes, and the EXTRA
+      // students for group classes (tuition mode: batch + a few extras).
+      const payload = {
+        name: finalName,
+        class_type: form.class_type,
+        day_of_week: Number(form.day_of_week),
+        start_time: form.start_time,
+        end_time: form.end_time,
+        group_id: isGroup ? String(form.group_id) : null,
+        student_ids: form.student_ids.map(String),
+        duration_hours: durationHours,
+      };
+
       if (editingClass) {
-        // Edit mode: send full student_ids list for individual classes;
-        // backend replaces class_students rows accordingly.
-        const payload = {
-          name: form.name,
-          class_type: form.class_type,
-          day_of_week: Number(form.day_of_week),
-          start_time: form.start_time,
-          end_time: form.end_time,
-          group_id: isGroup ? String(form.group_id) : null,
-          duration_hours: durationHours,
-        };
-        if (!isGroup) {
-          payload.student_ids = form.student_ids.map(String);
-        }
         await api.put(`/classes/${editingClass.id}`, payload);
         toast.success('Class updated');
       } else {
-        // Create mode: one class with multiple students for individual types.
-        const payload = {
-          name: form.name,
-          class_type: form.class_type,
-          day_of_week: Number(form.day_of_week),
-          start_time: form.start_time,
-          end_time: form.end_time,
-          group_id: isGroup ? String(form.group_id) : null,
-          duration_hours: durationHours,
-        };
-        if (isGroup) {
-          payload.student_id = null;
-        } else {
-          payload.student_ids = form.student_ids.map(String);
-        }
         await api.post('/classes', payload);
-        toast.success(
-          isGroup
-            ? 'Class created'
-            : form.student_ids.length > 1
-              ? `Class created with ${form.student_ids.length} students`
-              : 'Class created'
-        );
+        toast.success('Class created');
       }
       setModalOpen(false);
       setEditingClass(null);
@@ -383,6 +435,18 @@ export default function Classes() {
   const openAdd = (dayOfWeek) => {
     setEditingClass(null);
     setForm({ ...emptyForm, day_of_week: dayOfWeek ?? 0 });
+    setStudentSearch('');
+    setModalOpen(true);
+  };
+
+  // Add a slot prefilled with a day + start time (from a timetable empty-slot
+  // click). End time defaults to one hour after start.
+  const openAddAt = (dayOfWeek, startTime) => {
+    setEditingClass(null);
+    const [h, m] = (startTime || '17:00').split(':').map(Number);
+    const endH = Math.min(23, (h || 17) + 1);
+    const endTime = `${String(endH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
+    setForm({ ...emptyForm, day_of_week: dayOfWeek ?? 0, start_time: startTime || '17:00', end_time: endTime });
     setStudentSearch('');
     setModalOpen(true);
   };
@@ -474,30 +538,66 @@ export default function Classes() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Weekly Schedule</h2>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1 flex-wrap">
-            <Filter className="w-4 h-4 text-gray-400 ml-2" />
-            {['all', 'online', 'offline', 'offline_group', 'online_group'].map((type) => (
-              <button
-                key={type}
-                onClick={() => setTypeFilter(type)}
-                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                  typeFilter === type
-                    ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {type === 'all' ? 'All' : classTypeLabel(type)}
-              </button>
-            ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View switcher: Timetable (date-aware grid) vs List (day cards) */}
+          <div className="flex items-center bg-white rounded-lg border border-gray-200 p-0.5">
+            <button
+              onClick={() => setScheduleView('timetable')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                scheduleView === 'timetable' ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <CalendarRange className="w-3.5 h-3.5" /> Timetable
+            </button>
+            <button
+              onClick={() => setScheduleView('list')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                scheduleView === 'list' ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" /> List
+            </button>
           </div>
-          <button onClick={() => openAdd(today)} className="btn-primary btn-sm">
-            <Plus className="w-4 h-4" /> Add Class
-          </button>
+          {scheduleView === 'list' && (
+            <>
+              <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1 flex-wrap">
+                <Filter className="w-4 h-4 text-gray-400 ml-2" />
+                {['all', 'online', 'offline', 'offline_group', 'online_group'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setTypeFilter(type)}
+                    className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                      typeFilter === type
+                        ? 'bg-indigo-100 text-gray-900 dark:bg-indigo-600 dark:text-white'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {type === 'all' ? 'All' : classTypeLabel(type)}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => openAdd(today)} className="btn-primary btn-sm">
+                <Plus className="w-4 h-4" /> Add Class
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Weekly Calendar */}
+      {scheduleView === 'timetable' && (
+        <Timetable
+          classes={classes}
+          students={students}
+          groups={groups}
+          workingHours={workingHours}
+          onAddSlot={openAddAt}
+          onEditClass={openEdit}
+          onRefresh={fetchData}
+        />
+      )}
+
+      {/* Weekly Calendar (list view) */}
+      {scheduleView === 'list' && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {DAYS.map((day, idx) => (
           <div
@@ -592,6 +692,7 @@ export default function Classes() {
           </div>
         ))}
       </div>
+      )}
       </>
       )}
 
@@ -944,14 +1045,15 @@ export default function Classes() {
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Class Name *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Class Name <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               className="input-field"
-              placeholder="e.g., Veena Basics"
-              required
+              placeholder="Auto-named from the student / batch"
             />
           </div>
 
@@ -1010,41 +1112,75 @@ export default function Classes() {
             </p>
           )}
 
-          {isGroupType(form.class_type) ? (
+          {isGroupType(form.class_type) && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Group *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Batch *</label>
               <select
                 value={form.group_id}
-                onChange={(e) => setForm({ ...form, group_id: e.target.value, student_ids: [] })}
+                onChange={(e) => setForm({ ...form, group_id: e.target.value })}
                 className="select-field"
               >
-                <option value="">Select a group...</option>
+                <option value="">Select a batch...</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
+              <p className="text-xs text-gray-400 mt-1">Every batch member is included automatically.</p>
             </div>
-          ) : (
+          )}
+
+          {(
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Students *
-                {' '}<span className="text-gray-400 font-normal">({form.student_ids.length} selected)</span>
+                {isGroupType(form.class_type) ? 'Extra students' : 'Students *'}
+                {' '}<span className="text-gray-400 font-normal">
+                  {isGroupType(form.class_type)
+                    ? `(optional · ${form.student_ids.length} added)`
+                    : `(${form.student_ids.length} selected)`}
+                </span>
               </label>
 
-              {/* Selected student chips */}
-              {form.student_ids.length > 0 && (
+              {/* Selected student chips — batch members are shown locked (no X,
+                  managed via the group); directly-added students get a remove X. */}
+              {(batchMemberIds.length > 0 || form.student_ids.length > 0) && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
+                  {batchMemberIds.map((sid) => {
+                    const s = students.find((st) => String(st.id) === String(sid));
+                    return s ? (
+                      <span key={`batch-${sid}`} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-medium" title="From the selected batch — manage in Groups">
+                        {s.name}
+                        <span className="text-[10px] uppercase tracking-wide opacity-70">Batch</span>
+                      </span>
+                    ) : null;
+                  })}
                   {form.student_ids.map((sid) => {
-                    const s = students.find((st) => st.id === sid);
+                    const s = students.find((st) => String(st.id) === String(sid));
                     return s ? (
                       <span key={sid} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-medium">
                         {s.name}
-                        <button type="button" onClick={() => toggleStudentSelection(sid)} className="hover:text-indigo-900">
+                        <button type="button" onClick={() => removeStudent(sid)} className="hover:text-indigo-900" title="Remove from this class">
                           <X className="w-3 h-3" />
                         </button>
                       </span>
                     ) : null;
                   })}
+                </div>
+              )}
+
+              {/* Quick add from a group (individual classes) — bulk-selects every
+                  member, skipping anyone already associated. */}
+              {!isGroupType(form.class_type) && groups.length > 0 && (
+                <div className="mb-1.5">
+                  <select
+                    value=""
+                    onChange={(e) => { if (e.target.value) { addStudentsFromGroup(e.target.value); e.target.value = ''; } }}
+                    className="select-field text-sm"
+                  >
+                    <option value="">+ Add all students from a group…</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}{g.member_count ? ` (${g.member_count})` : ''}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 
@@ -1070,30 +1206,35 @@ export default function Classes() {
                 {filteredStudentsList.length === 0 ? (
                   <div className="px-3 py-2 text-sm text-gray-400">No students found</div>
                 ) : (
-                  filteredStudentsList.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
-                    >
-                      <input
-                        type="checkbox"
-                        className="hidden"
-                        checked={form.student_ids.includes(s.id)}
-                        onChange={() => toggleStudentSelection(s.id)}
-                      />
-                      <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
-                        form.student_ids.includes(s.id)
-                          ? 'bg-indigo-600 border-indigo-600'
-                          : 'border-gray-300'
-                      }`}>
-                        {form.student_ids.includes(s.id) && <Check className="w-3 h-3 text-white" />}
+                  filteredStudentsList.map((s) => {
+                    const isBatch = batchMemberSet.has(String(s.id));
+                    const isExtra = form.student_ids.some((sid) => String(sid) === String(s.id));
+                    const checked = isBatch || isExtra;
+                    return (
+                      <div
+                        key={s.id}
+                        onClick={() => (isExtra ? removeStudent(s.id) : selectStudent(s.id))}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                      >
+                        <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                          checked ? (isBatch ? 'bg-purple-500 border-purple-500' : 'bg-indigo-600 border-indigo-600') : 'border-gray-300'
+                        }`}>
+                          {checked && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <span className="text-sm text-gray-700 flex-1">{s.name}</span>
+                        {isBatch && (
+                          <span className="text-[10px] uppercase tracking-wide text-purple-600 font-medium">Batch</span>
+                        )}
                       </div>
-                      <span className="text-sm text-gray-700">{s.name}</span>
-                    </label>
-                  ))
+                    );
+                  })
                 )}
               </div>
-              <p className="text-xs text-gray-400 mt-1">All selected students will be linked to this single class.</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {isGroupType(form.class_type)
+                  ? 'Batch members (purple) come from the group — add or remove them in Groups. Students added here attend on top of the batch; tap a chip’s × to remove.'
+                  : 'Tap a name to add or remove a student. Use “Add all from a group” to bulk-select, then remove anyone who shouldn’t be in this class.'}
+              </p>
             </div>
           )}
 

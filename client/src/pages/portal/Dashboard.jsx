@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Check, IndianRupee, PlayCircle, ChevronRight, UserX, LogOut } from 'lucide-react';
+import { Calendar, CalendarClock, Check, IndianRupee, PlayCircle, ChevronRight, UserX, LogOut } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
+import InstallAppButton from '../../components/InstallAppButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { extractYouTubeId, ytThumbnail, formatDuration } from '../../utils/youtube';
 
@@ -17,6 +18,7 @@ export default function PortalDashboard() {
   const [fees, setFees] = useState(null);
   const [recentClasses, setRecentClasses] = useState([]);
   const [continueWatching, setContinueWatching] = useState(null);
+  const [upcoming, setUpcoming] = useState(null);
 
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -25,11 +27,12 @@ export default function PortalDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const [me, monthFees, att, cw] = await Promise.all([
+        const [me, monthFees, att, cw, up] = await Promise.all([
           api.get('/portal/me'),
           api.get(`/portal/fees?month=${ym}`),
           api.get('/portal/attendance'),
           api.get('/portal/continue-watching').catch(() => ({ course: null })),
+          api.get('/portal/upcoming-class').catch(() => ({ upcoming: null })),
         ]);
         if (cancelled) return;
         setStudent(me.student);
@@ -37,6 +40,7 @@ export default function PortalDashboard() {
         const attendance = att.attendance || [];
         setRecentClasses(attendance.slice(0, 5));
         setContinueWatching(cw?.course ? cw : null);
+        setUpcoming(up?.upcoming || null);
       } catch (e) {
         // /portal/me will fail if no StudentLogins row exists — show a friendly message
       } finally {
@@ -84,12 +88,35 @@ export default function PortalDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Install-as-app prompt (phones only, hidden once installed) */}
+      <InstallAppButton />
+
       <div>
         <h2 className="text-2xl font-semibold text-gray-900">Welcome</h2>
         <p className="text-sm text-gray-500 mt-1">
           Here's a snapshot of {student.name}'s {monthLabel} so far.
         </p>
       </div>
+
+      {/* Upcoming class — next scheduled occurrence from the timetable */}
+      {upcoming && (
+        <div className="card bg-indigo-50/60 dark:bg-indigo-500/10 border-indigo-100 dark:border-indigo-500/20">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <CalendarClock className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide text-indigo-600 font-semibold">Upcoming class</p>
+              <p className="text-base font-semibold text-gray-900 truncate mt-0.5">{upcoming.name}</p>
+              <p className="text-sm text-gray-600 mt-0.5">
+                {upcoming.day_label}{upcoming.start_time ? ` · ${upcoming.start_time}` : ''}
+                {upcoming.end_time ? `–${upcoming.end_time}` : ''}
+                {upcoming.group_name ? ` · ${upcoming.group_name}` : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="card">

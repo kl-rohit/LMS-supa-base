@@ -8,6 +8,7 @@ const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
 const { loadUser, publicUser } = require('../middleware/auth');
 const { insert, update, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { ADMIN_KEY, setFlag } = require('../lib/onboarding');
 
 // GET /api/auth/me
 // Used by AuthContext on app mount + activates 'invited' org memberships
@@ -37,7 +38,7 @@ router.post('/logout', (req, res) => {
 // platform admin calls this from the Platform Admin page; Catalyst emails the
 // new owner an invite to set their password. Creates:
 //   1. A Catalyst user (userManagement.registerUser) → email invite sent
-//   2. An Organizations row (status: active, plan: free)
+//   2. An Organizations row (status: active, plan: trial — 14-day full access)
 //   3. An OrgMemberships row (role: owner, status: invited)
 //
 // The new owner clicks the email link, sets a password, signs in. On their
@@ -121,7 +122,10 @@ router.post('/signup', async (req, res) => {
       slug,
       owner_user_id: String(newUserId),
       status: 'active',
-      plan: 'free',
+      // New academies start on a 14-day full-access trial (measured from
+      // creation time — see lib/plans.js effectivePlan). After it lapses they
+      // drop to the Free tier until they pick a paid plan.
+      plan: 'trial',
     });
     const orgId = orgRow?.ROWID;
 
@@ -132,6 +136,10 @@ router.post('/signup', async (req, res) => {
       role: 'owner',
       status: 'invited',
     });
+
+    // 4. Mark the welcome tour as pending for this brand-new org so the owner
+    //    sees it once on first login (cleared the moment they dismiss it).
+    if (orgId) await setFlag(req, Number(orgId), ADMIN_KEY, 'true');
 
     res.status(201).json({
       message: 'Academy created. Check your email for the invite to set your password.',

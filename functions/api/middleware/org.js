@@ -21,6 +21,7 @@
 // (i.e. Phase A wasn't completed in this environment).
 
 const { zcql, unwrap, normalize } = require('../db/catalystDb');
+const { normalizePlan, effectivePlan, planMaxStudents, trialInfo } = require('../lib/plans');
 
 async function resolveOrg(req, res, next) {
   const userId = req.user?.user_id;
@@ -42,6 +43,7 @@ async function resolveOrg(req, res, next) {
   if (isPlatformAdmin && requestedId) {
     req.orgId = requestedId;
     req.orgRole = 'platform_admin';
+    await loadOrgMeta(requestedId); // attach req.orgPlan for impersonation
     return next();
   }
 
@@ -63,15 +65,55 @@ async function resolveOrg(req, res, next) {
 
   const active = memberships.filter((m) => m.status === 'active');
 
-  // Check the org's own status — suspended orgs block access for everyone
-  // EXCEPT the platform admin (who can still impersonate to investigate).
-  async function checkOrgActive(orgId) {
+  // Load the org row once (status + plan + created time). Attaches:
+  //   req.orgPlanRaw     — the stored plan string
+  //   req.orgPlan        — the EFFECTIVE plan (an expired trial → 'free')
+  //   req.orgMaxStudents — active-student cap for the effective plan (null = ∞)
+  //   req.orgTrial       — { endsAt, daysLeft, expired } when on trial, else null
+  // and reports whether the org is active — suspended orgs block access for
+  // everyone EXCEPT the platform admin (who can still impersonate to
+  // investigate). Function declaration so it's hoisted for the platform-admin
+  // branch above.
+  async function loadOrgMeta(orgId) {
     try {
-      const rows = await zcql(req, `SELECT status FROM Organizations WHERE ROWID = ${Number(orgId)}`);
-      const o = unwrap(rows, 'Organizations')[0];
-      return !o || (o.status || 'active') === 'active';
+      const rows = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${Number(orgId)}`);
+      const o = unwrap(rows, 'Organizations')[0] || null;
+      const rawPlan = (o && o.plan) || 'free';
+      const createdAt = o && (o.CREATEDTIME || o.created_at) || null;
+
+      // System-managed plan metadata stored in AppSettings:
+      //   plan.trial_ends_at          — when an explicit trial window ends
+      //   plan.max_students_override  — a per-org student cap set by the
+      //                                 platform admin (overrides the plan's
+      //                                 default; blank = use plan default)
+      let trialEndsAt = null;
+      let overrideRaw = null;
+      try {
+        const sr = await zcql(
+          req,
+          `SELECT setting_key, setting_value FROM AppSettings WHERE AppSettings.org_id = ${Number(orgId)} AND AppSettings.setting_key IN ('plan.trial_ends_at', 'plan.max_students_override')`
+        );
+        for (const r of unwrap(sr, 'AppSettings')) {
+          if (r.setting_key === 'plan.trial_ends_at')         trialEndsAt = r.setting_value;
+          if (r.setting_key === 'plan.max_students_override') overrideRaw = r.setting_value;
+        }
+      } catch { /* no rows → fall back to plan defaults */ }
+
+      const eff = effectivePlan(rawPlan, { trialEndsAt, createdAt });
+      let maxStudents = planMaxStudents(eff); // plan default (null = unlimited)
+      if (overrideRaw != null && String(overrideRaw).trim() !== '') {
+        const n = parseInt(overrideRaw, 10);
+        if (Number.isFinite(n) && n >= 0) maxStudents = n; // per-org override wins
+      }
+
+      req.orgPlanRaw     = rawPlan;
+      req.orgPlan        = eff;
+      req.orgMaxStudents = maxStudents;
+      req.orgTrial       = trialInfo(rawPlan, { trialEndsAt, createdAt });
+      return { active: !o || (o.status || 'active') === 'active' };
     } catch {
-      return true; // fail open — don't lock the app if the lookup hiccups
+      req.orgPlan = req.orgPlan || 'complete'; // fail open on entitlements
+      return { active: true }; // fail open — don't lock the app if the lookup hiccups
     }
   }
 
@@ -79,7 +121,8 @@ async function resolveOrg(req, res, next) {
   if (requestedId) {
     const match = active.find((m) => Number(m.org_id) === requestedId);
     if (match) {
-      if (!isPlatformAdmin && !(await checkOrgActive(requestedId))) {
+      const meta = await loadOrgMeta(requestedId);
+      if (!isPlatformAdmin && !meta.active) {
         return res.status(403).json({ error: 'This academy is currently suspended. Contact support.' });
       }
       req.orgId = Number(match.org_id);
@@ -97,7 +140,8 @@ async function resolveOrg(req, res, next) {
   // hit; the eventual org-switcher UI can pass ?org= to pin a choice.
   if (active.length > 0) {
     const m = active[0];
-    if (!isPlatformAdmin && !(await checkOrgActive(m.org_id))) {
+    const meta = await loadOrgMeta(m.org_id);
+    if (!isPlatformAdmin && !meta.active) {
       return res.status(403).json({ error: 'This academy is currently suspended. Contact support.' });
     }
     req.orgId = Number(m.org_id);

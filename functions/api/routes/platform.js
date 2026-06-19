@@ -11,6 +11,7 @@ const router = require('express').Router();
 const {
   insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor,
 } = require('../db/catalystDb');
+const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION_DAYS } = require('../lib/plans');
 
 // Tables that need to be tagged with an org_id during migration. Same list
 // the debug-tables probe uses — keep them in sync.
@@ -181,10 +182,52 @@ router.get('/orgs', async (req, res) => {
       }
     } catch {}
 
-    const decorated = orgs.map((o) => ({
-      ...o,
-      member_count: memCounts.get(String(o.id)) || 0,
-    })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    // Count ACTIVE students per org (drives the plan student-cap display).
+    let stuCounts = new Map();
+    try {
+      const stu = await zcqlAll(req, `SELECT org_id FROM Students WHERE Students.status = 'active'`, 'Students');
+      for (const s of unwrap(stu, 'Students')) {
+        const k = String(s.org_id);
+        stuCounts.set(k, (stuCounts.get(k) || 0) + 1);
+      }
+    } catch {}
+
+    // Trial end dates + per-org student-cap overrides (per org).
+    let trialEnds = new Map();
+    let overrides = new Map();
+    try {
+      const sr = await zcqlAll(
+        req,
+        `SELECT org_id, setting_key, setting_value FROM AppSettings WHERE AppSettings.setting_key IN ('plan.trial_ends_at', 'plan.max_students_override')`,
+        'AppSettings'
+      );
+      for (const r of unwrap(sr, 'AppSettings')) {
+        if (r.setting_key === 'plan.trial_ends_at')         trialEnds.set(String(r.org_id), r.setting_value);
+        if (r.setting_key === 'plan.max_students_override') overrides.set(String(r.org_id), r.setting_value);
+      }
+    } catch {}
+
+    const decorated = orgs.map((o) => {
+      const opts = { trialEndsAt: trialEnds.get(String(o.id)), createdAt: o.created_at };
+      const eff = effectivePlan(o.plan, opts);
+      const planDefault = planMaxStudents(eff); // null = unlimited
+      const rawOverride = overrides.get(String(o.id));
+      let override = null;
+      if (rawOverride != null && String(rawOverride).trim() !== '') {
+        const n = parseInt(rawOverride, 10);
+        if (Number.isFinite(n) && n >= 0) override = n;
+      }
+      return {
+        ...o,
+        member_count:          memCounts.get(String(o.id)) || 0,
+        student_count:         stuCounts.get(String(o.id)) || 0,
+        effective_plan:        eff,
+        plan_max_students:     planDefault,                       // the plan's own cap
+        max_students_override: override,                          // per-org override or null
+        max_students:          override != null ? override : planDefault, // effective cap
+        trial:                 trialInfo(o.plan, opts),
+      };
+    }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
     res.json({ orgs: decorated });
   } catch (e) {
@@ -194,7 +237,10 @@ router.get('/orgs', async (req, res) => {
 
 // =============================================================================
 // PUT /api/platform/orgs/:id — platform-admin only (Catalyst App Admin).
-// Allowed patch: name, slug, status, plan.
+// Allowed Organizations patch: name, slug, status, plan.
+// Also accepts system-managed extras (stored in AppSettings, not on the org):
+//   trial_days   — when setting plan=trial, length of the trial window
+//   max_students — per-org student cap override (number, or null/'' to clear)
 // =============================================================================
 router.put('/orgs/:id', async (req, res) => {
   try {
@@ -208,7 +254,37 @@ router.put('/orgs/:id', async (req, res) => {
     if (req.body.status !== undefined) patch.status = String(req.body.status).slice(0, 20);
     if (req.body.plan   !== undefined) patch.plan   = String(req.body.plan).slice(0, 20);
 
-    const updated = await update(req, 'Organizations', req.params.id, patch);
+    // When flipping an org TO trial, (re)start the clock from now by stamping
+    // plan.trial_ends_at in that org's AppSettings. The length defaults to 14
+    // days but the platform admin can pass `trial_days` to set a custom window.
+    // This is a system-managed key (NOT in the Settings whitelist) so the
+    // academy can't extend its own trial via PUT /settings/app.
+    if (patch.plan !== undefined && normalizePlan(patch.plan) === 'trial') {
+      let days = parseInt(req.body.trial_days, 10);
+      if (!Number.isFinite(days) || days <= 0) days = TRIAL_DURATION_DAYS;
+      if (days > 365) days = 365; // sane upper bound
+      const endsAt = new Date(Date.now() + days * 86400000).toISOString();
+      await upsertOrgSetting(req, Number(req.params.id), 'plan.trial_ends_at', endsAt);
+    }
+
+    // Per-org student cap override. '' or null clears it (back to plan default).
+    if (req.body.max_students !== undefined) {
+      const v = req.body.max_students;
+      if (v === null || String(v).trim() === '') {
+        await upsertOrgSetting(req, Number(req.params.id), 'plan.max_students_override', '');
+      } else {
+        let n = parseInt(v, 10);
+        if (!Number.isFinite(n) || n < 0) n = 0;
+        if (n > 100000) n = 100000; // sane upper bound
+        await upsertOrgSetting(req, Number(req.params.id), 'plan.max_students_override', String(n));
+      }
+    }
+
+    // Only touch the Organizations row if there's an actual column change —
+    // a settings-only PUT (e.g. just max_students) leaves the org row alone.
+    const updated = Object.keys(patch).length
+      ? await update(req, 'Organizations', req.params.id, patch)
+      : org;
     res.json({ org: normalize(updated) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update org', detail: e.message });
@@ -216,6 +292,26 @@ router.put('/orgs/:id', async (req, res) => {
 });
 
 // ----- helpers --------------------------------------------------------------
+
+// Upsert a single AppSettings key for an arbitrary org (platform-admin scope).
+// Used to stamp system-managed plan metadata (e.g. trial end date).
+async function upsertOrgSetting(req, orgId, key, value) {
+  try {
+    const safeKey = String(key).replace(/'/g, "''");
+    const rows = await zcql(
+      req,
+      `SELECT ROWID FROM AppSettings WHERE AppSettings.org_id = ${Number(orgId)} AND AppSettings.setting_key = '${safeKey}'`
+    );
+    const existing = unwrap(rows, 'AppSettings')[0];
+    if (existing) {
+      await update(req, 'AppSettings', existing.ROWID, { setting_value: value });
+    } else {
+      await insert(req, 'AppSettings', { setting_key: key, setting_value: value, org_id: Number(orgId) });
+    }
+  } catch (e) {
+    console.error('upsertOrgSetting failed for', key, e.message); // non-fatal
+  }
+}
 
 function slugify(s) {
   return String(s || '')

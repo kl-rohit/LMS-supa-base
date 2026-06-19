@@ -55,13 +55,18 @@ export function AuthProvider({ children }) {
   // of the app stays SDK-free (see Login.jsx). If the SDK can't load (offline,
   // CDN blocked) we still hard-navigate to /login as a best effort.
   const signOut = useCallback(async () => {
-    setUser(null);
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     const redirectURL = `${window.location.origin}${base}/login`;
+    // IMPORTANT: do NOT setUser(null) before the SDK call. Nulling the user
+    // re-renders RequireAuth, which hard-navigates to landing.html and aborts
+    // the in-flight cookie-clearing signOut — leaving the session alive (the
+    // classic "sign out didn't work" bug). Let the SDK wipe cookies and do the
+    // redirect; only fall back to a manual redirect if the SDK can't load.
     try {
       await loadCatalystSDK();
       window.catalyst.auth.signOut(redirectURL);
     } catch {
+      setUser(null);
       window.location.href = `${base}/login`;
     }
   }, []);

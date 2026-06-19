@@ -15,19 +15,37 @@
 const STORAGE_KEY = 'veena.theme';
 const INDIGO_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900];
 
-// Preset accent colours. `base` is treated as the 500 weight; the rest of the
-// ramp is generated. 'default' is special — it clears the vars so the app uses
-// stock Tailwind indigo (pixel-identical to the original look).
+// Preset accent themes. `base` (the theme's Primary) is treated as the 500
+// weight; the rest of the ramp is generated and recolours the whole app.
+//
+// Each theme also carries `secondary` + `accent` + `darkBg` from the brand
+// spec. Today only `base` (Primary) is wired into the UI — it drives buttons,
+// links, the active sidebar item, and the browser/PWA theme colour. The gold
+// `secondary` and `accent` are stored for the richer multi-token pass (badges,
+// secondary buttons, highlights) and are shown in the picker swatch so each
+// theme reads as a distinct brand.
+//
+// 'default' is special — `base: null` clears the vars so the app uses stock
+// Tailwind indigo (pixel-identical to the original look).
 export const PRESETS = [
-  { id: 'default', label: 'Indigo',  swatch: '#4f46e5', base: null },
-  { id: 'violet',  label: 'Violet',  swatch: '#8b5cf6', base: '#8b5cf6' },
-  { id: 'sky',     label: 'Sky',     swatch: '#0ea5e9', base: '#0ea5e9' },
-  { id: 'emerald', label: 'Emerald', swatch: '#10b981', base: '#10b981' },
-  { id: 'teal',    label: 'Teal',    swatch: '#14b8a6', base: '#14b8a6' },
-  { id: 'rose',    label: 'Rose',    swatch: '#f43f5e', base: '#f43f5e' },
-  { id: 'amber',   label: 'Amber',   swatch: '#f59e0b', base: '#f59e0b' },
-  { id: 'slate',   label: 'Slate',   swatch: '#64748b', base: '#64748b' },
+  // — VidyaSetu's recommended top 5 (Hamsa is the brand default) —
+  { id: 'hamsa',   label: 'Hamsa',   emoji: '🦢', base: '#1E3A8A', secondary: '#D4A017', accent: '#F59E0B', darkBg: '#0F172A', desc: 'Premium classical · Blue + Gold' },
+  { id: 'banyan',  label: 'Banyan',  emoji: '🌳', base: '#2E7D32', secondary: '#D4A017', accent: '#84CC16', darkBg: '#102A13', desc: 'Growth & knowledge · Green + Gold' },
+  { id: 'lotus',   label: 'Lotus',   emoji: '🪷', base: '#BE185D', secondary: '#D4A017', accent: '#F9A8D4', darkBg: '#4A044E', desc: 'Arts & dance · Pink + Gold' },
+  { id: 'deepam',  label: 'Deepam',  emoji: '🪔', base: '#8B4513', secondary: '#F59E0B', accent: '#DC2626', darkBg: '#3B1F0F', desc: 'Traditional & spiritual · Brown + Gold' },
+  { id: 'mayura',  label: 'Mayura',  emoji: '🦚', base: '#0F766E', secondary: '#D4A017', accent: '#06B6D4', darkBg: '#042F2E', desc: 'Peacock · Teal + Gold' },
+  // — the rest —
+  { id: 'modern',   label: 'Modern',   emoji: '📚', base: '#2563EB', secondary: '#0EA5E9', accent: '#F97316', darkBg: '#111827', desc: 'Coaching & tuition · Blue + Sky' },
+  { id: 'veena',    label: 'Veena',    emoji: '🎻', base: '#6B21A8', secondary: '#D4A017', accent: '#C084FC', darkBg: '#2E1065', desc: 'Music academies · Purple + Gold' },
+  { id: 'surya',    label: 'Surya',    emoji: '☀️', base: '#EA580C', secondary: '#D4A017', accent: '#FACC15', darkBg: '#7C2D12', desc: 'Energy & excellence · Orange + Gold' },
+  { id: 'gurukul',  label: 'Gurukul',  emoji: '🕉️', base: '#7C2D12', secondary: '#D4A017', accent: '#FB923C', darkBg: '#431407', desc: 'Ancient knowledge · Maroon + Gold' },
+  { id: 'sanskrit', label: 'Sanskrit', emoji: '📜', base: '#92400E', secondary: '#FBBF24', accent: '#F59E0B', darkBg: '#422006', desc: 'Manuscript inspired · Amber' },
+  // — classic stock look —
+  { id: 'default',  label: 'Classic',  emoji: '🎨', base: null,      secondary: '#818cf8', accent: '#6366f1', darkBg: '#1e2126', desc: 'Stock indigo (original)' },
 ];
+
+// Convenience: the Primary swatch for a preset (falls back to indigo for stock).
+export function presetSwatch(p) { return p.base || '#4f46e5'; }
 
 function clamp(n) { return Math.max(0, Math.min(255, Math.round(n))); }
 

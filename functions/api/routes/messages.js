@@ -5,17 +5,25 @@ const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
+const { createNotifications } = require('../lib/notify');
+
+// Friendly inbox titles per message_type.
+const MSG_TITLES = {
+  fee_reminder: 'Fee reminder',
+  absence_alert: 'Attendance update',
+  custom: 'Message from your academy',
+};
 
 // School identity for {school} / {signature} substitution.
 async function loadSchoolCtx(req) {
   try {
     const s = await loadAppSettings(req);
     return {
-      school:    s['school.name']      || 'Veena Dhwani Academy',
-      signature: s['school.signature'] || s['school.name'] || 'Veena Dhwani Academy',
+      school:    s['school.name']      || 'Your Academy',
+      signature: s['school.signature'] || s['school.name'] || 'Your Academy',
     };
   } catch {
-    return { school: 'Veena Dhwani Academy', signature: 'Veena Dhwani Academy' };
+    return { school: 'Your Academy', signature: 'Your Academy' };
   }
 }
 
@@ -129,6 +137,35 @@ router.put('/:id', async (req, res) => {
     res.json({ message: normalize(updated) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update message', detail: e.message });
+  }
+});
+
+// POST /api/messages/:id/send-in-app — deliver this message to the parent's
+// in-app notification inbox (+ web push). Mirrors the WhatsApp action but
+// stays inside the app. Marks the message as sent.
+router.post('/:id/send-in-app', async (req, res) => {
+  try {
+    const existing = await getById(req, 'Messages', req.params.id);
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    if (!existing.student_id) {
+      return res.status(400).json({ error: 'This message has no linked student to notify' });
+    }
+    const type = existing.message_type || 'custom';
+    const result = await createNotifications(req, {
+      orgId: Number(req.orgId),
+      studentIds: [String(existing.student_id)],
+      type: type === 'fee_reminder' ? 'fee' : type === 'absence_alert' ? 'attendance' : 'message',
+      title: MSG_TITLES[type] || MSG_TITLES.custom,
+      body: existing.message || '',
+      link: type === 'fee_reminder' ? '/portal/fees' : '/portal',
+    });
+    // Mark as sent so it leaves the pending queue (same as WhatsApp send).
+    try { await update(req, 'Messages', req.params.id, { is_sent: 1 }); } catch { /* ignore */ }
+    res.json({ ok: true, delivered: result.created, pushed: result.pushed });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to send in-app', detail: e.message });
   }
 });
 

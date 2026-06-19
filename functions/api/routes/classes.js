@@ -5,7 +5,24 @@ const router = require('express').Router();
 const { insert, getById, update, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
 
 const VALID_TYPES = ['online', 'offline', 'offline_group', 'online_group'];
+const VALID_EXCEPTION_STATUS = ['cancelled', 'moved'];
 const isGroupType = (t) => t === 'offline_group' || t === 'online_group';
+
+// Schedule exceptions are stored as a JSON array in the Classes.exceptions
+// (Multi-line Text) column — one entry per overridden date, keyed by `date`:
+//   { date, status:'cancelled'|'moved', new_date, new_start_time, new_end_time, note }
+// This keeps reschedule/cancel data on the class itself (no separate table),
+// which suits a single-teacher tuition workload where exceptions are sparse.
+function parseExceptions(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
 
 function calcDuration(start, end) {
   if (!start || !end) return 1;
@@ -39,6 +56,7 @@ async function decorate(req, cls) {
     } catch {}
   }
   out.student_ids = await fetchClassStudents(req, cls.ROWID);
+  out.exceptions = parseExceptions(cls.exceptions);
   return out;
 }
 
@@ -51,6 +69,63 @@ router.get('/today', async (req, res) => {
     res.json({ classes: decorated, day_of_week: today });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch today\'s classes', detail: e.message });
+  }
+});
+
+// ---- Schedule exceptions (cancel / reschedule a single occurrence) ----
+// A recurring class repeats weekly on its day_of_week. An exception overrides
+// ONE dated occurrence: status='cancelled' hides it for that date;
+// status='moved' relocates it to new_date + new_start_time/new_end_time.
+// Exceptions live in the Classes.exceptions JSON column (no separate table),
+// so they ride along with every GET /classes response.
+
+// POST /api/classes/:id/exceptions  — cancel or move a single occurrence
+router.post('/:id/exceptions', async (req, res) => {
+  try {
+    const { exception_date, status, new_date, new_start_time, new_end_time, note } = req.body;
+    if (!exception_date || !status) {
+      return res.status(400).json({ error: 'exception_date and status are required' });
+    }
+    if (!VALID_EXCEPTION_STATUS.includes(status)) {
+      return res.status(400).json({ error: 'invalid status' });
+    }
+    const cls = await getById(req, 'Classes', req.params.id);
+    if (!cls || Number(cls.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+    if (status === 'moved' && !new_date) {
+      return res.status(400).json({ error: 'new_date required when moving an occurrence' });
+    }
+    // One exception per date: drop any existing entry for this date, then add.
+    const list = parseExceptions(cls.exceptions).filter((e) => e.date !== exception_date);
+    const entry = {
+      date: exception_date,
+      status,
+      new_date: status === 'moved' ? (new_date || null) : null,
+      new_start_time: status === 'moved' ? (new_start_time || cls.start_time) : null,
+      new_end_time: status === 'moved' ? (new_end_time || cls.end_time) : null,
+      note: note || '',
+    };
+    list.push(entry);
+    await update(req, 'Classes', req.params.id, { exceptions: JSON.stringify(list) });
+    res.status(201).json({ exception: entry, exceptions: list });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to save exception', detail: e.message });
+  }
+});
+
+// DELETE /api/classes/:id/exceptions/:date  — un-cancel / un-move (restore default)
+router.delete('/:id/exceptions/:date', async (req, res) => {
+  try {
+    const cls = await getById(req, 'Classes', req.params.id);
+    if (!cls || Number(cls.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+    const list = parseExceptions(cls.exceptions).filter((e) => e.date !== req.params.date);
+    await update(req, 'Classes', req.params.id, { exceptions: JSON.stringify(list) });
+    res.json({ message: 'Exception removed', exceptions: list });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to remove exception', detail: e.message });
   }
 });
 
@@ -120,10 +195,15 @@ router.post('/', async (req, res) => {
       org_id: Number(req.orgId),
     };
     const cls = await insert(req, 'Classes', baseRow);
-    if (!isGroupType(class_type) && individualIds.length > 1) {
-      for (const sid of individualIds) {
-        try { await insert(req, 'ClassStudents', { class_id: cls.ROWID, student_id: String(sid), org_id: Number(req.orgId) }); } catch {}
-      }
+    // Persist roster links in ClassStudents. For a group class these are the
+    // EXTRA individual students added on top of the batch (tuition mode); for
+    // an individual class they're the full roster when there's more than one.
+    // A single-student individual class is stored compactly in student_id.
+    const linkIds = isGroupType(class_type)
+      ? individualIds
+      : (individualIds.length > 1 ? individualIds : []);
+    for (const sid of linkIds) {
+      try { await insert(req, 'ClassStudents', { class_id: cls.ROWID, student_id: String(sid), org_id: Number(req.orgId) }); } catch {}
     }
     const decorated = await decorate(req, cls);
     res.status(201).json({ class: decorated });

@@ -2,6 +2,21 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { createNotifications } = require('../lib/notify');
+
+// Students enrolled in a course (for new-lesson / new-quiz notifications).
+async function enrolledStudentIds(req, courseId) {
+  const cid = safeId(courseId);
+  if (!cid) return [];
+  try {
+    const rows = await zcqlAll(
+      req,
+      `SELECT student_id FROM CourseEnrollments WHERE CourseEnrollments.course_id = ${cid} AND CourseEnrollments.org_id = ${Number(req.orgId)}`,
+      'CourseEnrollments'
+    );
+    return unwrap(rows, 'CourseEnrollments').map((r) => String(r.student_id)).filter(Boolean);
+  } catch { return []; }
+}
 
 // Helper: verify the parent course belongs to req.orgId before we let the
 // caller mutate the lesson (which inherits the course's org).
@@ -21,9 +36,76 @@ router.get('/', async (req, res) => {
     if (!cid) return res.status(400).json({ error: 'course_id is required' });
     if (!(await courseInOrg(req, cid))) return res.json({ lessons: [] });
     const rows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${cid} AND Lessons.org_id = ${Number(req.orgId)} ORDER BY Lessons.order_index ASC`);
-    res.json({ lessons: unwrap(rows, 'Lessons').map(normalize) });
+    const lessons = unwrap(rows, 'Lessons').map(normalize);
+
+    // Attach quiz_count per lesson in one batched query. Degrades to 0 if the
+    // LessonQuizzes table doesn't exist yet.
+    const counts = new Map();
+    const ids = lessons.map((l) => safeId(l.id)).filter(Boolean);
+    if (ids.length > 0) {
+      try {
+        const qrows = await zcql(req, `SELECT lesson_id FROM LessonQuizzes WHERE LessonQuizzes.org_id = ${Number(req.orgId)} AND LessonQuizzes.lesson_id IN (${ids.join(',')})`);
+        for (const r of unwrap(qrows, 'LessonQuizzes').map(normalize)) {
+          const k = String(r.lesson_id);
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+      } catch { /* table missing — leave counts at 0 */ }
+    }
+
+    res.json({ lessons: lessons.map((l) => ({
+      ...l,
+      quiz_count: counts.get(String(l.id)) || 0,
+    })) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch lessons', detail: e.message });
+  }
+});
+
+// GET /api/lessons/quiz-list — every quiz lesson (content_type='quiz') in the
+// org, with its course title + question count. Used by the Assignments admin
+// page to let a teacher attach an existing quiz to a quiz assignment.
+router.get('/quiz-list', async (req, res) => {
+  try {
+    const rows = await zcqlAll(
+      req,
+      `SELECT * FROM Lessons WHERE Lessons.org_id = ${Number(req.orgId)} AND Lessons.content_type = 'quiz'`,
+      'Lessons'
+    );
+    const quizzes = unwrap(rows, 'Lessons').map(normalize);
+    if (quizzes.length === 0) return res.json({ quizzes: [] });
+
+    // Course titles (batched).
+    const courseTitle = new Map();
+    const cids = [...new Set(quizzes.map((l) => safeId(l.course_id)).filter(Boolean))];
+    if (cids.length > 0) {
+      try {
+        const crows = await zcql(req, `SELECT ROWID, title FROM Courses WHERE Courses.org_id = ${Number(req.orgId)} AND Courses.ROWID IN (${cids.join(',')})`);
+        for (const c of unwrap(crows, 'Courses').map(normalize)) courseTitle.set(String(c.id), c.title || '');
+      } catch { /* ignore */ }
+    }
+
+    // Question counts (batched).
+    const counts = new Map();
+    const ids = quizzes.map((l) => safeId(l.id)).filter(Boolean);
+    if (ids.length > 0) {
+      try {
+        const qrows = await zcql(req, `SELECT lesson_id FROM LessonQuizzes WHERE LessonQuizzes.org_id = ${Number(req.orgId)} AND LessonQuizzes.lesson_id IN (${ids.join(',')})`);
+        for (const r of unwrap(qrows, 'LessonQuizzes').map(normalize)) {
+          const k = String(r.lesson_id);
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+      } catch { /* ignore */ }
+    }
+
+    res.json({ quizzes: quizzes.map((l) => ({
+      id: l.id,
+      title: l.title || 'Untitled quiz',
+      course_id: l.course_id ? String(l.course_id) : '',
+      course_title: courseTitle.get(String(l.course_id)) || '',
+      question_count: counts.get(String(l.id)) || 0,
+    })) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch quiz list', detail: e.message });
   }
 });
 
@@ -112,11 +194,14 @@ router.post('/', async (req, res) => {
   try {
     const { course_id, title, description, video_url, duration_seconds, order_index,
             section_name, start_seconds, end_seconds,
-            content_type, content_url } = req.body;
+            content_type, content_url, quiz_required, quiz_shuffle } = req.body;
     const type = content_type || 'video';
+    const isQuiz = type === 'quiz';
     const url = type === 'document' ? content_url : video_url;
-    if (!course_id || !title || !url) {
-      return res.status(400).json({ error: 'course_id, title, and URL are required' });
+    // Quiz lessons carry no URL — their content is the question bank
+    // (LessonQuizzes), authored separately. Video/document lessons need a URL.
+    if (!course_id || !title || (!isQuiz && !url)) {
+      return res.status(400).json({ error: isQuiz ? 'course_id and title are required' : 'course_id, title, and URL are required' });
     }
     if (!(await courseInOrg(req, course_id))) {
       return res.status(404).json({ error: 'Course not found' });
@@ -129,7 +214,7 @@ router.post('/', async (req, res) => {
         nextOrder = existing.reduce((m, l) => Math.max(m, Number(l.order_index) || 0), 0) + 1;
       } catch { nextOrder = 1; }
     }
-    const row = await insert(req, 'Lessons', {
+    const payload = {
       course_id: String(course_id),
       title,
       description: description || '',
@@ -142,7 +227,35 @@ router.post('/', async (req, res) => {
       start_seconds: Number(start_seconds) || 0,
       end_seconds: Number(end_seconds) || 0,
       org_id: Number(req.orgId),
-    });
+    };
+    // Only quiz lessons touch the quiz_required column — so creating a
+    // video/document lesson never references it (safe even before the column
+    // is added to the Lessons table in the console).
+    if (isQuiz) {
+      payload.quiz_required = (quiz_required === true || quiz_required === 'true');
+      payload.quiz_shuffle = (quiz_shuffle === true || quiz_shuffle === 'true');
+    }
+    const row = await insert(req, 'Lessons', payload);
+
+    // Notify enrolled students about the new lesson / quiz (best-effort).
+    try {
+      const studentIds = await enrolledStudentIds(req, course_id);
+      if (studentIds.length) {
+        const course = await getById(req, 'Courses', course_id).catch(() => null);
+        const courseName = course ? (course.title || course.name || 'your course') : 'your course';
+        await createNotifications(req, {
+          orgId: Number(req.orgId),
+          studentIds,
+          type: isQuiz ? 'quiz' : 'lesson',
+          title: isQuiz ? 'New quiz available' : 'New lesson available',
+          body: `“${title}” was added to ${courseName}.`,
+          link: '/portal/courses',
+        });
+      }
+    } catch (notifyErr) {
+      console.error('[lessons] new-lesson notify failed:', notifyErr.message);
+    }
+
     res.status(201).json({ lesson: normalize(row) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create lesson', detail: e.message });
@@ -227,7 +340,7 @@ router.put('/:id', async (req, res) => {
     }
     const { title, description, video_url, duration_seconds, order_index,
             section_name, start_seconds, end_seconds,
-            content_type, content_url } = req.body;
+            content_type, content_url, quiz_required, quiz_shuffle } = req.body;
     const patch = {};
     if (title !== undefined)            patch.title = title;
     if (description !== undefined)      patch.description = description;
@@ -239,6 +352,9 @@ router.put('/:id', async (req, res) => {
     if (end_seconds !== undefined)      patch.end_seconds = Number(end_seconds) || 0;
     if (content_type !== undefined)     patch.content_type = content_type;
     if (content_url !== undefined)      patch.content_url = content_url;
+    // quiz_required / quiz_shuffle are only sent by the client for quiz lessons.
+    if (quiz_required !== undefined)    patch.quiz_required = (quiz_required === true || quiz_required === 'true');
+    if (quiz_shuffle !== undefined)     patch.quiz_shuffle = (quiz_shuffle === true || quiz_shuffle === 'true');
     const updated = await update(req, 'Lessons', req.params.id, patch);
     res.json({ lesson: normalize(updated) });
   } catch (e) {

@@ -16,11 +16,11 @@ async function loadSchoolCtx(req) {
   try {
     const s = await loadAppSettings(req);
     return {
-      school:    s['school.name']      || 'Veena Dhwani Academy',
-      signature: s['school.signature'] || s['school.name'] || 'Veena Dhwani Academy',
+      school:    s['school.name']      || 'Your Academy',
+      signature: s['school.signature'] || s['school.name'] || 'Your Academy',
     };
   } catch {
-    return { school: 'Veena Dhwani Academy', signature: 'Veena Dhwani Academy' };
+    return { school: 'Your Academy', signature: 'Your Academy' };
   }
 }
 

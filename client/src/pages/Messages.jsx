@@ -13,7 +13,7 @@ import {
   Phone,
   User,
   Trash2,
-  Rocket,
+  BellRing,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -47,6 +47,7 @@ export default function Messages() {
   const [filter, setFilter] = useState('all');
   const [generating, setGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [sendingInAppId, setSendingInAppId] = useState(null);
 
   // Customizable templates (admin-editable in Settings → Templates).
   // We only READ them here for the compose dropdown + quick-template chips.
@@ -86,8 +87,8 @@ export default function Messages() {
       // Pulled from /api/settings/app on mount. Falls back to a friendly
       // placeholder when Settings hasn't been filled in yet, instead of
       // leaving a literal {school} / {signature} in the user-visible text.
-      school:    schoolCtx.school    || 'Veena Dhwani Academy',
-      signature: schoolCtx.signature || schoolCtx.school || 'Veena Dhwani Academy',
+      school:    schoolCtx.school    || 'your academy',
+      signature: schoolCtx.signature || schoolCtx.school || 'your academy',
       // {count}, {amount}, {month}, {year} stay literal in compose so the
       // teacher knows they still need to fill them in. Auto-generate paths
       // pass real values.
@@ -167,50 +168,44 @@ export default function Messages() {
     }
   };
 
-  // ----- Bulk WhatsApp "Send All Pending" -----
-  // Opens one wa.me tab per pending message (~300 ms apart so Chrome doesn't
-  // treat the burst as popup spam). Each opened message is marked is_sent=1
-  // immediately — the teacher still has to tap Send in each tab, but the
-  // UI no longer pesters them about pending drafts.
+  // ----- Bulk "Send All Pending" (in-app) -----
+  // Delivers every pending message to its parent's in-app inbox (+ push) in
+  // one go. No popups/tabs — a single API call per message, fired
+  // sequentially. Only messages linked to a student can be delivered in-app.
   const pendingSendable = useMemo(() =>
     messages.filter((m) =>
-      !(m.is_sent === 1 || m.is_sent === true) &&
-      normalizeMobileForWhatsApp(m.mobile_number)
+      !(m.is_sent === 1 || m.is_sent === true) && m.student_id
     ), [messages]);
 
   const sendAllPending = async () => {
     const list = pendingSendable;
     if (list.length === 0) return;
     const ok = await confirm({
-      title: `Open ${list.length} WhatsApp tab${list.length === 1 ? '' : 's'}?`,
+      title: `Send ${list.length} message${list.length === 1 ? '' : 's'} in-app?`,
       message:
-        `This will open ${list.length} new browser tab${list.length === 1 ? '' : 's'} — one per pending message — with the text pre-filled. ` +
-        `You will need to tap "Send" in each tab.\n\n` +
-        `If your browser blocks popups, look for the popup-blocker icon in the address bar and allow popups for this site, then try again.`,
-      confirmText: `Open ${list.length} tab${list.length === 1 ? '' : 's'}`,
+        `This will deliver ${list.length} pending message${list.length === 1 ? '' : 's'} to each parent's in-app inbox ` +
+        `and push to their device. The messages will be marked as sent.`,
+      confirmText: `Send ${list.length}`,
     });
     if (!ok) return;
     try {
       setBulkSending(true);
-      let opened = 0;
+      let sent = 0, failed = 0;
       for (const m of list) {
-        const num = normalizeMobileForWhatsApp(m.mobile_number);
-        if (!num) continue;
-        const url = `https://wa.me/${num}?text=${encodeURIComponent(m.message || '')}`;
-        const win = window.open(url, '_blank', 'noopener,noreferrer');
-        if (win) opened++;
-        // Flip the local row's status optimistically + server-side.
-        try { await api.put(`/messages/${m.id}`, { is_sent: true }); } catch {}
-        setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, is_sent: 1 } : x)));
-        // Pacing — Chrome blocks rapid-fire window.open as popup spam.
-        await new Promise((r) => setTimeout(r, 300));
+        try {
+          await api.post(`/messages/${m.id}/send-in-app`);
+          setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, is_sent: 1 } : x)));
+          sent++;
+        } catch {
+          failed++;
+        }
       }
-      if (opened === list.length) {
-        toast.success(`Opened ${opened} WhatsApp tab${opened === 1 ? '' : 's'} — tap Send in each.`);
-      } else if (opened > 0) {
-        toast(`Opened ${opened} of ${list.length} tabs — allow popups for this site to open the rest.`, { icon: 'ℹ️' });
+      if (failed === 0) {
+        toast.success(`Sent ${sent} message${sent === 1 ? '' : 's'} in-app`);
+      } else if (sent > 0) {
+        toast(`Sent ${sent}, ${failed} failed — check those have a linked parent.`, { icon: 'ℹ️' });
       } else {
-        toast.error('Browser blocked all popups. Allow popups for this site and try again.');
+        toast.error('Could not send any messages in-app.');
       }
     } finally {
       setBulkSending(false);
@@ -260,6 +255,15 @@ export default function Messages() {
     e.preventDefault();
     if (!composeForm.student_id || !composeForm.message_text.trim()) {
       toast.error('Student and message are required');
+      return;
+    }
+    // Don't let unfilled {placeholder} tokens leak into a created message.
+    // {name}/{parent}/{school}/{signature} are already substituted on template
+    // load; anything left ({count}, {amount}, {month}, {year}, …) is data the
+    // teacher must fill in manually before the message is usable.
+    const leftover = [...new Set(composeForm.message_text.match(/\{\w+\}/g) || [])];
+    if (leftover.length) {
+      toast.error(`Fill in or remove these placeholders first: ${leftover.join(', ')}`);
       return;
     }
     try {
@@ -315,6 +319,20 @@ export default function Messages() {
       toast.success('Marked as sent');
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  // Deliver a message to the parent's in-app notification inbox (+ push).
+  const sendInApp = async (message) => {
+    setSendingInAppId(message.id);
+    try {
+      const r = await api.post(`/messages/${message.id}/send-in-app`);
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, is_sent: 1 } : m)));
+      toast.success(r?.pushed > 0 ? 'Sent in-app + pushed to device' : 'Sent to in-app inbox');
+    } catch (err) {
+      toast.error(err.message || 'Failed to send in-app');
+    } finally {
+      setSendingInAppId(null);
     }
   };
 
@@ -395,11 +413,11 @@ export default function Messages() {
             <button
               onClick={sendAllPending}
               disabled={bulkSending}
-              className="btn-sm rounded-lg bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium disabled:opacity-60"
-              title={`Open WhatsApp for all ${pendingSendable.length} pending message(s)`}
+              className="btn-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+              title={`Deliver all ${pendingSendable.length} pending message(s) to parents' in-app inbox`}
             >
-              <Rocket className="w-4 h-4" />
-              {bulkSending ? 'Opening tabs...' : `Send All Pending (${pendingSendable.length})`}
+              <BellRing className="w-4 h-4" />
+              {bulkSending ? 'Sending…' : `Send All In-App (${pendingSendable.length})`}
             </button>
           )}
           <button
@@ -654,6 +672,16 @@ export default function Messages() {
                       >
                         <Send className="w-4 h-4" /> WhatsApp
                       </a>
+                    )}
+                    {message.student_id && (
+                      <button
+                        onClick={() => sendInApp(message)}
+                        disabled={sendingInAppId === message.id}
+                        className="btn-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+                        title="Deliver to the parent's in-app inbox and push to their device"
+                      >
+                        <BellRing className="w-4 h-4" /> {sendingInAppId === message.id ? 'Sending…' : 'Send in-app'}
+                      </button>
                     )}
                     {!isSent && (
                       <button

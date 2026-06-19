@@ -4,7 +4,7 @@
 // back to the path given by `signin_to`.
 
 import { useEffect } from 'react';
-import { Music2, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { roleHome } from '../components/RequireAuth';
@@ -25,7 +25,7 @@ export default function Login() {
   // Already logged in → bounce to the user's home (admin vs parent).
   useEffect(() => {
     if (!loading && user) {
-      const dest = location.state?.from || roleHome(user.role);
+      const dest = location.state?.from || roleHome(user.app_role);
       navigate(dest, { replace: true });
     }
   }, [user, loading, navigate, location.state]);
@@ -38,11 +38,17 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg mb-3">
-            <Music2 className="w-7 h-7 text-white" />
+          <div className="w-14 h-14 rounded-2xl shadow-lg mb-3 overflow-hidden">
+            <img
+              src={`${process.env.PUBLIC_URL || '/'}logo.png`}
+              alt="VidyaSetu"
+              className="w-full h-full object-cover"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Veena Dhwani Academy</h1>
-          <p className="text-sm text-gray-500 mt-1">Sign in to continue</p>
+          <h1 className="text-2xl font-bold">
+            <span className="text-gray-900 dark:text-gray-100">Vidya</span><span className="text-amber-500">Setu</span>
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Bridging teachers and learners</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">

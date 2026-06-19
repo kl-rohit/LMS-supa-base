@@ -19,10 +19,13 @@ import StatsCard from '../components/StatsCard';
 import Loader from '../components/Loader';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
+import { useOrgBranding } from '../hooks/useOrgBranding';
+import InstallAppButton from '../components/InstallAppButton';
 
 export default function Dashboard() {
   // Bank-style mask for the financial stat. Auto-hides 20s after toggle.
   const amountReveal = useRevealTimer(20000);
+  const branding = useOrgBranding();
   const [data, setData] = useState(null);
   const [birthdays, setBirthdays] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +86,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Install-as-app prompt (phones only, hidden once installed) */}
+      <InstallAppButton />
+
       {/* Tiny show/hide toggle for the Fees stat */}
       <div className="flex justify-end">
         <button
@@ -141,7 +147,7 @@ export default function Dashboard() {
               const isTomorrow = b.days_until === 1;
               const dobDate = new Date(b.next_birthday + 'T00:00:00');
               const phone = normalizeMobileForWhatsApp(b.mobile_number);
-              const message = `🎂 Happy birthday ${b.name}! Wishing you a wonderful year ahead.\n\n— Veena Dhwani Academy`;
+              const message = `🎂 Happy birthday ${b.name}! Wishing you a wonderful year ahead.${branding.name ? `\n\n— ${branding.name}` : ''}`;
               const waLink = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}` : null;
               return (
                 <div key={b.student_id} className="flex items-center gap-3 bg-white border border-pink-100 rounded-lg px-3 py-2">

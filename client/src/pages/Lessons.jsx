@@ -22,12 +22,14 @@ import {
   FolderTree,
   GripVertical,
   FileText,
+  ListChecks,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import QuizEditor from '../components/QuizEditor';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters, extractDriveId } from '../utils/youtube';
 import {
@@ -51,7 +53,7 @@ import { CSS } from '@dnd-kit/utilities';
 // Sortable lesson row — wraps the lesson card in @dnd-kit's useSortable.
 // The drag handle (grip icon) is the only element that initiates drag;
 // the rest of the row stays clickable.
-function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
+function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete, onQuiz }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: lesson.id });
   const style = {
@@ -60,9 +62,11 @@ function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
-  const isDoc = lesson.content_type === 'document';
-  const ytId = isDoc ? null : extractYouTubeId(lesson.video_url);
-  const hasSegment = !isDoc && ((lesson.start_seconds || 0) > 0 || (lesson.end_seconds || 0) > 0);
+  const type = lesson.content_type || 'video';
+  const isDoc = type === 'document';
+  const isQuiz = type === 'quiz';
+  const ytId = isDoc || isQuiz ? null : extractYouTubeId(lesson.video_url);
+  const hasSegment = !isDoc && !isQuiz && ((lesson.start_seconds || 0) > 0 || (lesson.end_seconds || 0) > 0);
   const openUrl = isDoc ? lesson.content_url : lesson.video_url;
   return (
     <div
@@ -83,6 +87,10 @@ function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
       <div className="text-sm font-semibold text-gray-400 w-6">{displayIdx + 1}.</div>
       {ytId ? (
         <img src={ytThumbnail(ytId)} alt="" className="w-24 h-14 rounded object-cover flex-shrink-0 hidden sm:block" loading="lazy" />
+      ) : isQuiz ? (
+        <div className="w-24 h-14 rounded bg-indigo-50 items-center justify-center flex-shrink-0 hidden sm:flex">
+          <ListChecks className="w-6 h-6 text-indigo-500" />
+        </div>
       ) : (
         <div className="w-24 h-14 rounded bg-blue-50 items-center justify-center flex-shrink-0 hidden sm:flex">
           <FileText className="w-6 h-6 text-blue-500" />
@@ -94,19 +102,56 @@ function SortableLessonRow({ lesson, displayIdx, onEdit, onDelete }) {
           {isDoc && (
             <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-normal">PDF</span>
           )}
-        </p>
-        <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-          {hasSegment && (
-            <span className="font-mono text-indigo-600">
-              {formatDuration(lesson.start_seconds || 0)}–{lesson.end_seconds ? formatDuration(lesson.end_seconds) : 'end'}
+          {isQuiz && (
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-normal inline-flex items-center gap-1">
+              <ListChecks className="w-3 h-3" /> Quiz
             </span>
           )}
-          {!hasSegment && !isDoc && lesson.duration_seconds > 0 && <span>{formatDuration(lesson.duration_seconds)}</span>}
-          <a href={openUrl} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 ${isDoc ? 'text-blue-600 hover:text-blue-700' : 'text-red-600 hover:text-red-700'}`}>
-            {isDoc ? <FileText className="w-3 h-3" /> : <Youtube className="w-3 h-3" />} Open
-          </a>
+          {isQuiz && lesson.quiz_required && (
+            <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-normal">Required</span>
+          )}
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+          {isQuiz ? (
+            <span>
+              {lesson.quiz_count > 0
+                ? `${lesson.quiz_count} question${lesson.quiz_count === 1 ? '' : 's'}`
+                : 'No questions yet — click the list icon to add'}
+            </span>
+          ) : (
+            <>
+              {hasSegment && (
+                <span className="font-mono text-indigo-600">
+                  {formatDuration(lesson.start_seconds || 0)}–{lesson.end_seconds ? formatDuration(lesson.end_seconds) : 'end'}
+                </span>
+              )}
+              {!hasSegment && !isDoc && lesson.duration_seconds > 0 && <span>{formatDuration(lesson.duration_seconds)}</span>}
+              <a href={openUrl} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 ${isDoc ? 'text-blue-600 hover:text-blue-700' : 'text-red-600 hover:text-red-700'}`}>
+                {isDoc ? <FileText className="w-3 h-3" /> : <Youtube className="w-3 h-3" />} Open
+              </a>
+            </>
+          )}
         </p>
       </div>
+      {isQuiz && (
+        <button
+          onClick={() => onQuiz(lesson)}
+          className={`p-1.5 rounded relative flex-shrink-0 ${
+            lesson.quiz_count > 0
+              ? 'text-indigo-600 hover:bg-indigo-50'
+              : 'text-amber-600 hover:bg-amber-50 animate-pulse'
+          }`}
+          title={lesson.quiz_count > 0 ? `Edit questions (${lesson.quiz_count})` : 'Add questions'}
+          type="button"
+        >
+          <ListChecks className="w-4 h-4" />
+          {lesson.quiz_count > 0 && (
+            <span className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[10px] leading-none font-semibold rounded-full min-w-[14px] h-[14px] px-1 flex items-center justify-center">
+              {lesson.quiz_count}
+            </span>
+          )}
+        </button>
+      )}
       <button onClick={() => onEdit(lesson)} className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title="Edit" type="button">
         <Edit2 className="w-4 h-4" />
       </button>
@@ -121,13 +166,15 @@ const blankCourse = { name: '', description: '', thumbnail_url: '' };
 const blankLesson = {
   title: '',
   description: '',
-  content_type: 'video',  // 'video' or 'document'
+  content_type: 'video',  // 'video' | 'document' | 'quiz'
   video_url: '',
   content_url: '',         // Drive URL for document-type lessons
   duration_seconds: 0,
   section_name: '',
   start_seconds_str: '',
   end_seconds_str: '',
+  quiz_required: false,    // quiz lessons only — gates the certificate
+  quiz_shuffle: false,     // quiz lessons only — randomise question + option order
 };
 
 export default function Lessons() {
@@ -149,8 +196,12 @@ export default function Lessons() {
   const [editingLesson, setEditingLesson] = useState(null);
   const [lessonForm, setLessonForm] = useState(blankLesson);
 
+  // Quiz authoring modal — holds the quiz lesson whose questions are edited.
+  const [quizLesson, setQuizLesson] = useState(null);
+
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [enrollSelection, setEnrollSelection] = useState([]); // array of student_ids
+  const [enrollSearch, setEnrollSearch] = useState('');
 
   // Split-video-into-chapter-lessons modal state
   const [splitModalOpen, setSplitModalOpen] = useState(false);
@@ -308,6 +359,8 @@ export default function Lessons() {
       section_name: l.section_name || '',
       start_seconds_str: l.start_seconds ? formatDuration(l.start_seconds) : '',
       end_seconds_str: l.end_seconds ? formatDuration(l.end_seconds) : '',
+      quiz_required: !!l.quiz_required,
+      quiz_shuffle: !!l.quiz_shuffle,
     });
     setLessonModalOpen(true);
   };
@@ -317,24 +370,29 @@ export default function Lessons() {
       return;
     }
     const isDoc = lessonForm.content_type === 'document';
-    const url = isDoc ? lessonForm.content_url.trim() : lessonForm.video_url.trim();
-    if (!url) {
-      toast.error(isDoc ? 'Drive URL is required' : 'YouTube URL is required');
-      return;
-    }
-    if (isDoc) {
-      if (!extractDriveId(url)) {
-        toast.error("Doesn't look like a valid Google Drive URL");
+    const isQuiz = lessonForm.content_type === 'quiz';
+
+    // Quiz lessons carry no URL — questions are authored separately.
+    if (!isQuiz) {
+      const url = isDoc ? lessonForm.content_url.trim() : lessonForm.video_url.trim();
+      if (!url) {
+        toast.error(isDoc ? 'Drive URL is required' : 'YouTube URL is required');
         return;
       }
-    } else {
-      if (!extractYouTubeId(url)) {
+      if (isDoc) {
+        if (!extractDriveId(url)) {
+          toast.error("Doesn't look like a valid Google Drive URL");
+          return;
+        }
+      } else if (!extractYouTubeId(url)) {
         toast.error("Doesn't look like a valid YouTube URL");
         return;
       }
     }
-    const start = isDoc ? 0 : parseTimeString(lessonForm.start_seconds_str);
-    const end   = isDoc ? 0 : parseTimeString(lessonForm.end_seconds_str);
+
+    const url = isQuiz ? '' : (isDoc ? lessonForm.content_url.trim() : lessonForm.video_url.trim());
+    const start = (isDoc || isQuiz) ? 0 : parseTimeString(lessonForm.start_seconds_str);
+    const end   = (isDoc || isQuiz) ? 0 : parseTimeString(lessonForm.end_seconds_str);
     if (end > 0 && start >= end) {
       toast.error('End time must be after start time');
       return;
@@ -343,20 +401,33 @@ export default function Lessons() {
       title: lessonForm.title,
       description: lessonForm.description,
       content_type: lessonForm.content_type,
-      video_url: isDoc ? '' : url,
+      video_url: (isDoc || isQuiz) ? '' : url,
       content_url: isDoc ? url : '',
-      duration_seconds: isDoc ? 0 : (Number(lessonForm.duration_seconds) || 0),
+      duration_seconds: (isDoc || isQuiz) ? 0 : (Number(lessonForm.duration_seconds) || 0),
       section_name: lessonForm.section_name.trim(),
       start_seconds: start,
       end_seconds: end,
     };
+    // Only quiz lessons send quiz_required (gates the certificate) and the
+    // shuffle flag (randomise question + option order per student).
+    if (isQuiz) {
+      payload.quiz_required = !!lessonForm.quiz_required;
+      payload.quiz_shuffle = !!lessonForm.quiz_shuffle;
+    }
     try {
       if (editingLesson) {
         await api.put(`/lessons/${editingLesson.id}`, payload);
         toast.success('Lesson updated');
       } else {
-        await api.post('/lessons', { ...payload, course_id: String(selectedCourse.id) });
+        const resp = await api.post('/lessons', { ...payload, course_id: String(selectedCourse.id) });
         toast.success('Lesson added');
+        // For a brand-new quiz lesson, jump straight into authoring questions.
+        if (isQuiz && resp?.lesson) {
+          setLessonModalOpen(false);
+          await fetchCourseDetail(selectedCourse.id);
+          setQuizLesson(resp.lesson);
+          return;
+        }
       }
       setLessonModalOpen(false);
       fetchCourseDetail(selectedCourse.id);
@@ -408,6 +479,15 @@ export default function Lessons() {
     }
   };
 
+  // ----- Quiz authoring -----
+  const openQuiz = (l) => setQuizLesson(l);
+  // QuizEditor reports its current persisted question count so we can keep the
+  // badge on the lesson row in sync without refetching the whole course.
+  const handleQuizCount = (count) => {
+    if (!quizLesson) return;
+    setLessons((prev) => prev.map((l) => (String(l.id) === String(quizLesson.id) ? { ...l, quiz_count: count } : l)));
+  };
+
   const deleteLesson = async (l) => {
     const ok = await confirm({
       title: 'Delete this lesson?',
@@ -427,6 +507,7 @@ export default function Lessons() {
   // ----- Enroll students -----
   const openEnrollModal = () => {
     setEnrollSelection([]);
+    setEnrollSearch('');
     setEnrollModalOpen(true);
   };
   const enrolledIds = useMemo(
@@ -437,6 +518,15 @@ export default function Lessons() {
     () => students.filter((s) => !enrolledIds.has(String(s.id))),
     [students, enrolledIds]
   );
+  // Search across name + parent so a teacher can find a student quickly even
+  // when the unenrolled list is long.
+  const enrollFiltered = useMemo(() => {
+    const q = enrollSearch.trim().toLowerCase();
+    if (!q) return unenrolledStudents;
+    return unenrolledStudents.filter(
+      (s) => (s.name || '').toLowerCase().includes(q) || (s.parent_name || '').toLowerCase().includes(q)
+    );
+  }, [unenrolledStudents, enrollSearch]);
   const saveEnrollments = async () => {
     if (enrollSelection.length === 0) return;
     try {
@@ -565,6 +655,7 @@ export default function Lessons() {
                               displayIdx={sectionLocalIdx}
                               onEdit={openEditLesson}
                               onDelete={deleteLesson}
+                              onQuiz={openQuiz}
                             />
                           </div>
                         );
@@ -668,32 +759,50 @@ export default function Lessons() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Lesson type</label>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
+                  disabled={!!editingLesson}
                   onClick={() => setLessonForm({ ...lessonForm, content_type: 'video' })}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  className={`px-2 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     lessonForm.content_type === 'video'
                       ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
                       : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                   }`}
                 >
-                  <Youtube className="w-4 h-4 inline -mt-0.5 mr-1.5" />
-                  Video (YouTube)
+                  <Youtube className="w-4 h-4 inline -mt-0.5 mr-1" />
+                  Video
                 </button>
                 <button
                   type="button"
+                  disabled={!!editingLesson}
                   onClick={() => setLessonForm({ ...lessonForm, content_type: 'document' })}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  className={`px-2 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     lessonForm.content_type === 'document'
                       ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
                       : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                   }`}
                 >
-                  <FileText className="w-4 h-4 inline -mt-0.5 mr-1.5" />
-                  Document (Drive)
+                  <FileText className="w-4 h-4 inline -mt-0.5 mr-1" />
+                  Document
+                </button>
+                <button
+                  type="button"
+                  disabled={!!editingLesson}
+                  onClick={() => setLessonForm({ ...lessonForm, content_type: 'quiz' })}
+                  className={`px-2 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    lessonForm.content_type === 'quiz'
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                      : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <ListChecks className="w-4 h-4 inline -mt-0.5 mr-1" />
+                  Quiz
                 </button>
               </div>
+              {editingLesson && (
+                <p className="text-xs text-gray-400 mt-1">Lesson type can't be changed after creation.</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
@@ -720,6 +829,47 @@ export default function Lessons() {
                   In Drive: share the file as "Anyone with the link can view".
                   For best privacy, disable download/print/copy in Drive's sharing settings.
                 </p>
+              </div>
+            ) : lessonForm.content_type === 'quiz' ? (
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={!!lessonForm.quiz_required}
+                    onChange={(e) => setLessonForm({ ...lessonForm, quiz_required: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded mt-0.5"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-gray-800">Required to earn the certificate</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      Students can still skip ahead, but the course certificate won't be issued
+                      until this quiz is passed. Leave off for an optional / practice quiz.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={!!lessonForm.quiz_shuffle}
+                    onChange={(e) => setLessonForm({ ...lessonForm, quiz_shuffle: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded mt-0.5"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-gray-800">Shuffle questions &amp; answers</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      Each student sees the questions — and the options within each question —
+                      in a random order. Discourages copying and rote answer-position memorisation.
+                    </span>
+                  </span>
+                </label>
+                <div className="flex items-start gap-2 text-xs text-indigo-700 bg-indigo-50 rounded-lg p-3">
+                  <ListChecks className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    {editingLesson
+                      ? 'Use the list icon on the lesson row to add or edit questions.'
+                      : "After you save, you'll add the questions next."}
+                  </span>
+                </div>
               </div>
             ) : (
               <div>
@@ -753,7 +903,7 @@ export default function Lessons() {
               <p className="text-xs text-gray-400 mt-1">Lessons with the same section group together in the parent's sidebar.</p>
             </div>
 
-            {lessonForm.content_type !== 'document' && (
+            {lessonForm.content_type === 'video' && (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -801,11 +951,17 @@ export default function Lessons() {
                 onChange={(e) => setLessonForm({ ...lessonForm, description: e.target.value })}
                 className="input-field resize-none font-mono text-sm"
                 rows={6}
-                placeholder={'Add lines like:\n0:00 Introduction\n2:30 Vocal warm-up\n5:45 Raag Yaman alaap'}
+                placeholder={lessonForm.content_type === 'video'
+                  ? 'Add lines like:\n0:00 Introduction\n2:30 Vocal warm-up\n5:45 Raag Yaman alaap'
+                  : lessonForm.content_type === 'quiz'
+                  ? 'Optional intro shown above the quiz (e.g. "10 questions, 70% to pass").'
+                  : 'Optional notes shown with this document.'}
               />
-              <p className="text-xs text-gray-400 mt-1">
-                Lines that start with a timestamp (e.g. <span className="font-mono">0:00 Introduction</span>) become clickable chapter markers in the parent's player.
-              </p>
+              {lessonForm.content_type === 'video' && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Lines that start with a timestamp (e.g. <span className="font-mono">0:00 Introduction</span>) become clickable chapter markers in the parent's player.
+                </p>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
               <button onClick={() => setLessonModalOpen(false)} className="btn-secondary btn-sm">Cancel</button>
@@ -828,9 +984,35 @@ export default function Lessons() {
               <p className="text-sm text-gray-500 text-center py-6">All active students are already enrolled.</p>
             ) : (
               <>
-                <p className="text-sm text-gray-500">Select students to enroll. Already-enrolled students aren't shown.</p>
+                <p className="text-sm text-gray-500">Search and select students to enroll. Already-enrolled students aren't shown.</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={enrollSearch}
+                    onChange={(e) => setEnrollSearch(e.target.value)}
+                    className="input-field flex-1 text-sm"
+                    placeholder="Search by name or parent…"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEnrollSelection((prev) => Array.from(new Set([...prev, ...enrollFiltered.map((s) => String(s.id))])))}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEnrollSelection([])}
+                    className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                </div>
                 <div className="max-h-72 overflow-y-auto border border-gray-200 rounded-lg">
-                  {unenrolledStudents.map((s) => {
+                  {enrollFiltered.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-6">No students match “{enrollSearch}”.</p>
+                  ) : enrollFiltered.map((s) => {
                     const checked = enrollSelection.includes(String(s.id));
                     return (
                       <label key={s.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 border-gray-100">
@@ -868,6 +1050,15 @@ export default function Lessons() {
           onSave={saveCourse}
           isEdit={!!editingCourse}
         />
+
+        {/* Quiz authoring */}
+        {quizLesson && (
+          <QuizEditor
+            lesson={quizLesson}
+            onClose={() => setQuizLesson(null)}
+            onCountChange={handleQuizCount}
+          />
+        )}
 
         {/* Split video into chapter-lessons */}
         <Modal

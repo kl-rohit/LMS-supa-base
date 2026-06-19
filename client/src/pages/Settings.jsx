@@ -28,6 +28,8 @@ import {
   Sun,
   Moon,
   Check,
+  Clock,
+  Lock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -35,7 +37,8 @@ import Loader from '../components/Loader';
 import TemplatesEditor from '../components/TemplatesEditor';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { invalidateOrgBranding } from '../hooks/useOrgBranding';
-import { PRESETS, applyTheme, saveTheme } from '../utils/theme';
+import { PRESETS, presetSwatch, applyTheme, saveTheme } from '../utils/theme';
+import { DAY_NAMES, parseWorkingHours, serializeWorkingHours } from '../utils/workingHours';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -57,16 +60,21 @@ const EMPTY_SETTINGS = {
   'modules.camps':          'false',
   'modules.groups':         'true',
   'modules.student_photos': 'true',
+  'modules.assignments':    'false',
+  'modules.question_papers':'false',
   'portal.show_lessons':       'true',
   'portal.show_fees':          'true',
   'portal.allow_profile_edit': 'true',
   // Appearance — accent theme ('default' | preset id | '#hex') + light/dark.
   'appearance.accent': 'default',
   'appearance.mode':   'light',
+  // Working hours — JSON array (see utils/workingHours.js). Empty → defaults.
+  'schedule.working_hours': '',
 };
 
 const TABS = [
   { id: 'school',       label: 'School',       icon: School },
+  { id: 'schedule',     label: 'Working hours',icon: Clock },
   { id: 'appearance',   label: 'Appearance',   icon: Palette },
   { id: 'billing',      label: 'Billing',      icon: IndianRupee },
   { id: 'modules',      label: 'Modules',      icon: ToggleLeft },
@@ -80,13 +88,18 @@ export default function Settings() {
   const [form, setForm] = useState(EMPTY_SETTINGS);
   const [savedNotice, setSavedNotice] = useState(false);
   const [activeTab, setActiveTab] = useState('school');
+  const [plan, setPlan] = useState('complete');         // grandfather default
+  const [entitlements, setEntitlements] = useState({}); // { lessons: bool, ... }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { settings } = await api.get('/settings/app');
+        const res = await api.get('/settings/app');
+        const settings = res?.settings;
         if (cancelled) return;
+        if (res?.plan) setPlan(res.plan);
+        if (res?.entitlements) setEntitlements(res.entitlements);
         const merged = { ...EMPTY_SETTINGS, ...(settings || {}) };
         setForm(merged);
         // Reconcile the server's saved appearance with this device: apply it
@@ -113,7 +126,10 @@ export default function Settings() {
       setSaving(true);
       // Only send the keys that belong to the active concern, but easier
       // to just send them all — backend ignores anything outside its whitelist.
-      const { settings } = await api.put('/settings/app', { settings: form });
+      const res = await api.put('/settings/app', { settings: form });
+      const settings = res?.settings;
+      if (res?.entitlements) setEntitlements(res.entitlements);
+      if (res?.plan) setPlan(res.plan);
       setForm({ ...EMPTY_SETTINGS, ...(settings || {}) });
       setSavedNotice(true);
       toast.success('Settings saved');
@@ -162,9 +178,10 @@ export default function Settings() {
 
       {/* Tab content */}
       {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
+      {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
       {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
       {activeTab === 'billing'      && <BillingTab form={form} set={set} />}
-      {activeTab === 'modules'      && <ModulesTab form={form} set={set} />}
+      {activeTab === 'modules'      && <ModulesTab form={form} set={set} plan={plan} entitlements={entitlements} />}
       {activeTab === 'templates'    && <TemplatesTab />}
       {activeTab === 'organization' && <OrganizationTab />}
 
@@ -210,7 +227,7 @@ function SchoolTab({ form, set }) {
           value={form['school.name']}
           onChange={set('school.name')}
           className="input-field"
-          placeholder="e.g. Veena Dhwani Academy"
+          placeholder="e.g. Saraswati Music Academy"
         />
       </Field>
       <Field
@@ -223,7 +240,7 @@ function SchoolTab({ form, set }) {
           onChange={set('school.signature')}
           rows={3}
           className="input-field"
-          placeholder="Veena Dhwani Academy"
+          placeholder="Saraswati Music Academy"
         />
       </Field>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -242,7 +259,7 @@ function SchoolTab({ form, set }) {
             value={form['school.contact_email']}
             onChange={set('school.contact_email')}
             className="input-field"
-            placeholder="info@veena.com"
+            placeholder="info@academy.com"
           />
         </Field>
       </div>
@@ -255,6 +272,91 @@ function SchoolTab({ form, set }) {
           placeholder="Street, City, State, PIN"
         />
       </Field>
+    </div>
+  );
+}
+
+function ScheduleTab({ form, setForm }) {
+  // The 7-day array is derived from the JSON string in `form`. Every edit
+  // writes the serialized JSON straight back so the shared bottom Save bar
+  // persists it with the rest of the settings.
+  const days = parseWorkingHours(form['schedule.working_hours']);
+
+  const writeBack = (next) => {
+    setForm((f) => ({ ...f, 'schedule.working_hours': serializeWorkingHours(next) }));
+  };
+  const updateDay = (idx, patch) => {
+    const next = days.map((d, i) => (i === idx ? { ...d, ...patch } : d));
+    writeBack(next);
+  };
+  // Copy one day's open-window to every other OPEN day — quick way to set all
+  // weekdays/weekends at once after configuring a representative day.
+  const applyToAll = (idx) => {
+    const src = days[idx];
+    writeBack(days.map((d) => ({ ...d, start: src.start, end: src.end })));
+  };
+
+  return (
+    <div className="card space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900">Working hours</h3>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Set the hours you teach on each day. The Classes timetable only shows
+          this range — hours outside it are greyed out, and days marked closed
+          are shaded entirely. This is a visual guide; you can still add a class
+          at any time.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        {days.map((d, idx) => (
+          <div
+            key={idx}
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            {/* Open / closed toggle */}
+            <button
+              type="button"
+              onClick={() => updateDay(idx, { open: !d.open })}
+              className="flex items-center gap-2.5 w-36 flex-shrink-0 text-left"
+              title={d.open ? 'Open — click to close' : 'Closed — click to open'}
+            >
+              <span className={`flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors ${d.open ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${d.open ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </span>
+              <span className="text-sm font-medium text-gray-900">{DAY_NAMES[idx]}</span>
+            </button>
+
+            {d.open ? (
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <input
+                  type="time"
+                  value={d.start}
+                  onChange={(e) => updateDay(idx, { start: e.target.value })}
+                  className="input-field w-auto py-1.5"
+                />
+                <span className="text-gray-400 text-sm">to</span>
+                <input
+                  type="time"
+                  value={d.end}
+                  onChange={(e) => updateDay(idx, { end: e.target.value })}
+                  className="input-field w-auto py-1.5"
+                />
+                <button
+                  type="button"
+                  onClick={() => applyToAll(idx)}
+                  className="ml-auto text-xs text-indigo-600 hover:text-indigo-700 font-medium whitespace-nowrap"
+                  title="Copy these hours to every day"
+                >
+                  Apply to all
+                </button>
+              </div>
+            ) : (
+              <span className="text-sm text-gray-400">Closed</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -338,34 +440,45 @@ function AppearanceTab({ form, setForm }) {
 
   return (
     <div className="space-y-5">
-      {/* Accent colour */}
+      {/* Theme */}
       <div className="card space-y-4">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Accent colour</h3>
+          <h3 className="text-base font-semibold text-gray-900">Theme</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Recolours buttons, links, the active sidebar item, and the app/browser
-            theme colour. Pick a preset or choose your own.
+            Each theme recolours buttons, links, the active sidebar item, and the
+            app/browser theme colour with its primary shade. Pick one made for your
+            kind of academy — or choose a custom colour below.
           </p>
         </div>
 
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {PRESETS.map((p) => {
             const selected = accent === p.id;
+            const primary = presetSwatch(p);
             return (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => update({ accent: p.id })}
-                className="flex flex-col items-center gap-1.5 group"
-                title={p.label}
+                title={p.desc || p.label}
+                className={`relative text-left rounded-xl border p-3 transition-all hover:shadow-sm ${
+                  selected
+                    ? 'border-transparent ring-2 ring-offset-1 shadow-sm'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+                style={selected ? { '--tw-ring-color': primary } : undefined}
               >
-                <span
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform group-hover:scale-105 ${selected ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
-                  style={{ backgroundColor: p.swatch }}
-                >
-                  {selected && <Check className="w-5 h-5 text-white" />}
+                {/* Colour strip: primary (large) + secondary + accent */}
+                <span className="flex items-center gap-1.5 mb-2">
+                  <span className="h-8 flex-1 rounded-md" style={{ backgroundColor: primary }} />
+                  <span className="h-8 w-3 rounded-sm" style={{ backgroundColor: p.secondary }} />
+                  <span className="h-8 w-3 rounded-sm" style={{ backgroundColor: p.accent }} />
                 </span>
-                <span className={`text-xs ${selected ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>{p.label}</span>
+                <span className="flex items-center gap-1.5">
+                  {p.emoji && <span aria-hidden className="text-sm leading-none">{p.emoji}</span>}
+                  <span className={`text-sm ${selected ? 'text-gray-900 font-semibold' : 'text-gray-700 font-medium'}`}>{p.label}</span>
+                  {selected && <Check className="w-4 h-4 ml-auto" style={{ color: primary }} />}
+                </span>
               </button>
             );
           })}
@@ -435,30 +548,54 @@ function TemplatesTab() {
   return <TemplatesEditor />;
 }
 
-function ModulesTab({ form, set }) {
+function ModulesTab({ form, set, plan = 'complete', entitlements = {} }) {
   // Boolean-as-string helper — settings come back as 'true' / 'false'.
   const isOn = (k) => form[k] === 'true' || form[k] === true;
   const toggle = (k) => () => set(k)({ target: { value: isOn(k) ? 'false' : 'true' } });
 
+  // A premium module is locked when the org's plan doesn't unlock it. The
+  // backend (lib/plans.js) is the source of truth — `entitlements` mirrors it.
+  // Default to entitled if the server didn't say, so we never falsely lock.
+  const locked = (mod) => entitlements[mod] === false;
+  const planLabel = plan === 'core' ? 'Core' : plan === 'complete' ? 'Complete' : plan;
+  const anyLocked = locked('lessons') || locked('assignments') || locked('question_papers');
+
   return (
     <div className="space-y-5">
       <div className="card">
-        <div className="flex items-center gap-2 mb-1">
-          <ToggleLeft className="w-5 h-5 text-indigo-600" />
-          <h3 className="text-base font-semibold text-gray-900">Modules enabled for this academy</h3>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2">
+            <ToggleLeft className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-base font-semibold text-gray-900">Modules enabled for this academy</h3>
+          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+            {planLabel} plan
+          </span>
         </div>
         <p className="text-xs text-gray-500 mb-4">
           Switch off the features you don't use. Disabled modules hide from the sidebar — students/parents won't see them either.
+          {anyLocked && ' Modules marked “Complete” aren’t part of your current plan.'}
         </p>
         <div className="space-y-1">
           <ModuleToggle label="Groups"           hint="Group classes + bulk membership management" on={isOn('modules.groups')}         onClick={toggle('modules.groups')} />
           <ModuleToggle label="Fees"             hint="Monthly fee aggregation + payments + additional fees" on={isOn('modules.fees')}           onClick={toggle('modules.fees')} />
           <ModuleToggle label="Messages"         hint="WhatsApp message drafts + auto-reminders + templates" on={isOn('modules.messages')}       onClick={toggle('modules.messages')} />
           <ModuleToggle label="Reports"          hint="Attendance + fee summaries" on={isOn('modules.reports')}        onClick={toggle('modules.reports')} />
-          <ModuleToggle label="Lessons"          hint="Udemy-style video courses for students" on={isOn('modules.lessons')}        onClick={toggle('modules.lessons')} />
+          <ModuleToggle label="Lessons"          hint="Udemy-style video courses for students" on={isOn('modules.lessons')}        onClick={toggle('modules.lessons')} locked={locked('lessons')} />
+          <ModuleToggle label="Assignments"      hint="Set assignments with due dates; students submit & you grade them" on={isOn('modules.assignments')}    onClick={toggle('modules.assignments')} locked={locked('assignments')} />
+          <ModuleToggle label="Question papers"  hint="Share past papers & practice sets (PDF/Drive links) for download" on={isOn('modules.question_papers')} onClick={toggle('modules.question_papers')} locked={locked('question_papers')} />
           <ModuleToggle label="Camps"            hint="Time-bounded special programs (workshops, intensives)" on={isOn('modules.camps')}          onClick={toggle('modules.camps')} />
           <ModuleToggle label="Student photos"   hint="Photo uploads in profile + avatar on Students list" on={isOn('modules.student_photos')} onClick={toggle('modules.student_photos')} />
         </div>
+        {anyLocked && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5">
+            <Lock className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-amber-800">
+              Online learning modules are part of the <span className="font-semibold">Complete</span> plan.
+              To unlock Lessons, Assignments and Question papers, <a href="tel:+919360390883" className="font-semibold underline">contact us to upgrade</a>.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -810,7 +947,24 @@ function OrganizationTab() {
   );
 }
 
-function ModuleToggle({ label, hint, on, onClick }) {
+function ModuleToggle({ label, hint, on, onClick, locked = false }) {
+  if (locked) {
+    // Plan doesn't include this module — show it disabled with an upgrade chip
+    // instead of a working toggle.
+    return (
+      <div className="w-full flex items-center justify-between gap-3 py-2.5 px-3 -mx-3 rounded-lg opacity-80">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-gray-500">
+            <Lock className="w-3.5 h-3.5 text-gray-400" /> {label}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">{hint}</div>
+        </div>
+        <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+          Complete
+        </span>
+      </div>
+    );
+  }
   return (
     <button
       type="button"

@@ -25,16 +25,18 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { maskEmail } from '../utils/mask';
 import { useRevealTimer } from '../hooks/useRevealTimer';
+import { useOrgBranding } from '../hooks/useOrgBranding';
 
 const PORTAL_URL = `${window.location.origin}/app/portal`;
 
-function whatsappLink(mobile, parentName, studentName, email) {
+function whatsappLink(mobile, parentName, studentName, email, academyName) {
   const phone = normalizeMobileForWhatsApp(mobile);
   if (!phone) return null;
+  const academy = academyName || 'our academy';
   const msg = [
     `Hi ${parentName || ''},`,
     ``,
-    `Your Veena Dhwani Academy parent portal access for ${studentName} is ready!`,
+    `Your ${academy} parent portal access for ${studentName} is ready!`,
     ``,
     `Step 1: Check your email (${email}) for the activation link from Zoho — click it and set your password.`,
     `Step 2: Log in here: ${PORTAL_URL}`,
@@ -45,6 +47,7 @@ function whatsappLink(mobile, parentName, studentName, email) {
 }
 
 export default function StudentLogins() {
+  const branding = useOrgBranding();
   const emailReveal = useRevealTimer(20000);
   const [students, setStudents] = useState([]);
   const [logins, setLogins] = useState([]);
@@ -199,7 +202,7 @@ export default function StudentLogins() {
             <tbody className="divide-y divide-gray-100">
               {rows.map(({ student, login }) => {
                 const waLink = login
-                  ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email)
+                  ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email, branding.name)
                   : null;
                 return (
                   <tr key={student.id}>
@@ -282,7 +285,7 @@ export default function StudentLogins() {
         <div className="md:hidden divide-y divide-gray-100">
           {rows.map(({ student, login }) => {
             const waLink = login
-              ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email)
+              ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email, branding.name)
               : null;
             return (
               <div key={student.id} className="p-4">

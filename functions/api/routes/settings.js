@@ -25,6 +25,7 @@
 
 const router = require('express').Router();
 const { insert, update, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { normalizePlan, PREMIUM_MODULES, isModuleEntitled } = require('../lib/plans');
 
 // =============================================================================
 // MessageTemplates (existing)
@@ -118,8 +119,12 @@ const APP_VAL_COL = 'setting_value';
 // add a row here with its default value + a brief comment.
 const APP_SETTINGS_DEFAULTS = {
   // ---- School identity (Phase 1) ----------------------------------------
-  'school.name':           'Veena Dhwani Academy', // shown in templates as {school}
-  'school.signature':      'Veena Dhwani Academy', // shown in templates as {signature}
+  // Empty by default — loadAppSettings() backfills these from the calling
+  // org's Organizations.name so each academy gets ITS OWN name/signature,
+  // not a hard-coded one. They only become non-empty here once the owner
+  // explicitly overrides them in Settings.
+  'school.name':           '', // shown in templates as {school}
+  'school.signature':      '', // shown in templates as {signature}
   'school.contact_phone':  '',
   'school.contact_email':  '',
   'school.address':        '',                     // multi-line OK
@@ -142,6 +147,8 @@ const APP_SETTINGS_DEFAULTS = {
   'modules.camps':          'false', // off by default — not everyone runs camps
   'modules.groups':         'true',
   'modules.student_photos': 'true',
+  'modules.assignments':    'false', // off by default — opt-in
+  'modules.question_papers':'false', // off by default — opt-in
 
   // ---- Parent portal visibility (Phase 3) ------------------------------
   // What parents see in their portal. attendance is always visible — that's
@@ -156,6 +163,20 @@ const APP_SETTINGS_DEFAULTS = {
   // via utils/theme.js — also cached in localStorage for instant boot.
   'appearance.accent': 'default',
   'appearance.mode':   'light',
+
+  // ---- Onboarding (first-login welcome tour) ---------------------------
+  // 'true' only on a brand-new org (stamped at signup — see lib/onboarding.js);
+  // the client clears it to 'false' the moment the owner dismisses the tour.
+  // Existing orgs have no row → defaults to 'false' → tour never shows.
+  'onboarding.admin_pending': 'false',
+
+  // ---- Schedule / working hours (Phase 5) ------------------------------
+  // Per-day availability windows that bound the Classes timetable grid and
+  // shade out non-working hours. JSON array of 7 entries, index 0 = Sunday:
+  //   [{ "open": true, "start": "HH:MM", "end": "HH:MM" }, ...]
+  // Empty by default — the client falls back to all days open 08:00–20:00
+  // (utils/workingHours.js). Fits comfortably in setting_value (Text 4000).
+  'schedule.working_hours': '',
 };
 
 const APP_SETTINGS_KEYS = Object.keys(APP_SETTINGS_DEFAULTS);
@@ -180,14 +201,78 @@ async function loadAppSettings(req) {
   for (const k of APP_SETTINGS_KEYS) {
     out[k] = byKey.has(k) ? byKey.get(k) : APP_SETTINGS_DEFAULTS[k];
   }
+
+  // School identity falls back to the org's own name when not explicitly set,
+  // so a brand-new academy shows ITS name everywhere (messages, signatures,
+  // templates) instead of a hard-coded one. signature defaults to name.
+  if (!String(out['school.name'] || '').trim()) {
+    const orgName = await resolveOrgName(req);
+    if (orgName) out['school.name'] = orgName;
+  }
+  if (!String(out['school.signature'] || '').trim()) {
+    out['school.signature'] = out['school.name'] || '';
+  }
   return out;
 }
 
-// GET /api/settings/app — returns { settings: { 'school.name': '...', ... } }
+// Look up the calling org's display name. Cached on req so repeated
+// loadAppSettings() calls in one request hit the DB once. Uses a lossy ROWID
+// match (Number === Number) to dodge the Catalyst ROWID-precision gotcha —
+// see HANDOFF.md "Critical gotchas #1".
+async function resolveOrgName(req) {
+  if (!req.orgId) return '';
+  if (req._orgNameCache !== undefined) return req._orgNameCache;
+  let name = '';
+  try {
+    const rows = await zcql(req, `SELECT name, ROWID FROM Organizations`);
+    const orgs = unwrap(rows, 'Organizations').map(normalize);
+    const match = orgs.find((o) => Number(o.ROWID ?? o.id) === Number(req.orgId));
+    name = match?.name || '';
+  } catch { /* table may be missing in un-bootstrapped envs */ }
+  req._orgNameCache = name;
+  return name;
+}
+
+// Build the plan/entitlement block the client uses to lock premium modules
+// and surface plan limits (student cap, trial countdown). plan is the
+// EFFECTIVE plan (an expired trial reads as 'free') — see middleware/org.js.
+async function entitlementBlock(req) {
+  const plan = normalizePlan(req.orgPlan);
+  const entitlements = {};
+  for (const k of PREMIUM_MODULES) entitlements[k] = isModuleEntitled(plan, k);
+
+  // Active-student usage so the client can show "2 / 2 students" and gate the
+  // Add-student button before the server rejects it.
+  let studentCount = null;
+  try {
+    if (req.orgId) {
+      const rows = await zcql(
+        req,
+        `SELECT COUNT(ROWID) AS total FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.status = 'active'`
+      );
+      studentCount = rows[0]?.Students?.total ?? null;
+    }
+  } catch { /* non-fatal — leave null */ }
+
+  return {
+    plan,
+    planRaw: req.orgPlanRaw || plan,
+    premiumModules: PREMIUM_MODULES,
+    entitlements,
+    maxStudents: req.orgMaxStudents ?? null, // null = unlimited
+    studentCount,
+    trial: req.orgTrial || null,
+  };
+}
+
+// GET /api/settings/app
+// Returns { settings: { 'school.name': ... }, plan, premiumModules, entitlements }.
+// `entitlements` tells the client which premium modules this plan unlocks, so
+// the UI can show locked ("Upgrade to Complete") rows.
 router.get('/app', async (req, res) => {
   try {
     const settings = await loadAppSettings(req);
-    res.json({ settings });
+    res.json({ settings, ...(await entitlementBlock(req)) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load app settings', detail: e.message });
   }
@@ -212,10 +297,22 @@ router.put('/app', async (req, res) => {
     const existing = unwrap(rows, APP_TABLE).map(normalize);
     const byKey = new Map(existing.map((r) => [r[APP_KEY_COL], r]));
 
+    const plan = normalizePlan(req.orgPlan);
+
     let upserted = 0;
     for (const key of APP_SETTINGS_KEYS) {
       if (incoming[key] === undefined) continue;
-      const value = incoming[key] === null ? '' : String(incoming[key]);
+      let value = incoming[key] === null ? '' : String(incoming[key]);
+
+      // Entitlement guard: an academy can never ENABLE a premium module its
+      // plan doesn't include. Coerce such a toggle back to 'false' so a Core
+      // org can't unlock Complete features by PUTing the flag directly.
+      if (key.startsWith('modules.') && value === 'true') {
+        const mod = key.slice('modules.'.length);
+        if (PREMIUM_MODULES.includes(mod) && !isModuleEntitled(plan, mod)) {
+          value = 'false';
+        }
+      }
       const row = byKey.get(key);
       try {
         if (row) {
@@ -237,7 +334,7 @@ router.put('/app', async (req, res) => {
     }
 
     const settings = await loadAppSettings(req);
-    res.json({ upserted, settings });
+    res.json({ upserted, settings, ...(await entitlementBlock(req)) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to save app settings', detail: e.message });
   }

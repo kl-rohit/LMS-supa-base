@@ -7,6 +7,7 @@
     "cors": "^2.8.5",
     "express": "^4.21.1",
     "jimp": "^1.6.1",
+    "web-push": "^3.6.7",
     "zcatalyst-sdk-node": "^3.4.0"
   }
 }

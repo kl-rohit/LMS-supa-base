@@ -5,7 +5,7 @@
   "description": "Veena student tracker client (webpack + React + Tailwind)",
   "scripts": {
     "start": "webpack serve --mode development",
-    "build": "PUBLIC_URL=/app/ API_BASE=/server/api/api webpack --mode production && cp public/client-package.json dist/ && cp public/manifest.webmanifest public/sw.js dist/ && mkdir -p dist/icons && cp public/icons/*.png dist/icons/ && cp dist/index.html dist/404.html",
+    "build": "PUBLIC_URL=/app/ API_BASE=/server/api/api webpack --mode production && cp public/client-package.json dist/ && cp public/manifest.webmanifest public/sw.js dist/ && cp public/landing.html dist/ && npx tailwindcss -c landing.tailwind.config.js -i src/landing.css -o dist/landing.css --minify && (cp public/logo.png public/logo.webp dist/ 2>/dev/null || true) && mkdir -p dist/icons && cp public/icons/*.png dist/icons/ && (cp -R public/screenshots dist/ 2>/dev/null || true) && cp dist/index.html dist/404.html",
     "build:catalyst": "npm run build",
     "build:catalyst-students-only": "PUBLIC_URL=/app/ API_BASE=/server/students/api webpack --mode production && cp public/client-package.json dist/ && cp public/manifest.webmanifest public/sw.js dist/ && mkdir -p dist/icons && cp public/icons/*.png dist/icons/ && cp dist/index.html dist/404.html",
     "build:raw": "webpack --mode production && cp public/client-package.json dist/",
@@ -15,6 +15,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.460.0",
     "papaparse": "^5.4.1",
     "react": "^18.3.1",

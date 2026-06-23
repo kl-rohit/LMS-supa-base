@@ -140,15 +140,14 @@
       background: linear-gradient(100deg, #fcd34d 20%, #fffbeb 42%, #fcd34d 64%);
       background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
       color: transparent; animation: shimmer 6s linear infinite;
+      /* Underline follows the text run, so it hugs each word's own width
+         instead of stretching across the wider rotator box. */
+      text-decoration-line: underline;
+      text-decoration-color: rgba(252, 211, 77, .8);
+      text-decoration-thickness: 3px;
+      text-underline-offset: 8px;
     }
     @keyframes shimmer { to { background-position: -200% center; } }
-    /* Animated underline that re-draws under the word on each swap */
-    .word-underline { transform-origin: left center; animation: drawUnderline 2.667s ease-in-out infinite; }
-    @keyframes drawUnderline {
-      0% { transform: scaleX(0); opacity: .25; transform-origin: left center; }
-      18%, 80% { transform: scaleX(1); opacity: 1; transform-origin: left center; }
-      100% { transform: scaleX(0); opacity: .25; transform-origin: right center; }
-    }
     /* Hover spotlight: a soft radial highlight tracks the cursor across each card */
     .card-hover { position: relative; }
     .card-hover > * { position: relative; z-index: 1; }
@@ -171,7 +170,6 @@
     .wave-divider svg { display: block; width: 100%; height: 100%; }
     @media (prefers-reduced-motion: reduce) {
       .shimmer-text, .shimmer-text .rotator-item { animation: none; }
-      .word-underline { animation: none; transform: scaleX(1); opacity: 1; }
       .card-hover::after { transition: none; }
       .count-pop { animation: none; }
     }
@@ -245,7 +243,6 @@
               <span class="rotator-item">learning businesses</span>
               <span class="rotator-item" aria-hidden="true">academies</span>
             </span>
-            <span aria-hidden="true" class="word-underline absolute left-0 bottom-0 h-[3px] w-full rounded-full bg-gold-300/80"></span>
           </span>
           <br />
           of every size.

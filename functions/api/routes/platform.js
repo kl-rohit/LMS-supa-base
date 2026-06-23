@@ -438,6 +438,39 @@ router.get('/orgs/:id/detail', async (req, res) => {
       return { key: m.key, label: m.label, premium: m.premium, enabled };
     });
 
+    // Opt-in diagnostics (?debug=1). Reveals, per module table, the scoped count
+    // (current WHERE org_id filter), the global count (no filter), and a few of
+    // the actual org_id values present — so we can tell a mis-tagged org_id apart
+    // from a genuinely empty org without guessing.
+    let debug = null;
+    if (req.query.debug === '1' || req.query.debug === 'true') {
+      debug = {
+        queried_org_id_string: String(req.params.id),
+        queried_org_id_number: orgId,
+        org_rowid: rowId,
+        tables: await Promise.all(
+          MODULES.map(async (m) => {
+            const out = { key: m.key, table: m.table };
+            try {
+              const sr = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
+              const s0 = (sr && sr[0]) || {}; const sR = s0[m.table] || s0[''] || s0;
+              out.scoped = Number((sR && (sR.c != null ? sR.c : sR.COUNT)) || 0);
+            } catch (e) { out.scoped_error = e.message; }
+            try {
+              const gr = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table}`);
+              const g0 = (gr && gr[0]) || {}; const gR = g0[m.table] || g0[''] || g0;
+              out.global = Number((gR && (gR.c != null ? gR.c : gR.COUNT)) || 0);
+            } catch (e) { out.global_error = e.message; }
+            try {
+              const samp = await zcql(req, `SELECT org_id FROM ${m.table} LIMIT 5`);
+              out.sample_org_ids = unwrap(samp, m.table).map((r) => r.org_id);
+            } catch (e) { out.sample_error = e.message; }
+            return out;
+          })
+        ),
+      };
+    }
+
     res.json({
       org: {
         ...org,
@@ -451,6 +484,7 @@ router.get('/orgs/:id/detail', async (req, res) => {
       counts,
       members,
       module_flags,
+      ...(debug ? { debug } : {}),
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load org detail', detail: e.message });

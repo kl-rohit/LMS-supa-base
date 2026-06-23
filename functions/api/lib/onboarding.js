@@ -18,6 +18,11 @@
 const { zcql, unwrap, insert, update } = require('../db/catalystDb');
 
 const ADMIN_KEY = 'onboarding.admin_pending';
+// First-run SETUP WIZARD flag — distinct from the welcome tour. Set at signup,
+// cleared when the owner finishes or skips the wizard. The wizard collects
+// org config (class modes, fee model, portal toggles); the tour is just a
+// feature walkthrough. Both are gated the same way (server flag, set at signup).
+const SETUP_KEY = 'onboarding.setup_pending';
 function parentKey(studentId) {
   return `onboarding.parent_pending.${Number(studentId)}`;
 }
@@ -57,4 +62,4 @@ async function isPending(req, orgId, key) {
   }
 }
 
-module.exports = { ADMIN_KEY, parentKey, setFlag, isPending };
+module.exports = { ADMIN_KEY, SETUP_KEY, parentKey, setFlag, isPending };

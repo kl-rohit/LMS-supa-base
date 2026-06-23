@@ -576,7 +576,7 @@ export default function Classes() {
                   </button>
                 ))}
               </div>
-              <button onClick={() => openAdd(today)} className="btn-primary btn-sm">
+              <button onClick={() => openAdd(today)} data-tour="classes-add" className="btn-primary btn-sm">
                 <Plus className="w-4 h-4" /> Add Class
               </button>
             </>

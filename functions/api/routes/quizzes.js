@@ -17,8 +17,9 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
+const config = require('../config');
 
-const PASS_THRESHOLD = 70; // percent — shared with portal submit scoring
+const PASS_THRESHOLD = config.QUIZ_PASS_THRESHOLD; // percent — shared with portal submit scoring
 
 // Verify the parent lesson belongs to req.orgId before mutating its quiz.
 async function lessonInOrg(req, lessonId) {

@@ -1,7 +1,7 @@
 // /api/camps — Camps + CampDays. Org-scoped via resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
 
 function calcDuration(start, end) {
   if (!start || !end) return 1;
@@ -199,7 +199,7 @@ router.get('/:id', async (req, res) => {
     const decorated = await decorate(req, camp);
 
     try {
-      const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.camp_id = ${req.params.id} AND Attendance.org_id = ${Number(req.orgId)}`);
+      const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.camp_id = ${req.params.id} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance');
       const attendance = unwrap(aRows, 'Attendance').map(normalize);
       const byDay = {};
       for (const a of attendance) {

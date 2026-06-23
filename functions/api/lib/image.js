@@ -3,9 +3,10 @@
 // native deps — safe to run inside any Node runtime including Catalyst).
 
 const { Jimp } = require('jimp');
+const config = require('../config');
 
-const MAX_DIMENSION = 800;     // max width or height in pixels
-const JPEG_QUALITY  = 85;      // 85 is a sweet spot for portraits
+const MAX_DIMENSION = config.IMAGE_MAX_DIMENSION; // max width or height in pixels
+const JPEG_QUALITY  = config.IMAGE_JPEG_QUALITY;  // 85 is a sweet spot for portraits
 
 /**
  * Decode a Buffer, downscale so neither dimension exceeds MAX_DIMENSION

@@ -6,6 +6,7 @@
     "dev:client": "cd client && npm run dev",
     "dev:server": "cd server && node index.js",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "config:gen": "node scripts/gen-config.js",
     "build": "cd client && npm run build",
     "start": "NODE_ENV=production node server/index.js",
     "install:all": "npm install && cd client && npm install && cd ../server && npm install"

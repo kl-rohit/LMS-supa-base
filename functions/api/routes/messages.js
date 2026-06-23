@@ -2,7 +2,7 @@
 // Org-scoped via middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
 const { createNotifications } = require('../lib/notify');
@@ -68,11 +68,19 @@ router.post('/', async (req, res) => {
 // POST /api/messages/generate-absence-alert
 router.post('/generate-absence-alert', async (req, res) => {
   try {
-    const [templates, schoolCtx] = await Promise.all([
+    const [templates, schoolCtx, appSettings] = await Promise.all([
       loadTemplates(req).catch(() => DEFAULT_TEMPLATES),
       loadSchoolCtx(req),
+      loadAppSettings(req).catch(() => ({})),
     ]);
-    const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${Number(req.orgId)}`);
+    const tRaw = parseInt(appSettings['alerts.absence_threshold'], 10);
+    const threshold = (Number.isFinite(tRaw) && tRaw >= 1 && tRaw <= 10) ? tRaw : 2;
+    // Optional: limit generation to one student (the "Send alert" action on a
+    // single banner chip). Without it, alerts are generated for every active
+    // student whose streak meets the threshold.
+    const onlyStudent = safeId(req.body?.student_id);
+    const filter = onlyStudent ? ` AND Students.ROWID = ${onlyStudent}` : '';
+    const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${Number(req.orgId)}${filter}`);
     const students = unwrap(studentRows, 'Students');
     let created = 0;
     for (const s of students) {
@@ -81,7 +89,7 @@ router.post('/generate-absence-alert', async (req, res) => {
         const records = unwrap(aRows, 'Attendance');
         let streak = 0;
         for (const r of records) { if (r.status === 'absent') streak++; else break; }
-        if (streak >= 2) {
+        if (streak >= threshold) {
           const text = substituteTemplate(pickTemplate(templates, 'absence_alert'), {
             name: s.name,
             parent: s.parent_name,

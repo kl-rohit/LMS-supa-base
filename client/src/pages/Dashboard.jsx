@@ -102,7 +102,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dashboard-stats">
         <StatsCard
           icon={Users}
           title="Total Students"
@@ -114,6 +114,7 @@ export default function Dashboard() {
           title="Classes Today"
           value={classesToday.length}
           color="blue"
+          onClick={() => navigate('/classes')}
         />
         <StatsCard
           icon={ClipboardCheck}
@@ -121,6 +122,7 @@ export default function Dashboard() {
           value={`${Math.round(attendanceRateThisMonth)}%`}
           color="emerald"
           subtitle="This month"
+          onClick={() => navigate('/attendance')}
         />
         <StatsCard
           icon={IndianRupee}
@@ -130,6 +132,7 @@ export default function Dashboard() {
             : '\u20B9\u2022\u2022\u2022\u2022'}
           color="amber"
           subtitle="This month"
+          onClick={() => navigate('/fees')}
         />
       </div>
 

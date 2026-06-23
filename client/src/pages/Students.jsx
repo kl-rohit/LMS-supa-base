@@ -17,6 +17,7 @@ import {
   Camera,
   Columns3,
   ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
@@ -31,6 +32,7 @@ import Select from '../components/Select';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import StudentDetailPanel from '../components/StudentDetailPanel';
+import Pagination, { usePagination } from '../components/Pagination';
 import { readPhotoCache, writePhotoCache, invalidatePhotoCache } from '../utils/photoCache';
 
 // Toggleable columns on the Students table. Name + Status are always
@@ -75,6 +77,7 @@ const emptyForm = {
   fee_offline: '',
   fee_offline_group: '',
   min_classes_per_month: '',
+  monthly_fee: '',
   date_of_birth: '',
   notes: '',
   // Self-service / Grade exam fields — usually populated by the parent
@@ -127,19 +130,37 @@ export default function Students() {
     fee_offline: '',
     fee_offline_group: '',
     min_classes_per_month: '',
+    monthly_fee: '',
   });
+  // How the academy bills ('per_class' | 'per_month') and which class modes it
+  // offers — drives which fee fields show on the student form.
+  const [feeMode, setFeeMode] = useState('per_class');
+  const [classModes, setClassModes] = useState(['online', 'offline', 'group']);
+  // Seat usage vs the plan's approved cap. maxStudents null = unlimited.
+  // Drives the over-limit notice so the owner can choose who to set inactive.
+  const [seat, setSeat] = useState({ max: null, count: null });
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { settings } = await api.get('/settings/app');
-        if (cancelled || !settings) return;
+        const resp = await api.get('/settings/app');
+        const { settings } = resp;
+        if (cancelled) return;
+        if (resp.maxStudents !== undefined || resp.studentCount !== undefined) {
+          setSeat({ max: resp.maxStudents ?? null, count: resp.studentCount ?? null });
+        }
+        if (!settings) return;
         setBillingDefaults({
           fee_online:            settings['billing.default_online_fee']  || '',
           fee_offline:           settings['billing.default_offline_fee'] || '',
           fee_offline_group:     settings['billing.default_group_fee']   || '',
           min_classes_per_month: settings['billing.default_min_classes'] || '',
+          monthly_fee:           settings['billing.default_monthly_fee'] || '',
         });
+        if (settings['billing.fee_mode'] === 'per_month') setFeeMode('per_month');
+        const modes = String(settings['billing.class_modes'] || 'online,offline,group')
+          .split(',').map((m) => m.trim()).filter(Boolean);
+        if (modes.length) setClassModes(modes);
       } catch {
         // Settings unavailable — fall back to empty (current behaviour).
       }
@@ -235,6 +256,7 @@ export default function Students() {
         fee_offline: form.fee_offline ? Number(form.fee_offline) : 0,
         fee_offline_group: form.fee_offline_group ? Number(form.fee_offline_group) : 0,
         min_classes_per_month: form.min_classes_per_month ? Number(form.min_classes_per_month) : 0,
+        monthly_fee: form.monthly_fee ? Number(form.monthly_fee) : 0,
         // Trim empty DOB so backend doesn't reject empty string on Date column
         date_of_birth: form.date_of_birth || null,
         // Don't send the photo_url here — it's either a transient signed URL
@@ -310,6 +332,7 @@ export default function Students() {
       fee_offline: student.fee_offline || '',
       fee_offline_group: student.fee_offline_group || '',
       min_classes_per_month: student.min_classes_per_month || '',
+      monthly_fee: student.monthly_fee || '',
       // Catalyst Date columns come back as ISO timestamp; slice to YYYY-MM-DD
       date_of_birth: student.date_of_birth ? String(student.date_of_birth).slice(0, 10) : '',
       notes: student.notes || '',
@@ -528,6 +551,10 @@ export default function Students() {
     return list;
   }, [students, search, statusFilter, sortConfig]);
 
+  // Page the filtered list (25/page). Selection + "select all" still operate
+  // on the full filtered set; only the rendered rows are sliced.
+  const { page, setPage, pageCount, pageItems: pageStudents, total, from, to } = usePagination(filteredStudents, 25);
+
   const SortIcon = ({ column }) => {
     if (sortConfig.key !== column) return <ChevronUp className="w-3 h-3 text-gray-300" />;
     return sortConfig.direction === 'asc' ? (
@@ -539,8 +566,34 @@ export default function Students() {
 
   if (loading) return <Loader text="Loading students..." />;
 
+  // Seat usage: prefer the live count from the loaded list (updates as the
+  // owner sets students active/inactive), falling back to the server figure.
+  const liveActive = students.filter((s) => String(s.status || '').toLowerCase() === 'active').length;
+  const activeCount = students.length ? liveActive : seat.count;
+  const overLimit = seat.max != null && activeCount != null && activeCount > seat.max;
+  const overBy = overLimit ? activeCount - seat.max : 0;
+
   return (
     <div className={`space-y-4 transition-all duration-200 ${isDetailOpen ? 'lg:mr-[30rem]' : ''}`}>
+      {/* Over-limit notice — manual owner action (no auto-deactivation). Shows
+          when active students exceed the plan's approved seat count. */}
+      {overLimit && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3" data-tour="students-seat-notice">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-800">
+              {activeCount} active students on a {seat.max}-seat plan
+            </p>
+            <p className="text-amber-700 mt-1">
+              You are {overBy} over your approved seat count. To keep everyone within plan,
+              set {overBy} student{overBy === 1 ? '' : 's'} to inactive from the list below, or
+              reach out to add more seats. Attendance and group creation stay available once your
+              active students are within the seat count.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Students</h2>
@@ -602,7 +655,7 @@ export default function Students() {
           <button onClick={() => setImportModalOpen(true)} className="btn-secondary btn-sm">
             <Upload className="w-4 h-4" /> Import
           </button>
-          <button onClick={openAdd} className="btn-primary btn-sm">
+          <button onClick={openAdd} data-tour="students-add" className="btn-primary btn-sm">
             <Plus className="w-4 h-4" /> Add Student
           </button>
         </div>
@@ -722,7 +775,7 @@ export default function Students() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredStudents.map((student) => {
+                {pageStudents.map((student) => {
                   const isOpenRow = detailStudent && String(detailStudent.id) === String(student.id);
                   return (
                     <tr
@@ -810,7 +863,7 @@ export default function Students() {
               />
               Select all ({filteredStudents.length})
             </label>
-            {filteredStudents.map((student) => {
+            {pageStudents.map((student) => {
               const isOpenRow = detailStudent && String(detailStudent.id) === String(student.id);
               const mobile = student.mobile_number
                 ? (phoneReveal.revealed ? formatMobileDisplay(student.mobile_number) : maskPhone(student.mobile_number))
@@ -862,9 +915,15 @@ export default function Students() {
             })}
           </div>
 
-          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
-            Showing {filteredStudents.length} of {students.length} students
-          </div>
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            label="students"
+          />
         </div>
       )}
 
@@ -924,50 +983,74 @@ export default function Students() {
             </div>
             <p className="text-xs text-gray-400 mt-1">10-digit Indian mobile. +91 added automatically when sending.</p>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          {feeMode === 'per_month' ? (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Online Fee/hr</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
                 <input
                   type="number"
-                  value={form.fee_online}
-                  onChange={(e) => setForm({ ...form, fee_online: e.target.value })}
+                  value={form.monthly_fee}
+                  onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })}
                   className="input-field pl-7"
                   placeholder="0"
                   min="0"
                 />
               </div>
+              <p className="text-xs text-gray-400 mt-1">Flat amount charged each month for this student.</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Offline Fee/hr</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
-                <input
-                  type="number"
-                  value={form.fee_offline}
-                  onChange={(e) => setForm({ ...form, fee_offline: e.target.value })}
-                  className="input-field pl-7"
-                  placeholder="0"
-                  min="0"
-                />
-              </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {classModes.includes('online') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Online Fee/hr</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
+                    <input
+                      type="number"
+                      value={form.fee_online}
+                      onChange={(e) => setForm({ ...form, fee_online: e.target.value })}
+                      className="input-field pl-7"
+                      placeholder="0"
+                      min="0"
+                    />
+                  </div>
+                </div>
+              )}
+              {classModes.includes('offline') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Offline Fee/hr</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
+                    <input
+                      type="number"
+                      value={form.fee_offline}
+                      onChange={(e) => setForm({ ...form, fee_offline: e.target.value })}
+                      className="input-field pl-7"
+                      placeholder="0"
+                      min="0"
+                    />
+                  </div>
+                </div>
+              )}
+              {classModes.includes('group') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Group Fee/hr</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
+                    <input
+                      type="number"
+                      value={form.fee_offline_group}
+                      onChange={(e) => setForm({ ...form, fee_offline_group: e.target.value })}
+                      className="input-field pl-7"
+                      placeholder="0"
+                      min="0"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Group Fee/hr</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
-                <input
-                  type="number"
-                  value={form.fee_offline_group}
-                  onChange={(e) => setForm({ ...form, fee_offline_group: e.target.value })}
-                  className="input-field pl-7"
-                  placeholder="0"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
             <input
@@ -981,21 +1064,23 @@ export default function Students() {
               Shown in the Upcoming Birthdays card on the Dashboard. Optional.
             </p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Minimum classes per month</label>
-            <input
-              type="number"
-              value={form.min_classes_per_month}
-              onChange={(e) => setForm({ ...form, min_classes_per_month: e.target.value })}
-              className="input-field"
-              placeholder="0 = no minimum"
-              min="0"
-              max="31"
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Fees page will flag students who attend fewer than this each month. Leave blank or 0 for no minimum.
-            </p>
-          </div>
+          {feeMode !== 'per_month' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Minimum classes per month</label>
+              <input
+                type="number"
+                value={form.min_classes_per_month}
+                onChange={(e) => setForm({ ...form, min_classes_per_month: e.target.value })}
+                className="input-field"
+                placeholder="0 = no minimum"
+                min="0"
+                max="31"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Fees page will flag students who attend fewer than this each month. Leave blank or 0 for no minimum.
+              </p>
+            </div>
+          )}
           {/* Parent-managed Grade-exam details. The parent edits these via the
               portal; admin can view + override here. */}
           <div className="border-t border-gray-200 pt-4">

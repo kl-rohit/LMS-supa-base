@@ -25,6 +25,7 @@ veena-students-import.json
 server/data/*.db
 server/data/*.db-wal
 server/data/*.db-shm
+server/data/.realbackup/
 
 # Environment
 .env

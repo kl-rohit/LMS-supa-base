@@ -50,6 +50,8 @@ export default function Attendance() {
   // these expose a "remove from batch" action (extras / single students don't).
   const [batchMemberIds, setBatchMemberIds] = useState(() => new Set());
   const [absenceAlerts, setAbsenceAlerts] = useState([]);
+  const [alertsDismissed, setAlertsDismissed] = useState(false);
+  const [sendingAlert, setSendingAlert] = useState(null); // null | 'ALL' | studentId
   const [submitting, setSubmitting] = useState(false);
   const [existingAttendance, setExistingAttendance] = useState([]);
   // Ad-hoc attendance state
@@ -165,6 +167,22 @@ export default function Attendance() {
       setAbsenceAlerts(data?.alerts || []);
     } catch {
       setAbsenceAlerts([]);
+    }
+  };
+
+  // Draft parent messages for absent students — either everyone in the banner
+  // (studentId omitted) or just one. The drafts land in Messages, ready to send
+  // on WhatsApp. Backend gates each on the academy's absence threshold.
+  const sendAbsenceAlerts = async (studentId = null) => {
+    setSendingAlert(studentId || 'ALL');
+    try {
+      const res = await api.post('/messages/generate-absence-alert', studentId ? { student_id: studentId } : {});
+      const n = res?.created || 0;
+      toast.success(n ? `Drafted ${n} alert${n === 1 ? '' : 's'} in Messages` : 'All caught up. Alerts already drafted.');
+    } catch (e) {
+      toast.error('Could not draft alerts: ' + e.message);
+    } finally {
+      setSendingAlert(null);
     }
   };
 
@@ -691,25 +709,55 @@ export default function Attendance() {
   return (
     <div className="space-y-4">
       {/* Absence Alerts Banner */}
-      {absenceAlerts.length > 0 && (
+      {absenceAlerts.length > 0 && !alertsDismissed && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <h3 className="font-semibold text-red-800">Absence Alerts</h3>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <h3 className="font-semibold text-red-800">Absence Alerts</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => sendAbsenceAlerts()}
+                disabled={sendingAlert !== null}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                title="Draft parent messages for all students in this list"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                {sendingAlert === 'ALL' ? 'Sending…' : 'Send alerts'}
+              </button>
+              <button
+                onClick={() => setAlertsDismissed(true)}
+                className="p-1 rounded-lg text-red-500 hover:bg-red-100"
+                title="Dismiss until next refresh"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {absenceAlerts.map((alert, idx) => (
-              <span key={idx} className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm">
-                {alert.student_name || alert.name}
-                <span className="font-bold">({alert.consecutive_absences || alert.absent_count})</span>
-              </span>
-            ))}
+            {absenceAlerts.map((alert, idx) => {
+              const sid = alert.student_id;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => sid && sendAbsenceAlerts(sid)}
+                  disabled={sendingAlert !== null}
+                  className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm hover:bg-red-200 disabled:opacity-50"
+                  title="Draft a message for this student"
+                >
+                  {alert.student_name || alert.name}
+                  <span className="font-bold">({alert.consecutive_absences || alert.absent_count})</span>
+                  {sendingAlert === sid ? null : <Share2 className="w-3 h-3 opacity-60" />}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Date Picker */}
-      <div className="card">
+      <div className="card" data-tour="attendance-mark">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <CalendarDays className="w-5 h-5 text-indigo-600 flex-shrink-0" />

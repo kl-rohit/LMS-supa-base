@@ -12,6 +12,7 @@
 
 const webpush = require('web-push');
 const { insert, zcqlAll, unwrap, remove, q, safeId } = require('../db/catalystDb');
+const config = require('../config');
 
 // Configure VAPID once at module load. If keys are absent (e.g. local dev
 // before they're set), in-app rows still get written; only push is skipped.
@@ -19,7 +20,7 @@ let pushReady = false;
 try {
   const pub = process.env.VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT || 'mailto:support@veena.app';
+  const subject = process.env.VAPID_SUBJECT || `mailto:${config.SUPPORT_EMAIL}`;
   if (pub && priv) {
     webpush.setVapidDetails(subject, pub, priv);
     pushReady = true;

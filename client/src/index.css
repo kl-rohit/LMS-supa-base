@@ -38,6 +38,14 @@
   background-color: #2b2f36; /* elevated surface, a notch above the app bg */
 }
 
+/* Native form controls (date/time/number steppers, the date-picker icon) render
+ * their own chrome via the browser's color-scheme. Default 'light' paints dark
+ * text + a dark calendar glyph that vanishes on our dark surfaces — flip the
+ * whole app's controls to the dark scheme so they stay legible. */
+.dark {
+  color-scheme: dark;
+}
+
 /* Coloured tint utilities (red/green/blue/etc.) aren't themed, so in dark mode
  * a light tint surface (bg-*-50/100/200) keeps light gray TEXT illegible, and
  * dark coloured text (text-*-600/700/800) on a now-dark card disappears. Fix

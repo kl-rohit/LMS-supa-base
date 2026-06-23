@@ -24,6 +24,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/import', require('./routes/import'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/organization', require('./routes/organization'));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

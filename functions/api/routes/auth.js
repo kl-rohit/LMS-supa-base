@@ -8,7 +8,8 @@ const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
 const { loadUser, publicUser } = require('../middleware/auth');
 const { insert, update, zcql, unwrap, normalize, q } = require('../db/catalystDb');
-const { ADMIN_KEY, setFlag } = require('../lib/onboarding');
+const { ADMIN_KEY, SETUP_KEY, setFlag } = require('../lib/onboarding');
+const { writeAudit } = require('../lib/audit');
 
 // GET /api/auth/me
 // Used by AuthContext on app mount + activates 'invited' org memberships
@@ -137,9 +138,20 @@ router.post('/signup', async (req, res) => {
       status: 'invited',
     });
 
-    // 4. Mark the welcome tour as pending for this brand-new org so the owner
-    //    sees it once on first login (cleared the moment they dismiss it).
-    if (orgId) await setFlag(req, Number(orgId), ADMIN_KEY, 'true');
+    // 4. Mark the welcome tour AND the first-run setup wizard as pending for
+    //    this brand-new org so the owner sees them once on first login (each
+    //    cleared the moment they dismiss / finish it).
+    if (orgId) {
+      await setFlag(req, Number(orgId), ADMIN_KEY, 'true');
+      await setFlag(req, Number(orgId), SETUP_KEY, 'true');
+    }
+
+    await writeAudit(req, {
+      action: 'org.create',
+      orgId: orgId,
+      orgName: academy_name,
+      detail: { owner_email, owner_user_id: String(newUserId), plan: 'trial' },
+    });
 
     res.status(201).json({
       message: 'Academy created. Check your email for the invite to set your password.',

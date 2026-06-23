@@ -1,7 +1,7 @@
 // /api/courses — Admin CRUD for Course definitions. Org-scoped via resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 
 // GET /api/courses
 router.get('/', async (req, res) => {
@@ -86,23 +86,22 @@ router.delete('/:id', async (req, res) => {
       await update(req, 'Courses', req.params.id, { status: 'archived' });
       return res.json({ message: 'Course archived' });
     }
+    // Cascade delete lessons + their progress, and the course's enrollments.
+    // Run the independent branches (and the deletes within each) in parallel
+    // instead of one row at a time. zcqlAll guards the growable child tables.
     try {
-      const lessons = await zcql(req, `SELECT ROWID FROM Lessons WHERE Lessons.course_id = ${req.params.id} AND Lessons.org_id = ${Number(req.orgId)}`);
-      for (const l of unwrap(lessons, 'Lessons')) {
+      const lessons = await zcqlAll(req, `SELECT ROWID FROM Lessons WHERE Lessons.course_id = ${req.params.id} AND Lessons.org_id = ${Number(req.orgId)}`, 'Lessons');
+      await Promise.all(unwrap(lessons, 'Lessons').map(async (l) => {
         try { await remove(req, 'Lessons', l.ROWID); } catch {}
         try {
-          const progress = await zcql(req, `SELECT ROWID FROM LessonProgress WHERE LessonProgress.lesson_id = ${l.ROWID} AND LessonProgress.org_id = ${Number(req.orgId)}`);
-          for (const p of unwrap(progress, 'LessonProgress')) {
-            try { await remove(req, 'LessonProgress', p.ROWID); } catch {}
-          }
+          const progress = await zcqlAll(req, `SELECT ROWID FROM LessonProgress WHERE LessonProgress.lesson_id = ${l.ROWID} AND LessonProgress.org_id = ${Number(req.orgId)}`, 'LessonProgress');
+          await Promise.all(unwrap(progress, 'LessonProgress').map((p) => remove(req, 'LessonProgress', p.ROWID).catch(() => {})));
         } catch {}
-      }
+      }));
     } catch {}
     try {
-      const enrollments = await zcql(req, `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.course_id = ${req.params.id} AND CourseEnrollments.org_id = ${Number(req.orgId)}`);
-      for (const e of unwrap(enrollments, 'CourseEnrollments')) {
-        try { await remove(req, 'CourseEnrollments', e.ROWID); } catch {}
-      }
+      const enrollments = await zcqlAll(req, `SELECT ROWID FROM CourseEnrollments WHERE CourseEnrollments.course_id = ${req.params.id} AND CourseEnrollments.org_id = ${Number(req.orgId)}`, 'CourseEnrollments');
+      await Promise.all(unwrap(enrollments, 'CourseEnrollments').map((e) => remove(req, 'CourseEnrollments', e.ROWID).catch(() => {})));
     } catch {}
     await remove(req, 'Courses', req.params.id);
     res.json({ message: 'Course permanently deleted' });

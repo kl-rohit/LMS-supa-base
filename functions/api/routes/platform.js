@@ -8,10 +8,30 @@
 // so only Catalyst "App Administrator" users (i.e. you) can reach these.
 
 const router = require('express').Router();
+const catalyst = require('zcatalyst-sdk-node');
 const {
   insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor,
 } = require('../db/catalystDb');
 const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION_DAYS } = require('../lib/plans');
+const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = require('../lib/onboarding');
+const { MODULES } = require('../db/migrationRegistry');
+const { writeAudit } = require('../lib/audit');
+
+// Admin module toggles a platform admin may flip per org. Mirrors the DEFAULTS
+// in client/src/hooks/useModuleFlags.js — keep the two in sync. Premium modules
+// are also plan-gated client-side, but the stored flag is still settable here.
+const MODULE_FLAGS = [
+  { key: 'modules.groups',          label: 'Groups',          default: true,  premium: false },
+  { key: 'modules.fees',            label: 'Fees',            default: true,  premium: false },
+  { key: 'modules.messages',        label: 'Messages',        default: true,  premium: false },
+  { key: 'modules.reports',         label: 'Reports',         default: true,  premium: false },
+  { key: 'modules.camps',           label: 'Camps',           default: false, premium: false },
+  { key: 'modules.student_photos',  label: 'Student photos',  default: true,  premium: false },
+  { key: 'modules.lessons',         label: 'Lessons',         default: true,  premium: true  },
+  { key: 'modules.assignments',     label: 'Assignments',     default: false, premium: true  },
+  { key: 'modules.question_papers', label: 'Question papers', default: false, premium: true  },
+];
+const MODULE_FLAG_KEYS = new Set(MODULE_FLAGS.map((m) => m.key));
 
 // Tables that need to be tagged with an org_id during migration. Same list
 // the debug-tables probe uses — keep them in sync.
@@ -208,10 +228,14 @@ router.get('/orgs', async (req, res) => {
     } catch {}
 
     const decorated = orgs.map((o) => {
-      const opts = { trialEndsAt: trialEnds.get(String(o.id)), createdAt: o.created_at };
+      // Child rows (memberships, students, AppSettings) tag org_id with the
+      // ROUNDED Number(org_id), while o.id is the EXACT ROWID string. Look the
+      // maps up by the same rounded key so 17-digit ROWIDs still match.
+      const key = String(Number(o.id));
+      const opts = { trialEndsAt: trialEnds.get(key), createdAt: o.created_at };
       const eff = effectivePlan(o.plan, opts);
       const planDefault = planMaxStudents(eff); // null = unlimited
-      const rawOverride = overrides.get(String(o.id));
+      const rawOverride = overrides.get(key);
       let override = null;
       if (rawOverride != null && String(rawOverride).trim() !== '') {
         const n = parseInt(rawOverride, 10);
@@ -219,8 +243,8 @@ router.get('/orgs', async (req, res) => {
       }
       return {
         ...o,
-        member_count:          memCounts.get(String(o.id)) || 0,
-        student_count:         stuCounts.get(String(o.id)) || 0,
+        member_count:          memCounts.get(key) || 0,
+        student_count:         stuCounts.get(key) || 0,
         effective_plan:        eff,
         plan_max_students:     planDefault,                       // the plan's own cap
         max_students_override: override,                          // per-org override or null
@@ -244,7 +268,11 @@ router.get('/orgs', async (req, res) => {
 // =============================================================================
 router.put('/orgs/:id', async (req, res) => {
   try {
-    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${Number(req.params.id)}`);
+    // ROWIDs are 17-digit numbers that exceed JS Number precision — use safeId
+    // (exact digits-only string) for the WHERE ROWID lookup, never Number().
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
     const org = unwrap(existing, 'Organizations')[0];
     if (!org) return res.status(404).json({ error: 'Org not found' });
 
@@ -280,14 +308,375 @@ router.put('/orgs/:id', async (req, res) => {
       }
     }
 
+    // Re-arm onboarding for an org so its owner sees the first-login walkthrough
+    // again on next app load. This flag is otherwise only set at signup, and the
+    // academy can clear it but cannot set it (Settings whitelist allows 'false'
+    // only), so re-triggering lives here, at platform-admin scope.
+    //   reset_onboarding: true        → replays the welcome TOUR
+    //   reset_onboarding: 'setup'     → also replays the first-run SETUP WIZARD
+    if (req.body.reset_onboarding) {
+      await upsertOrgSetting(req, Number(req.params.id), ONBOARDING_ADMIN_KEY, 'true');
+      if (req.body.reset_onboarding === 'setup') {
+        await upsertOrgSetting(req, Number(req.params.id), ONBOARDING_SETUP_KEY, 'true');
+      }
+    }
+
     // Only touch the Organizations row if there's an actual column change —
     // a settings-only PUT (e.g. just max_students) leaves the org row alone.
     const updated = Object.keys(patch).length
       ? await update(req, 'Organizations', req.params.id, patch)
       : org;
+
+    // Audit the meaningful actions (fail-safe — never blocks the response).
+    const orgName = org.name || '';
+    if (req.body.status !== undefined) {
+      await writeAudit(req, { action: 'org.status_change', orgId: org.ROWID, orgName, detail: { from: org.status, to: patch.status } });
+    }
+    if (req.body.plan !== undefined) {
+      await writeAudit(req, { action: 'org.plan_change', orgId: org.ROWID, orgName, detail: { from: org.plan, to: patch.plan, trial_days: req.body.trial_days } });
+    }
+    if (req.body.max_students !== undefined) {
+      await writeAudit(req, { action: 'org.student_cap', orgId: org.ROWID, orgName, detail: { max_students: req.body.max_students } });
+    }
+    if (req.body.reset_onboarding) {
+      await writeAudit(req, { action: 'org.reset_onboarding', orgId: org.ROWID, orgName, detail: { mode: req.body.reset_onboarding } });
+    }
+
     res.json({ org: normalize(updated) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update org', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/orgs/:id/detail — platform-admin only.
+// Deep view of a single org: basics + plan/trial decoration, module-wise
+// record counts (how much data the academy has created), and its members.
+// Counts come from the shared MODULES registry so this list stays in sync
+// with the rest of the app as tables are added.
+// =============================================================================
+router.get('/orgs/:id/detail', async (req, res) => {
+  try {
+    // Organizations ROWID lookup needs the EXACT id (safeId) — Number() rounds
+    // 17-digit ROWIDs and silently misses the row ("Org not found"). Child
+    // tables tag org_id with the rounded Number(org_id), so keep that for them.
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const orgId = Number(req.params.id);
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
+    const org = normalize(unwrap(existing, 'Organizations')[0] || null);
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    // Plan + trial decoration (same shape as GET /orgs).
+    let trialEndsAt = null;
+    let rawOverride = null;
+    try {
+      const sr = await zcql(
+        req,
+        `SELECT setting_key, setting_value FROM AppSettings WHERE AppSettings.org_id = ${orgId} AND AppSettings.setting_key IN ('plan.trial_ends_at', 'plan.max_students_override')`
+      );
+      for (const r of unwrap(sr, 'AppSettings')) {
+        if (r.setting_key === 'plan.trial_ends_at')         trialEndsAt = r.setting_value;
+        if (r.setting_key === 'plan.max_students_override') rawOverride = r.setting_value;
+      }
+    } catch {}
+
+    const opts = { trialEndsAt, createdAt: org.created_at };
+    const eff = effectivePlan(org.plan, opts);
+    const planDefault = planMaxStudents(eff);
+    let override = null;
+    if (rawOverride != null && String(rawOverride).trim() !== '') {
+      const n = parseInt(rawOverride, 10);
+      if (Number.isFinite(n) && n >= 0) override = n;
+    }
+
+    // Module-wise record counts. Run concurrently — independent COUNT queries.
+    // ZCQL aggregate rows are wrapped under the table name, but with only an
+    // aggregate selected some Catalyst DCs key the result under an empty string
+    // ('') instead. Read both so a present count never reads back as missing.
+    const counts = await Promise.all(
+      MODULES.map(async (m) => {
+        try {
+          const rows = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
+          const row0 = (rows && rows[0]) || {};
+          const r = row0[m.table] || row0[''] || row0;
+          const raw = r && (r.c != null ? r.c : r.COUNT);
+          return { key: m.key, label: m.label, table: m.table, count: raw != null ? Number(raw) : 0 };
+        } catch (e) {
+          // table may genuinely be absent, or the query errored — surface the
+          // reason so the drawer can show why a module reads as unavailable.
+          return { key: m.key, label: m.label, table: m.table, count: null, detail: e.message };
+        }
+      })
+    );
+
+    // Members of this org.
+    let members = [];
+    try {
+      const mr = await zcqlAll(req, `SELECT * FROM OrgMemberships WHERE OrgMemberships.org_id = ${orgId}`, 'OrgMemberships');
+      members = unwrap(mr, 'OrgMemberships').map((m) => ({
+        user_id:    m.user_id,
+        role:       m.role,
+        status:     m.status,
+        created_at: m.created_at || m.CREATEDTIME || null,
+      }));
+    } catch {}
+
+    // Module toggles — current stored value per flag (falling back to default).
+    const stored = {};
+    try {
+      const keyList = MODULE_FLAGS.map((m) => `'${m.key}'`).join(', ');
+      const fr = await zcql(
+        req,
+        `SELECT setting_key, setting_value FROM AppSettings WHERE AppSettings.org_id = ${orgId} AND AppSettings.setting_key IN (${keyList})`
+      );
+      for (const r of unwrap(fr, 'AppSettings')) stored[r.setting_key] = r.setting_value;
+    } catch {}
+    const module_flags = MODULE_FLAGS.map((m) => {
+      const v = stored[m.key];
+      const enabled = v === 'true' ? true : v === 'false' ? false : m.default;
+      return { key: m.key, label: m.label, premium: m.premium, enabled };
+    });
+
+    res.json({
+      org: {
+        ...org,
+        effective_plan:        eff,
+        plan_max_students:     planDefault,
+        max_students_override: override,
+        max_students:          override != null ? override : planDefault,
+        trial:                 trialInfo(org.plan, opts),
+        member_count:          members.length,
+      },
+      counts,
+      members,
+      module_flags,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load org detail', detail: e.message });
+  }
+});
+
+// =============================================================================
+// POST /api/platform/orgs/:id/resend-invite — platform-admin only.
+// Re-send the owner's access email. Catalyst's forgot-password flow emails a
+// link to set a new password, which works whether the owner never accepted
+// their original invite OR has simply lost access. Best-effort: surfaces a
+// clear error if the owner email cannot be resolved or the email send fails.
+// =============================================================================
+router.post('/orgs/:id/resend-invite', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const orgId = Number(req.params.id);
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
+    const org = normalize(unwrap(existing, 'Organizations')[0] || null);
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    // Resolve the owner's user_id — prefer the org's owner_user_id, else fall
+    // back to the OrgMembership row with role 'owner'.
+    let ownerId = org.owner_user_id ? String(org.owner_user_id) : '';
+    if (!ownerId) {
+      try {
+        const mr = await zcql(req, `SELECT user_id, role FROM OrgMemberships WHERE OrgMemberships.org_id = ${orgId}`);
+        const owner = unwrap(mr, 'OrgMemberships').find((m) => m.role === 'owner');
+        if (owner) ownerId = String(owner.user_id);
+      } catch {}
+    }
+    if (!ownerId) return res.status(400).json({ error: 'No owner on file for this academy' });
+
+    const adminApp = catalyst.initialize(req, { scope: 'admin' });
+    const um = adminApp.userManagement();
+
+    // Look up the owner's email from Catalyst user details.
+    let email = '';
+    try {
+      const details = await um.getUserDetails(ownerId);
+      email = details?.email_id || details?.user_details?.email_id || '';
+    } catch (e) {
+      return res.status(404).json({ error: 'Owner user not found in Catalyst', detail: e.message });
+    }
+    if (!email) return res.status(400).json({ error: 'Owner has no email on file' });
+
+    // Send the reset / access email.
+    try {
+      await um.resetPassword(email, { platform_type: 'web' });
+    } catch (e) {
+      return res.status(502).json({ error: 'Could not send the access email', detail: e.message });
+    }
+
+    await writeAudit(req, { action: 'org.resend_invite', orgId: org.ROWID, orgName: org.name || '', detail: { email } });
+    res.json({ message: 'Access email sent', email });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to resend invite', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/audit — platform-admin only. Recent audit-log entries,
+// newest first. Optional ?limit=N (default 100, max 300) and ?org=<id> filter.
+// Returns an empty list (not an error) if the AuditLog table is absent, so the
+// UI degrades gracefully until the table is created in the console.
+// =============================================================================
+router.get('/audit', async (req, res) => {
+  try {
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 100;
+    if (limit > 300) limit = 300; // ZCQL hard cap
+
+    const orgFilter = req.query.org ? Number(req.query.org) : null;
+    const where = Number.isFinite(orgFilter) && orgFilter ? ` WHERE AuditLog.target_org_id = ${orgFilter}` : '';
+    let entries = [];
+    try {
+      const rows = await zcql(
+        req,
+        `SELECT ROWID, actor_user_id, actor_email, action, target_org_id, target_org_name, detail, CREATEDTIME FROM AuditLog${where} ORDER BY CREATEDTIME DESC LIMIT ${limit}`
+      );
+      entries = unwrap(rows, 'AuditLog').map((r) => {
+        let detail = null;
+        if (r.detail) { try { detail = JSON.parse(r.detail); } catch { detail = r.detail; } }
+        return {
+          id:              r.ROWID,
+          actor_user_id:   r.actor_user_id,
+          actor_email:     r.actor_email,
+          action:          r.action,
+          target_org_id:   r.target_org_id,
+          target_org_name: r.target_org_name,
+          detail,
+          created_at:      r.CREATEDTIME,
+        };
+      });
+    } catch (e) {
+      // Table not created yet — return empty + a flag so the UI can hint at setup.
+      return res.json({ entries: [], available: false });
+    }
+    res.json({ entries, available: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load audit log', detail: e.message });
+  }
+});
+
+// =============================================================================
+// PUT /api/platform/orgs/:id/module-flag — platform-admin only.
+// Flip one module toggle for a single academy. Body: { flag, enabled }.
+// Only allowlisted module flags may be set (MODULE_FLAGS). Stored in the org's
+// AppSettings as 'true'/'false', the same convention useModuleFlags reads.
+// =============================================================================
+router.put('/orgs/:id/module-flag', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const orgId = Number(req.params.id);
+    const flag = String(req.body.flag || '');
+    if (!MODULE_FLAG_KEYS.has(flag)) {
+      return res.status(400).json({ error: 'Unknown module flag', detail: flag });
+    }
+    const enabled = req.body.enabled === true || req.body.enabled === 'true';
+
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
+    const org = normalize(unwrap(existing, 'Organizations')[0] || null);
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    await upsertOrgSetting(req, orgId, flag, enabled ? 'true' : 'false');
+    await writeAudit(req, { action: 'org.module_flag', orgId, orgName: org.name || '', detail: { flag, enabled } });
+
+    res.json({ flag, enabled });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to set module flag', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/metrics — platform-admin only. Activation funnel across
+// all orgs: how many signed up, finished first-run setup, added a first
+// student, and marked first attendance. Uses GROUP BY so the row count equals
+// the (small) number of distinct orgs, well under the ZCQL 300-row cap.
+// =============================================================================
+router.get('/metrics', async (req, res) => {
+  try {
+    // All org ids. Child tables (AppSettings, Students, Attendance) tag org_id
+    // with the ROUNDED Number(org_id), so key the funnel comparison the same way
+    // — String(o.ROWID) (exact) would never match the rounded child keys.
+    const orgRows = await zcqlAll(req, `SELECT ROWID FROM Organizations`, 'Organizations');
+    const orgIds = unwrap(orgRows, 'Organizations').map((o) => String(Number(o.ROWID)));
+    const total = orgIds.length;
+
+    // Orgs that have NOT finished setup still carry onboarding.setup_pending = 'true'.
+    const setupPending = new Set();
+    try {
+      const sr = await zcqlAll(
+        req,
+        `SELECT org_id, setting_value FROM AppSettings WHERE AppSettings.setting_key = '${ONBOARDING_SETUP_KEY}'`,
+        'AppSettings'
+      );
+      for (const r of unwrap(sr, 'AppSettings')) {
+        if (r.setting_value === 'true') setupPending.add(String(r.org_id));
+      }
+    } catch {}
+    const setupDone = orgIds.filter((id) => !setupPending.has(id)).length;
+
+    // Orgs with at least one student / one attendance row (GROUP BY → one row/org).
+    const orgsWith = async (table) => {
+      const set = new Set();
+      try {
+        const rows = await zcqlAll(req, `SELECT org_id, COUNT(ROWID) AS c FROM ${table} GROUP BY org_id`, table);
+        for (const r of unwrap(rows, table)) {
+          if (Number(r.c) > 0) set.add(String(r.org_id));
+        }
+      } catch {}
+      return set;
+    };
+    const [withStudents, withAttendance] = await Promise.all([
+      orgsWith('Students'),
+      orgsWith('Attendance'),
+    ]);
+
+    res.json({
+      funnel: {
+        signed_up:        total,
+        finished_setup:   setupDone,
+        added_student:    orgIds.filter((id) => withStudents.has(id)).length,
+        marked_attendance: orgIds.filter((id) => withAttendance.has(id)).length,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to compute metrics', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/orgs/:id/export — platform-admin only. Full JSON dump of
+// every tenant table's rows for one org (support deep-dives / offboarding).
+// Paginated reads via zcqlAll so large tables come through completely.
+// =============================================================================
+router.get('/orgs/:id/export', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const orgId = Number(req.params.id);
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
+    const org = normalize(unwrap(existing, 'Organizations')[0] || null);
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    const tables = {};
+    await Promise.all(
+      MODULES.map(async (m) => {
+        try {
+          const rows = await zcqlAll(req, `SELECT * FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`, m.table);
+          tables[m.table] = unwrap(rows, m.table).map(normalize);
+        } catch (_e) {
+          tables[m.table] = null; // table may not exist in this project
+        }
+      })
+    );
+
+    res.json({
+      org: { id: org.ROWID, name: org.name, slug: org.slug, plan: org.plan, status: org.status },
+      exported_at: new Date().toISOString(),
+      tables,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to export org', detail: e.message });
   }
 });
 

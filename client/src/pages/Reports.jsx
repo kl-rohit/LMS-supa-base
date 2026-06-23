@@ -331,7 +331,7 @@ export default function Reports() {
       <h2 className="page-header mb-0">Reports</h2>
 
       {/* Tabs */}
-      <div className="flex flex-wrap border-b border-gray-200">
+      <div className="flex flex-wrap border-b border-gray-200" data-tour="reports-tabs">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (

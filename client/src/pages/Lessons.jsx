@@ -1154,7 +1154,7 @@ export default function Lessons() {
             Organize video lessons into courses. Enroll students to give them access.
           </p>
         </div>
-        <button onClick={openCreateCourse} className="btn-primary btn-sm">
+        <button onClick={openCreateCourse} data-tour="lessons-add" className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> New course
         </button>
       </div>

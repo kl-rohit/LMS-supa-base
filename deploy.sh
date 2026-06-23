@@ -43,6 +43,14 @@ if ! grep -q '"CRON_SECRET"' functions/api/catalyst-config.json 2>/dev/null; the
   echo
 fi
 
+# ---------- generate configs from master ----------
+# Expand config.master.js into the backend / client / landing configs so the
+# shipped values always match the single source of truth. (The client build
+# also runs this via prebuild, but we do it here too in case the backend is
+# ever deployed without a client build.)
+blue "▶ Generating configs (config.master.js → per-runtime files)"
+node scripts/gen-config.js
+
 # ---------- client build ----------
 blue "▶ Building client (npm run build)"
 ( cd client && npm run build )

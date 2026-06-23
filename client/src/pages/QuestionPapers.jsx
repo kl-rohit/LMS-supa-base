@@ -9,6 +9,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import Pagination, { usePagination } from '../components/Pagination';
 
 const BLANK = { title: '', description: '', link: '', category: '' };
 
@@ -79,13 +80,15 @@ export default function QuestionPapers() {
     }
   };
 
+  const { page, setPage, pageCount, pageItems: pagePapers, total, from, to } = usePagination(papers, 25);
+
   if (loading) return <Loader text="Loading question papers..." />;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Question Papers</h2>
-        <button onClick={openAdd} className="btn-primary btn-sm">
+        <button onClick={openAdd} data-tour="papers-add" className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> Add Paper
         </button>
       </div>
@@ -98,8 +101,9 @@ export default function QuestionPapers() {
           action={<button onClick={openAdd} className="btn-primary btn-sm"><Plus className="w-4 h-4" /> Add Paper</button>}
         />
       ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {papers.map((p) => (
+          {pagePapers.map((p) => (
             <div key={p.id} className="card">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
@@ -131,6 +135,17 @@ export default function QuestionPapers() {
             </div>
           ))}
         </div>
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          setPage={setPage}
+          from={from}
+          to={to}
+          total={total}
+          label="papers"
+          className="rounded-xl border border-gray-200"
+        />
+        </>
       )}
 
       <Modal

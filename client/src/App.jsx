@@ -48,11 +48,13 @@ const Help           = lazy(() => import('./pages/Help'));
 
 import Loader from './components/Loader';
 import OnboardingTour from './components/OnboardingTour';
+import SetupWizard from './components/SetupWizard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import RequireAuth from './components/RequireAuth';
 import { useModuleFlags } from './hooks/useModuleFlags';
 import { useOrgBranding } from './hooks/useOrgBranding';
+import { BRAND_NAME } from './config';
 
 // Every nav item gets a `flag` key — the name of the AppSettings toggle
 // that gates it. Items with flag: null are always visible (foundational).
@@ -89,7 +91,7 @@ function TeacherLayout() {
   const { user, signOut } = useAuth();
   const { flags } = useModuleFlags();
   const branding = useOrgBranding();
-  const displayName = branding.name || 'VidyaSetu';
+  const displayName = branding.name || BRAND_NAME;
 
   // Reflect the academy name in the browser tab title.
   useEffect(() => {
@@ -99,7 +101,7 @@ function TeacherLayout() {
   }, [displayName]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="h-screen overflow-hidden bg-gray-50 flex">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-30 lg:hidden"
@@ -145,6 +147,7 @@ function TeacherLayout() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                data-tour={`nav-${item.to.replace(/^\//, '')}`}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
@@ -181,7 +184,7 @@ function TeacherLayout() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-6 sticky top-0 z-20">
           <button
             className="lg:hidden p-2 rounded-md hover:bg-gray-100 mr-3"
@@ -202,7 +205,7 @@ function TeacherLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-auto">
           {/* Suspense boundary catches each lazy route's loading state.
               Loader has a short delay so the spinner doesn't flash on a
               fast network — feels instant when the chunk is small. */}
@@ -229,6 +232,10 @@ function TeacherLayout() {
           </Suspense>
         </main>
       </div>
+
+      {/* First-run setup wizard (new orgs only) — collects core org config.
+          Shows ahead of the welcome tour; both are gated on server flags. */}
+      <SetupWizard />
 
       {/* First-login welcome tour (admin). Dismissal persisted per device. */}
       <OnboardingTour variant="admin" helpPath="/help" />

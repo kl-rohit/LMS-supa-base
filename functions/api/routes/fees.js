@@ -3,6 +3,7 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
+const { loadAppSettings } = require('./settings');
 
 // GET /api/fees/monthly/:year/:month
 router.get('/monthly/:year/:month', async (req, res) => {
@@ -15,35 +16,67 @@ router.get('/monthly/:year/:month', async (req, res) => {
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
     const students = unwrap(studentRows, 'Students');
 
-    // Payments for this month/year, scoped to org.
-    let paymentsByStudent = {};
+    // Fee collection model for this academy. 'per_month' bills each student a
+    // flat monthly_fee independent of attendance; 'per_class' (default) sums
+    // the per-class fee_charged across attended classes. Read once per request.
+    let feeMode = 'per_class';
     try {
-      const pRows = await zcql(req, `SELECT * FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year} AND Payments.org_id = ${Number(req.orgId)}`);
-      for (const p of unwrap(pRows, 'Payments')) {
-        paymentsByStudent[String(p.student_id)] = normalize(p);
-      }
-    } catch {}
+      const appSettings = await loadAppSettings(req);
+      if (appSettings['billing.fee_mode'] === 'per_month') feeMode = 'per_month';
+    } catch { /* settings unavailable → default per_class */ }
+
+    // Load the three datasets ONCE for the whole org, then group in memory by
+    // student_id. This replaces an N+1 (two queries per student) with three
+    // org-scoped paginated queries total, regardless of roster size. Each uses
+    // zcqlAll so it never silently truncates at the 300-row ZCQL cap.
+    const [pRows, aRows, afRows] = await Promise.all([
+      zcqlAll(req, `SELECT * FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year} AND Payments.org_id = ${Number(req.orgId)}`, 'Payments').catch(() => []),
+      zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
+      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
+    ]);
+
+    const paymentsByStudent = {};
+    for (const p of unwrap(pRows, 'Payments')) {
+      paymentsByStudent[String(p.student_id)] = normalize(p);
+    }
+    const attendanceByStudent = {};
+    for (const a of unwrap(aRows, 'Attendance')) {
+      const k = String(a.student_id);
+      (attendanceByStudent[k] = attendanceByStudent[k] || []).push(a);
+    }
+    const additionalByStudent = {};
+    for (const af of unwrap(afRows, 'AdditionalFees')) {
+      const k = String(af.student_id);
+      (additionalByStudent[k] = additionalByStudent[k] || []).push(af);
+    }
 
     const results = [];
     for (const s of students) {
-      try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`);
-        const attendance = unwrap(aRows, 'Attendance');
-        const presentCount = attendance.filter((a) => a.status === 'present').length;
-        const lateCount    = attendance.filter((a) => a.status === 'late').length;
-        const absentCount  = attendance.filter((a) => a.status === 'absent').length;
-        const attended = attendance.filter((a) => a.status === 'present' || a.status === 'late');
-        const classFees = attended.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
-        const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`);
-        const additional = unwrap(afRows, 'AdditionalFees');
-        const additionalTotal = additional.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
-        const grandTotal = classFees + additionalTotal;
-        const payment = paymentsByStudent[String(s.ROWID)];
+      const sid = String(s.ROWID);
+      const attendance = attendanceByStudent[sid] || [];
+      const presentCount = attendance.filter((a) => a.status === 'present').length;
+      const lateCount    = attendance.filter((a) => a.status === 'late').length;
+      const absentCount  = attendance.filter((a) => a.status === 'absent').length;
+      const attended = attendance.filter((a) => a.status === 'present' || a.status === 'late');
+      const additional = additionalByStudent[sid] || [];
+      const additionalTotal = additional.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+      const payment = paymentsByStudent[sid];
 
-        const minClasses = Number(s.min_classes_per_month) || 0;
-        const attendedCount = presentCount + lateCount;
-        let shortfallAmount = 0;
-        let shortfallClasses = 0;
+      const minClasses = Number(s.min_classes_per_month) || 0;
+      const attendedCount = presentCount + lateCount;
+
+      // class_fees.total is the billed amount for classes this month. Its value
+      // depends on the academy's fee model; the attendance counts below are the
+      // same either way (shown for context).
+      let classFees;
+      let shortfallAmount = 0;
+      let shortfallClasses = 0;
+      if (feeMode === 'per_month') {
+        // Flat monthly amount, independent of attendance. Shortfall does not
+        // apply because there is no per-class minimum to fall short of.
+        classFees = Number(s.monthly_fee) || 0;
+      } else {
+        classFees = attended.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
         if (minClasses > 0 && attendedCount < minClasses) {
           shortfallClasses = minClasses - attendedCount;
           const avgFee = attendedCount > 0
@@ -51,30 +84,31 @@ router.get('/monthly/:year/:month', async (req, res) => {
             : Number(s.fee_offline_group) || Number(s.fee_offline) || Number(s.fee_online) || 0;
           shortfallAmount = Math.round(avgFee * shortfallClasses);
         }
+      }
+      const grandTotal = classFees + additionalTotal;
 
-        results.push({
-          student_id: s.ROWID,
-          student_name: s.name,
-          min_classes: minClasses,
-          shortfall_classes: shortfallClasses,
-          shortfall_amount: shortfallAmount,
-          class_fees: {
-            total_classes: attended.length,
-            present: presentCount,
-            late: lateCount,
-            absent: absentCount,
-            total_marked: presentCount + lateCount + absentCount,
-            total: classFees,
-          },
-          additional_fees: { count: additional.length, total: additionalTotal },
-          grand_total: grandTotal,
-          paid: !!payment,
-          payment: payment || null,
-        });
-      } catch {}
+      results.push({
+        student_id: s.ROWID,
+        student_name: s.name,
+        min_classes: minClasses,
+        shortfall_classes: shortfallClasses,
+        shortfall_amount: shortfallAmount,
+        class_fees: {
+          total_classes: attended.length,
+          present: presentCount,
+          late: lateCount,
+          absent: absentCount,
+          total_marked: presentCount + lateCount + absentCount,
+          total: classFees,
+        },
+        additional_fees: { count: additional.length, total: additionalTotal },
+        grand_total: grandTotal,
+        paid: !!payment,
+        payment: payment || null,
+      });
     }
     results.sort((a, b) => String(a.student_name || '').localeCompare(String(b.student_name || '')));
-    res.json({ students: results });
+    res.json({ students: results, fee_mode: feeMode });
   } catch (e) {
     res.status(500).json({ error: 'Failed to compute monthly fees', detail: e.message });
   }
@@ -90,7 +124,7 @@ router.get('/payments', async (req, res) => {
     const psid = safeId(student_id);
     if (psid) where.push(`Payments.student_id = ${psid}`);
     const sql = `SELECT * FROM Payments WHERE ${where.join(' AND ')} ORDER BY Payments.payment_date DESC`;
-    const rows = unwrap(await zcql(req, sql), 'Payments').map(normalize);
+    const rows = unwrap(await zcqlAll(req, sql, 'Payments'), 'Payments').map(normalize);
     const decorated = await Promise.all(rows.map(async (r) => {
       try { const s = await getById(req, 'Students', r.student_id); if (s && Number(s.org_id) === Number(req.orgId)) r.student_name = s.name; } catch {}
       return r;
@@ -196,7 +230,7 @@ router.get('/additional', async (req, res) => {
     const asid = safeId(student_id);
     if (asid) where.push(`AdditionalFees.student_id = ${asid}`);
     const sql = `SELECT * FROM AdditionalFees WHERE ${where.join(' AND ')} ORDER BY AdditionalFees.fee_date DESC`;
-    const rows = unwrap(await zcql(req, sql), 'AdditionalFees');
+    const rows = unwrap(await zcqlAll(req, sql, 'AdditionalFees'), 'AdditionalFees');
     const decorated = await Promise.all(rows.map(async (r) => {
       const out = normalize(r);
       try { const s = await getById(req, 'Students', r.student_id); if (s && Number(s.org_id) === Number(req.orgId)) out.student_name = s.name; } catch {}

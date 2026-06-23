@@ -4,38 +4,7 @@ const router = require('express').Router();
 const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize, q, appFor, safeId } = require('../db/catalystDb');
 const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 const { planMaxStudents, normalizePlan } = require('../lib/plans');
-
-// Active-student cap helper. Returns null when the org is within its plan
-// limit (or the plan is unlimited / caller is platform admin); otherwise
-// returns a 402-ready body describing the limit. `delta` is how many active
-// students the pending action adds (1 for create / reactivate).
-async function studentCapBlock(req, delta = 1) {
-  // Bypass ONLY during cross-org support impersonation (platform admin viewing
-  // a foreign org via ?org=, where resolveOrg sets orgRole='platform_admin').
-  // When the platform owner operates their OWN academy (a real membership →
-  // orgRole is 'owner'/'teacher'/etc.), the cap applies like any other user.
-  if (req.orgRole === 'platform_admin') return null;
-  const cap = req.orgMaxStudents != null ? req.orgMaxStudents : planMaxStudents(req.orgPlan);
-  if (cap == null) return null; // unlimited
-  let count = 0;
-  try {
-    const rows = await zcql(
-      req,
-      `SELECT COUNT(ROWID) AS total FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.status = 'active'`
-    );
-    count = rows[0]?.Students?.total || 0;
-  } catch { return null; } // fail open — never block on a count hiccup
-  if (count + delta > cap) {
-    return {
-      error: 'student_limit_reached',
-      limit: cap,
-      count,
-      plan: normalizePlan(req.orgPlan),
-      message: `Your plan allows up to ${cap} active student${cap === 1 ? '' : 's'}. Upgrade to add more.`,
-    };
-  }
-  return null;
-}
+const { studentCapBlock } = require('../lib/studentLimit');
 
 // IMPORTANT: declare specific paths (debug/tables, inactive) BEFORE the /:id
 // catch-all so Express routes them correctly.
@@ -181,6 +150,7 @@ router.post('/', async (req, res) => {
     const {
       name, parent_name, mobile_number,
       fee_online, fee_offline, fee_offline_group, min_classes_per_month,
+      monthly_fee,
       status, notes, date_of_birth,
       // Self-service / Grade exam fields. Admin can set these too — they're
       // mirrored from what the parent edits in the portal.
@@ -201,6 +171,9 @@ router.post('/', async (req, res) => {
       fee_offline: fee_offline || 0,
       fee_offline_group: fee_offline_group || 0,
       min_classes_per_month: min_classes_per_month || 0,
+      // Flat per-month fee — used when the academy's billing.fee_mode is
+      // 'per_month'. Harmless when the academy bills per class.
+      monthly_fee: monthly_fee || 0,
       status: status || 'active',
       notes: notes || '',
       email: email || '',
@@ -231,6 +204,7 @@ router.put('/:id', async (req, res) => {
     const {
       name, parent_name, mobile_number,
       fee_online, fee_offline, fee_offline_group, min_classes_per_month,
+      monthly_fee,
       status, notes, date_of_birth,
       email, address, father_name, mother_name, photo_url,
     } = req.body;
@@ -248,6 +222,7 @@ router.put('/:id', async (req, res) => {
     if (fee_offline !== undefined)           patch.fee_offline           = fee_offline;
     if (fee_offline_group !== undefined)     patch.fee_offline_group     = fee_offline_group;
     if (min_classes_per_month !== undefined) patch.min_classes_per_month = min_classes_per_month;
+    if (monthly_fee !== undefined)           patch.monthly_fee           = monthly_fee;
     if (status !== undefined)                patch.status                = status;
     if (notes !== undefined)                 patch.notes                 = notes;
     if (date_of_birth !== undefined)         patch.date_of_birth         = date_of_birth || null;

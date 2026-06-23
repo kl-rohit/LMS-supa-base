@@ -11,13 +11,14 @@
 
 const { appFor, update } = require('../db/catalystDb');
 const { resizeAndCompress } = require('./image');
+const config = require('../config');
 
-const PHOTO_BUCKET = 'student-photos-profile';
-
-// Validation thresholds
-const MAX_RAW_BYTES = 8 * 1024 * 1024;    // 8 MB before resize — parents
-                                          // sometimes pick straight-out-of-camera shots
-const SIGNED_URL_TTL_SECS = '3600';       // 1 hour — just for the immediate preview
+// Bucket + thresholds come from the master config (functions/api/config.js) so
+// a project / data-centre move only touches one file. Still re-exported below
+// for callers (e.g. routes/organization.js) that import PHOTO_BUCKET from here.
+const PHOTO_BUCKET = config.PHOTO_BUCKET;
+const MAX_RAW_BYTES = config.PHOTO_MAX_RAW_BYTES;        // before resize
+const SIGNED_URL_TTL_SECS = config.PHOTO_SIGNED_URL_TTL; // string seconds, immediate preview
 
 async function uploadStudentPhoto(req, studentId, body) {
   const { data } = body || {};

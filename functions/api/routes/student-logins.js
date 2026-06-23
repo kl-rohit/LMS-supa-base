@@ -123,6 +123,22 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// POST /api/student-logins/:id/resend-tour — re-arm the parent welcome tour.
+// Sets onboarding.parent_pending.<studentId> back to 'true' so the parent sees
+// the first-login walkthrough again next time they open the portal. (:id is a
+// student id; the parent must already have a login configured.)
+router.post('/:id/resend-tour', async (req, res) => {
+  try {
+    const existing = await getById(req, 'Students', req.params.id);
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Student not found' });
+    if (!existing.login_user_id) return res.status(404).json({ error: 'No login for this student' });
+    await setFlag(req, req.orgId, parentKey(req.params.id), 'true');
+    res.json({ message: 'The welcome tour will show again the next time this parent opens the portal.' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to resend tour', detail: e.message });
+  }
+});
+
 // DELETE /api/student-logins/:id — clears login fields + disables the Catalyst user
 router.delete('/:id', async (req, res) => {
   try {

@@ -9,7 +9,9 @@
 // Returns a digits-only E.164-ish string (no +) ready to drop into
 // `https://wa.me/<digits>` — or null if the input can't be made into a
 // plausible phone number.
-export function normalizeMobileForWhatsApp(raw, defaultCountryCode = '91') {
+import { DEFAULT_COUNTRY_CODE } from '../config';
+
+export function normalizeMobileForWhatsApp(raw, defaultCountryCode = DEFAULT_COUNTRY_CODE) {
   if (!raw) return null;
   // Strip everything that isn't a digit.
   const digits = String(raw).replace(/\D/g, '');

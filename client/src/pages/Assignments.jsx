@@ -19,6 +19,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import Pagination, { usePagination } from '../components/Pagination';
 
 const BLANK = {
   title: '', kind: 'task', instructions: '', link: '', due_date: '',
@@ -139,13 +140,15 @@ export default function Assignments() {
     return '';
   };
 
+  const { page, setPage, pageCount, pageItems: pageAssignments, total, from, to } = usePagination(assignments, 25);
+
   if (loading) return <Loader text="Loading assignments..." />;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Assignments</h2>
-        <button onClick={openAdd} className="btn-primary btn-sm">
+        <button onClick={openAdd} data-tour="assignments-add" className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> New Assignment
         </button>
       </div>
@@ -158,8 +161,9 @@ export default function Assignments() {
           action={<button onClick={openAdd} className="btn-primary btn-sm"><Plus className="w-4 h-4" /> New Assignment</button>}
         />
       ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {assignments.map((a) => {
+          {pageAssignments.map((a) => {
             const isQuiz = a.kind === 'quiz';
             return (
               <div key={a.id} className="card">
@@ -216,6 +220,17 @@ export default function Assignments() {
             );
           })}
         </div>
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          setPage={setPage}
+          from={from}
+          to={to}
+          total={total}
+          label="assignments"
+          className="rounded-xl border border-gray-200"
+        />
+        </>
       )}
 
       {/* Create / Edit modal */}

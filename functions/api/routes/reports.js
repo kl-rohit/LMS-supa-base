@@ -31,7 +31,7 @@ router.get('/student/:id', async (req, res) => {
     const attendance_rate = attendedSlots ? Math.round((present / attendedSlots) * 100) : 0;
     const class_fees_total = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
 
-    const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${req.params.id} AND AdditionalFees.org_id = ${Number(req.orgId)}`);
+    const afRows = await zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${req.params.id} AND AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees');
     const additional = unwrap(afRows, 'AdditionalFees').map(normalize);
     const additional_fees_total = additional.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
@@ -86,30 +86,46 @@ router.get('/monthly/:year/:month', async (req, res) => {
     const dateTo = `${year}-${monthStr}-31`;
     const sRows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
     const students = unwrap(sRows, 'Students');
+
+    // Load attendance for the whole month window and the month's additional
+    // fees ONCE for the org, then group in memory by student_id. Replaces an
+    // N+1 (two queries per student) with two paginated org-scoped queries.
+    const [aRowsAll, afRowsAll] = await Promise.all([
+      zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
+      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
+    ]);
+    const attendanceByStudent = {};
+    for (const a of unwrap(aRowsAll, 'Attendance')) {
+      const k = String(a.student_id);
+      (attendanceByStudent[k] = attendanceByStudent[k] || []).push(a);
+    }
+    const additionalTotalByStudent = {};
+    for (const af of unwrap(afRowsAll, 'AdditionalFees')) {
+      const k = String(af.student_id);
+      additionalTotalByStudent[k] = (additionalTotalByStudent[k] || 0) + (Number(af.amount) || 0);
+    }
+
     const rows = [];
     let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalFees = 0, uniqueClassIds = new Set();
     for (const s of students) {
-      try {
-        const aRows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`);
-        const attendance = unwrap(aRows, 'Attendance');
-        const present = attendance.filter((a) => a.status === 'present').length;
-        const absent = attendance.filter((a) => a.status === 'absent').length;
-        const late = attendance.filter((a) => a.status === 'late').length;
-        const tot = present + absent + late;
-        const fees = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
-        const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`);
-        const additional = unwrap(afRows, 'AdditionalFees').reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
-        totalPresent += present; totalAbsent += absent; totalLate += late; totalFees += fees + additional;
-        attendance.forEach((a) => a.class_id && uniqueClassIds.add(a.class_id));
-        rows.push({
-          student_id: s.ROWID,
-          student_name: s.name,
-          total_classes: tot,
-          present, absent, late,
-          attendance_rate: tot ? Math.round((present / tot) * 100) : 0,
-          total_fees: fees + additional,
-        });
-      } catch {}
+      const sid = String(s.ROWID);
+      const attendance = attendanceByStudent[sid] || [];
+      const present = attendance.filter((a) => a.status === 'present').length;
+      const absent = attendance.filter((a) => a.status === 'absent').length;
+      const late = attendance.filter((a) => a.status === 'late').length;
+      const tot = present + absent + late;
+      const fees = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
+      const additional = additionalTotalByStudent[sid] || 0;
+      totalPresent += present; totalAbsent += absent; totalLate += late; totalFees += fees + additional;
+      attendance.forEach((a) => a.class_id && uniqueClassIds.add(a.class_id));
+      rows.push({
+        student_id: s.ROWID,
+        student_name: s.name,
+        total_classes: tot,
+        present, absent, late,
+        attendance_rate: tot ? Math.round((present / tot) * 100) : 0,
+        total_fees: fees + additional,
+      });
     }
     rows.sort((a, b) => String(a.student_name || '').localeCompare(String(b.student_name || '')));
     const overallSlots = totalPresent + totalAbsent + totalLate;

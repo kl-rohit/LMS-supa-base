@@ -17,11 +17,14 @@ import {
   Bell, BellRing, BellOff, Phone, Mail, Users, ClipboardCheck, IndianRupee,
   Video, BarChart3, Calendar, KeyRound, LayoutDashboard, UserCircle2,
   ClipboardList, FileText, HelpCircle, ChevronRight, ChevronDown, ArrowRight,
-  ArrowLeft, BookOpen, Lightbulb, Info, Settings as SettingsIcon,
+  ArrowLeft, BookOpen, Lightbulb, Info, Settings as SettingsIcon, RotateCcw,
+  Compass, Footprints,
 } from 'lucide-react';
 import usePwaInstall from '../hooks/usePwaInstall';
 import usePush from '../hooks/usePush';
+import { REPLAY_EVENT, LAUNCH_TOUR_EVENT, FULL_TOUR_SLUG, hasModuleTour, hasFullTour } from './OnboardingTour';
 import { useOrgBranding } from '../hooks/useOrgBranding';
+import { BRAND_NAME, SUPPORT_EMAIL, SUPPORT_PHONE_TEL, SUPPORT_PHONE_DISPLAY } from '../config';
 
 /* ------------------------------------------------------------------ */
 /* Interactive, machine-aware blocks (install + notifications)        */
@@ -723,7 +726,7 @@ function groupByCategory(articles) {
 
 export default function HelpGuide({ variant = 'parent', basePath, slug }) {
   const branding = useOrgBranding();
-  const appName = branding.name || 'VidyaSetu';
+  const appName = branding.name || BRAND_NAME;
   const navigate = useNavigate();
   const topRef = useRef(null);
 
@@ -745,14 +748,40 @@ export default function HelpGuide({ variant = 'parent', basePath, slug }) {
 
   return (
     <div className="max-w-6xl mx-auto" ref={topRef}>
-      <header className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">Help &amp; Guide</p>
-        <h2 className="page-header mb-1">{appName} documentation</h2>
-        <p className="text-sm text-gray-500">
-          {variant === 'admin'
-            ? 'Everything you need to run your academy — module by module.'
-            : 'Everything you need to follow your child’s progress.'}
-        </p>
+      <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">Help &amp; Guide</p>
+          <h2 className="page-header mb-1">{appName} documentation</h2>
+          <p className="text-sm text-gray-500">
+            {variant === 'admin'
+              ? 'Everything you need to run your academy — module by module.'
+              : 'Everything you need to follow your child’s progress.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto flex-shrink-0">
+          {hasFullTour(variant) && (
+            <button
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent(LAUNCH_TOUR_EVENT, { detail: { variant, slug: FULL_TOUR_SLUG } })
+                )
+              }
+              className="btn-primary btn-sm"
+              title="Walk through every module, one after another"
+            >
+              <Footprints className="w-4 h-4" />
+              Take the full tour
+            </button>
+          )}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent(REPLAY_EVENT))}
+            className="btn-secondary btn-sm"
+            title="Play the first-login welcome walkthrough again"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Replay welcome tour
+          </button>
+        </div>
       </header>
 
       {/* Mobile topic picker */}
@@ -805,12 +834,27 @@ export default function HelpGuide({ variant = 'parent', basePath, slug }) {
               <span className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
                 <CurrentIcon className="w-5 h-5" />
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h1 className="text-xl font-bold text-gray-900">{current.title}</h1>
                 {current.summary && (
                   <p className="text-sm text-gray-500 mt-0.5">{inline(current.summary, appName)}</p>
                 )}
               </div>
+              {/* Launch the live, navigate-and-highlight tour for this module. */}
+              {hasModuleTour(variant, current.slug) && (
+                <button
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent(LAUNCH_TOUR_EVENT, { detail: { variant, slug: current.slug } })
+                    )
+                  }
+                  className="btn-primary btn-sm flex-shrink-0 self-start"
+                  title={`Take a quick guided tour of ${current.title}`}
+                >
+                  <Compass className="w-4 h-4" />
+                  Show me around
+                </button>
+              )}
             </div>
 
             {current.blocks.map((b, i) => (
@@ -849,14 +893,14 @@ export default function HelpGuide({ variant = 'parent', basePath, slug }) {
             <p className="text-sm text-gray-600 mb-3">
               {variant === 'admin'
                 ? 'We’re happy to help you get set up or answer any question.'
-                : 'If something doesn’t look right, your academy can help — or reach the VidyaSetu team:'}
+                : `If something doesn’t look right, your academy can help — or reach the ${BRAND_NAME} team:`}
             </p>
             <div className="flex flex-wrap gap-2">
-              <a href="tel:+919360390883" className="btn-secondary btn-sm">
-                <Phone className="w-4 h-4" /> +91 93603 90883
+              <a href={`tel:${SUPPORT_PHONE_TEL}`} className="btn-secondary btn-sm">
+                <Phone className="w-4 h-4" /> {SUPPORT_PHONE_DISPLAY}
               </a>
-              <a href="mailto:support@vidyasetu.app" className="btn-secondary btn-sm">
-                <Mail className="w-4 h-4" /> support@vidyasetu.app
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="btn-secondary btn-sm">
+                <Mail className="w-4 h-4" /> {SUPPORT_EMAIL}
               </a>
             </div>
           </div>

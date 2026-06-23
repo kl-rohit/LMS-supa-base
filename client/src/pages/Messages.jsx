@@ -21,6 +21,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import Pagination, { usePagination } from '../components/Pagination';
 // Templates editor lives at /settings → Templates tab. We just READ
 // templates here for the compose dropdown + quick-template chips, and use
 // the same DEFAULT_TEMPLATES from the shared component as the fallback.
@@ -380,6 +381,8 @@ export default function Messages() {
     return messages.filter((m) => m.message_type === filter);
   }, [messages, filter]);
 
+  const { page, setPage, pageCount, pageItems: pageMessages, total, from, to } = usePagination(filteredMessages, 25);
+
   const messageTypeColors = {
     absence_alert: 'border-l-red-500 bg-red-50',
     fee_reminder: 'border-l-amber-500 bg-amber-50',
@@ -461,6 +464,7 @@ export default function Messages() {
           </button>
           <button
             onClick={() => setComposeOpen(!composeOpen)}
+            data-tour="messages-compose"
             className="btn-primary btn-sm"
           >
             <PenLine className="w-4 h-4" /> Compose
@@ -588,7 +592,7 @@ export default function Messages() {
         />
       ) : (
         <div className="space-y-3">
-          {filteredMessages.map((message) => {
+          {pageMessages.map((message) => {
             const TypeIcon = messageTypeIcons[message.message_type] || PenLine;
             const isSent = message.is_sent === 1 || message.is_sent === true;
             return (
@@ -702,6 +706,17 @@ export default function Messages() {
               </div>
             );
           })}
+
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            label="messages"
+            className="rounded-xl border border-gray-200"
+          />
         </div>
       )}
 

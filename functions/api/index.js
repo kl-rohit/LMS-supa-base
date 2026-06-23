@@ -7,6 +7,7 @@ const { requireAuth, requireAdmin } = require('./middleware/auth');
 const { requireParent } = require('./middleware/parent');
 const { resolveOrg, requireOrgId } = require('./middleware/org');
 const { requireModule } = require('./middleware/entitlement');
+const config = require('./config');
 
 // Build version — written by deploy.sh at deploy time (git SHA + build time).
 // Absent in dev / fresh checkouts; fall back to 'dev' so /api/health never errors.
@@ -17,7 +18,7 @@ try {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: config.JSON_BODY_LIMIT }));
 
 // Health + landing
 app.get('/', (_req, res) => {
@@ -35,6 +36,7 @@ app.get('/', (_req, res) => {
       '/api/reports',
       '/api/dashboard',
       '/api/import',
+      '/api/migration (export + import for cross-project data migration)',
       '/api/camps',
       '/api/student-logins (admin)',
       '/api/courses (admin)',
@@ -79,6 +81,7 @@ app.use('/api/messages',       requireAuth, resolveOrg, requireOrgId, require('.
 app.use('/api/reports',        requireAuth, resolveOrg, requireOrgId, require('./routes/reports'));
 app.use('/api/dashboard',      requireAuth, resolveOrg, requireOrgId, require('./routes/dashboard'));
 app.use('/api/import',         requireAuth, resolveOrg, requireOrgId, require('./routes/import'));
+app.use('/api/migration',      requireAuth, resolveOrg, requireOrgId, require('./routes/migration'));
 app.use('/api/camps',          requireAuth, resolveOrg, requireOrgId, require('./routes/camps'));
 app.use('/api/student-logins', requireAuth, resolveOrg, requireOrgId, require('./routes/student-logins'));
 // Premium routes (Complete plan) — gated by requireModule. quizzes, courses

@@ -135,6 +135,18 @@ const APP_SETTINGS_DEFAULTS = {
   'billing.default_offline_fee': '',
   'billing.default_group_fee':   '',
   'billing.default_min_classes': '',
+  // Fee collection model for the whole academy:
+  //   'per_class'  — fee = per-hour rate x duration, summed across attendance
+  //                  (the original model; uses the rates above + min_classes).
+  //   'per_month'  — fee = each student's flat monthly_fee, independent of how
+  //                  many classes they attend (shortfall logic is skipped).
+  'billing.fee_mode':            'per_class',
+  // Org default flat monthly amount, used to pre-fill new students when the
+  // academy bills per month. Empty means "no default".
+  'billing.default_monthly_fee': '',
+  // Which class modes this academy offers, as a CSV of: online, offline, group.
+  // Drives which fee-rate fields appear and which class types can be recorded.
+  'billing.class_modes':         'online,offline,group',
 
   // ---- Modules (Phase 3) -----------------------------------------------
   // Per-org module enable/disable. Stored as 'true'/'false' strings so the
@@ -150,11 +162,18 @@ const APP_SETTINGS_DEFAULTS = {
   'modules.assignments':    'false', // off by default — opt-in
   'modules.question_papers':'false', // off by default — opt-in
 
+  // ---- Alerts ----------------------------------------------------------
+  // How many consecutive absences trigger an attendance alert (banner on the
+  // Attendance page + the message the academy can send the parent). Whole
+  // number, typically 2, 3 or 4. Stored as a string like every other setting.
+  'alerts.absence_threshold': '2',
+
   // ---- Parent portal visibility (Phase 3) ------------------------------
-  // What parents see in their portal. attendance is always visible — that's
-  // the foundation of the relationship.
+  // What parents see in their portal. Each is a per-org toggle so an academy
+  // can tailor the portal to what it wants families to see.
   'portal.show_lessons':      'true',
   'portal.show_fees':         'true',
+  'portal.show_attendance':   'true', // class-history visibility for parents
   'portal.allow_profile_edit':'true',
 
   // ---- Appearance (Phase 4) --------------------------------------------
@@ -169,6 +188,11 @@ const APP_SETTINGS_DEFAULTS = {
   // the client clears it to 'false' the moment the owner dismisses the tour.
   // Existing orgs have no row → defaults to 'false' → tour never shows.
   'onboarding.admin_pending': 'false',
+  // 'true' only on a brand-new org (stamped at signup); gates the first-run
+  // SETUP WIZARD (class modes, fee model, portal toggles). Defaults to 'false'
+  // so existing orgs (no row) never see the wizard. Cleared when the owner
+  // finishes or skips setup.
+  'onboarding.setup_pending': 'false',
 
   // ---- Schedule / working hours (Phase 5) ------------------------------
   // Per-day availability windows that bound the Classes timetable grid and

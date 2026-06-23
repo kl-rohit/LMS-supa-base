@@ -3,6 +3,31 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
+const { loadAppSettings } = require('./settings');
+
+// Consecutive absences before an alert fires. Configurable per academy via the
+// 'alerts.absence_threshold' setting; falls back to 2. Clamped to a sensible
+// 1–10 so a stray value can never silence or spam alerts.
+async function absenceThreshold(req) {
+  try {
+    const s = await loadAppSettings(req);
+    const n = parseInt(s['alerts.absence_threshold'], 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 10) return n;
+  } catch {}
+  return 2;
+}
+
+// True when the academy bills a flat monthly fee per student. In that model the
+// per-class fee is irrelevant, so attendance rows are recorded with a 0 charge
+// (the monthly_fee, applied in fees.js, is the actual bill). This keeps reports
+// and statements that sum fee_charged from double-counting against the flat fee.
+async function isPerMonth(req) {
+  try {
+    const s = await loadAppSettings(req);
+    return s['billing.fee_mode'] === 'per_month';
+  } catch {}
+  return false;
+}
 
 function calcFee(student, classType, durationHours) {
   let perHour = 0;
@@ -57,7 +82,7 @@ router.get('/', async (req, res) => {
 // GET /api/attendance/by-date/:date
 router.get('/by-date/:date', async (req, res) => {
   try {
-    const rows = await zcql(req, `SELECT * FROM Attendance WHERE Attendance.class_date = ${q(req.params.date)} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`);
+    const rows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date = ${q(req.params.date)} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const decorated = await Promise.all(unwrap(rows, 'Attendance').map((a) => decorate(req, a)));
     res.json({ attendance: decorated });
   } catch (e) {
@@ -81,20 +106,30 @@ router.get('/by-student/:studentId', async (req, res) => {
 // GET /api/attendance/absent-streaks/all
 router.get('/absent-streaks/all', async (req, res) => {
   try {
+    const threshold = await absenceThreshold(req);
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${Number(req.orgId)}`);
     const students = unwrap(studentRows, 'Students');
+
+    // Pull the org's attendance ONCE (newest first) and group by student,
+    // instead of a query per active student. The global DESC order is also
+    // DESC within each student's bucket, so the leading-absence streak is the
+    // run of 'absent' from the front of each bucket.
+    const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
+    const byStudent = {};
+    for (const a of unwrap(aRows, 'Attendance')) {
+      const k = String(a.student_id);
+      (byStudent[k] = byStudent[k] || []).push(a);
+    }
+
     const alerts = [];
     for (const s of students) {
-      try {
-        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
-        const records = unwrap(aRows, 'Attendance');
-        let streak = 0;
-        for (const r of records) {
-          if (r.status === 'absent') streak++;
-          else break;
-        }
-        if (streak >= 2) alerts.push({ student_id: s.ROWID, student_name: s.name, consecutive_absences: streak });
-      } catch {}
+      const records = byStudent[String(s.ROWID)] || [];
+      let streak = 0;
+      for (const r of records) {
+        if (r.status === 'absent') streak++;
+        else break;
+      }
+      if (streak >= threshold) alerts.push({ student_id: s.ROWID, student_name: s.name, consecutive_absences: streak });
     }
     res.json({ alerts });
   } catch (e) {
@@ -117,6 +152,15 @@ router.post('/', async (req, res) => {
     if (!student || Number(student.org_id) !== Number(req.orgId)) {
       return res.status(404).json({ error: 'Student not found' });
     }
+    // Attendance applies to active students only. Students beyond the approved
+    // seat limit are set inactive, and attendance stays available once they are
+    // active again (after reducing active students or upgrading).
+    if (String(student.status || '').toLowerCase() !== 'active') {
+      return res.status(409).json({
+        error: 'student_inactive',
+        message: 'This student is inactive. Reactivate them to record attendance.',
+      });
+    }
     let cls = null, finalType = class_type, finalDuration = duration_hours, computedFee = fee_charged;
     if (class_id) {
       cls = await getById(req, 'Classes', class_id);
@@ -126,7 +170,8 @@ router.post('/', async (req, res) => {
     }
     if (computedFee === undefined) {
       computedFee = 0;
-      if (status === 'present' || status === 'late') {
+      // Auto per-class fee applies only when the academy bills per class.
+      if (!(await isPerMonth(req)) && (status === 'present' || status === 'late')) {
         if (finalType) computedFee = calcFee(student, finalType, finalDuration || 1);
       }
     }
@@ -158,6 +203,7 @@ router.post('/adhoc', async (req, res) => {
       return res.status(400).json({ error: 'date, class_type, records[] required' });
     }
     const dur = Number(duration_hours) || 1;
+    const perMonth = await isPerMonth(req);
     const results = [];
     for (const r of records) {
       try {
@@ -167,7 +213,7 @@ router.post('/adhoc', async (req, res) => {
           continue;
         }
         let fee = r.fee_charged;
-        if (fee === undefined && (r.status === 'present' || r.status === 'late')) {
+        if (fee === undefined && !perMonth && (r.status === 'present' || r.status === 'late')) {
           fee = calcFee(student, class_type, dur);
         }
         if (r.status === 'absent') fee = 0;
@@ -207,24 +253,27 @@ router.post('/bulk', async (req, res) => {
       cls = await getById(req, 'Classes', class_id);
       if (cls && Number(cls.org_id) !== Number(req.orgId)) cls = null;
     }
-    const results = [];
-    for (const r of records) {
+
+    // Pre-fetch any existing rows for this class + date ONCE (keyed by
+    // student) instead of a dup-check query per record. Then process the
+    // records in parallel rather than one-at-a-time.
+    const existingByStudent = {};
+    if (class_id) {
+      try {
+        const existing = await zcqlAll(req, `SELECT ROWID, student_id FROM Attendance WHERE Attendance.class_id = ${class_id} AND Attendance.class_date = ${q(date)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance');
+        for (const row of unwrap(existing, 'Attendance')) existingByStudent[String(row.student_id)] = row.ROWID;
+      } catch {}
+    }
+
+    const finalType = cls?.class_type || 'offline';
+    const finalDuration = cls?.duration_hours || 1;
+
+    const results = await Promise.all(records.map(async (r) => {
       try {
         const student = await getById(req, 'Students', r.student_id);
         if (!student || Number(student.org_id) !== Number(req.orgId)) {
-          results.push({ ok: false, student_id: r.student_id, error: 'Student not in this org' });
-          continue;
+          return { ok: false, student_id: r.student_id, error: 'Student not in this org' };
         }
-        let existingId = null;
-        if (class_id) {
-          try {
-            const existing = await zcql(req, `SELECT ROWID FROM Attendance WHERE Attendance.student_id = ${r.student_id} AND Attendance.class_id = ${class_id} AND Attendance.class_date = ${q(date)} AND Attendance.org_id = ${Number(req.orgId)}`);
-            const found = unwrap(existing, 'Attendance');
-            if (found.length) existingId = found[0].ROWID;
-          } catch {}
-        }
-        const finalType = cls?.class_type || 'offline';
-        const finalDuration = cls?.duration_hours || 1;
         let fee = r.fee_charged;
         if (fee === undefined && (r.status === 'present' || r.status === 'late')) {
           fee = calcFee(student, finalType, finalDuration);
@@ -243,17 +292,17 @@ router.post('/bulk', async (req, res) => {
           recording_url: r.recording_url || '',
           org_id: Number(req.orgId),
         };
+        const existingId = existingByStudent[String(r.student_id)];
         if (existingId) {
           const updated = await update(req, 'Attendance', existingId, payload);
-          results.push({ ok: true, action: 'updated', row: normalize(updated) });
-        } else {
-          const inserted = await insert(req, 'Attendance', payload);
-          results.push({ ok: true, action: 'inserted', row: normalize(inserted) });
+          return { ok: true, action: 'updated', row: normalize(updated) };
         }
+        const inserted = await insert(req, 'Attendance', payload);
+        return { ok: true, action: 'inserted', row: normalize(inserted) };
       } catch (err) {
-        results.push({ ok: false, student_id: r.student_id, error: err.message });
+        return { ok: false, student_id: r.student_id, error: err.message };
       }
-    }
+    }));
     res.status(201).json({ results });
   } catch (e) {
     res.status(500).json({ error: 'Bulk attendance failed', detail: e.message });

@@ -23,6 +23,7 @@ import Modal from '../components/Modal';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Select from '../components/Select';
+import Pagination, { usePagination } from '../components/Pagination';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 
@@ -416,6 +417,10 @@ export default function Fees() {
   const pendingTotal = grandTotal - paidTotal;
   const paidCount = mergedData.filter((s) => s.paid).length;
 
+  // Page the rows (25/page). Totals + "select all unpaid" stay over the full
+  // month so figures and bulk actions cover every student, not just this page.
+  const { page, setPage, pageCount, pageItems: pageData, total, from, to } = usePagination(mergedData, 25);
+
   const formatTime = (timeStr) => {
     if (!timeStr) return '';
     const [h, m] = timeStr.split(':');
@@ -486,6 +491,7 @@ export default function Fees() {
           </button>
           <button
             onClick={() => { setFeeForm({ ...feeForm, adjustment_type: 'fee' }); setAddFeeModalOpen(true); }}
+            data-tour="fees-add"
             className="btn-primary btn-sm"
           >
             <Plus className="w-4 h-4" /> Add Additional Fee
@@ -585,7 +591,7 @@ export default function Fees() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {mergedData.map((student) => (
+                {pageData.map((student) => (
                   <>
                     <tr
                       key={student.student_id}
@@ -846,7 +852,7 @@ export default function Fees() {
               />
               Select all unpaid
             </label>
-            {mergedData.map((student) => {
+            {pageData.map((student) => {
               const expanded = expandedStudent === student.student_id;
               const belowMin = student.min_classes > 0 && student.present_count < student.min_classes;
               return (
@@ -942,6 +948,16 @@ export default function Fees() {
               );
             })}
           </div>
+
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            label="students"
+          />
 
           {/* Totals */}
           <div className="bg-indigo-50 border-t border-indigo-200 px-4 py-4">

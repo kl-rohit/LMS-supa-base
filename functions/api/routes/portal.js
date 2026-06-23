@@ -10,6 +10,7 @@ const { loadAssignments } = require('./assignments');
 const { loadPapers } = require('./questionpapers');
 const { publicVapidKey } = require('../lib/notify');
 const { parentKey, setFlag, isPending } = require('../lib/onboarding');
+const { loadAppSettings } = require('./settings');
 
 // --- Quiz helpers (shared by the quiz endpoints + course/lesson decoration) ---
 
@@ -111,6 +112,14 @@ router.get('/attendance', async (req, res) => {
     const { month } = req.query;
     const sid = safeId(req.studentId);
     if (!sid) return res.status(400).json({ error: 'Invalid student id on session' });
+    // Respect the academy's parent-portal visibility choice. When the academy
+    // has hidden class history, return an empty list rather than the records.
+    try {
+      const appSettings = await loadAppSettings(req);
+      if (appSettings['portal.show_attendance'] === 'false') {
+        return res.json({ attendance: [], hidden: true });
+      }
+    } catch { /* settings unavailable → show by default */ }
     let where = `Attendance.student_id = ${sid}`;
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       where += ` AND Attendance.class_date >= ${q(`${month}-01`)} AND Attendance.class_date <= ${q(`${month}-31`)}`;
@@ -147,7 +156,27 @@ router.get('/fees', async (req, res) => {
     // which can exceed 300 rows for long-standing students; paginate).
     const attRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid}${monthClause}`, 'Attendance');
     const attendance = unwrap(attRows, 'Attendance');
-    const classFees = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
+
+    // Fee mode decides how the class fee is figured:
+    //   per_class → sum of each attended class's fee_charged (default)
+    //   per_month → a flat monthly_fee on the student record
+    let feeMode = 'per_class';
+    try {
+      const appSettings = await loadAppSettings(req);
+      if (appSettings['billing.fee_mode'] === 'per_month') feeMode = 'per_month';
+    } catch { /* settings unavailable → default per_class */ }
+
+    let classFees;
+    if (feeMode === 'per_month') {
+      let monthlyFee = 0;
+      try {
+        const student = await getById(req, 'Students', sid);
+        monthlyFee = Number(student?.monthly_fee) || 0;
+      } catch { /* fall back to 0 */ }
+      classFees = monthlyFee;
+    } else {
+      classFees = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
+    }
 
     // Additional fees + discounts
     let addFilter = '';
@@ -155,7 +184,7 @@ router.get('/fees', async (req, res) => {
       const [y, m] = month.split('-');
       addFilter = ` AND AdditionalFees.fee_year = ${parseInt(y, 10)} AND AdditionalFees.fee_month = ${parseInt(m, 10)}`;
     }
-    const afRows = await zcql(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${sid}${addFilter}`);
+    const afRows = await zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${sid}${addFilter}`, 'AdditionalFees');
     const additional = unwrap(afRows, 'AdditionalFees');
     const positiveAdditional = additional.reduce((s, a) => s + Math.max(0, Number(a.amount) || 0), 0);
     const discountTotal = additional.reduce((s, a) => s + Math.min(0, Number(a.amount) || 0), 0); // negative
@@ -217,7 +246,7 @@ router.get('/courses', async (req, res) => {
   try {
     const sid = safeId(req.studentId);
     if (!sid) return res.status(400).json({ error: 'Invalid student id' });
-    const enrollRows = await zcql(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.org_id = ${Number(req.orgId)}`);
+    const enrollRows = await zcqlAll(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sid} AND CourseEnrollments.org_id = ${Number(req.orgId)}`, 'CourseEnrollments');
     const enrollments = unwrap(enrollRows, 'CourseEnrollments').map(normalize)
       .filter((e) => (e.status || 'active') === 'active');
 
@@ -225,6 +254,17 @@ router.get('/courses', async (req, res) => {
 
     // Quiz metadata once for the whole student (used to gate completion).
     const { hasQuiz, passed } = await loadQuizMeta(req, sid);
+
+    // The student's completed-lesson set is filtered ONLY by student (not by
+    // course), so fetch it ONCE here instead of re-running the same query
+    // inside every enrollment iteration below.
+    let completedIds = new Set();
+    try {
+      const progressRows = await zcqlAll(req,
+        `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.completed = true AND LessonProgress.org_id = ${Number(req.orgId)}`, 'LessonProgress'
+      );
+      completedIds = new Set(unwrap(progressRows, 'LessonProgress').map((p) => String(p.lesson_id)));
+    } catch {}
 
     // Fetch courses + progress summary for each enrollment
     const results = await Promise.all(enrollments.map(async (en) => {
@@ -238,23 +278,13 @@ router.get('/courses', async (req, res) => {
         lessons = unwrap(rows, 'Lessons');
       } catch {}
 
-      let completed = 0;
-      try {
-        const lessonIds = lessons.map((l) => l.ROWID);
-        if (lessonIds.length > 0) {
-          const progressRows = await zcql(req,
-            `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.completed = true AND LessonProgress.org_id = ${Number(req.orgId)}`
-          );
-          const completedIds = new Set(unwrap(progressRows, 'LessonProgress').map((p) => String(p.lesson_id)));
-          // Quiz lessons are first-class: a required quiz only counts once
-          // passed; optional/empty quizzes don't hold back the percentage.
-          completed = lessons.filter((l) => {
-            const lid = String(l.ROWID);
-            const progress = completedIds.has(lid) ? { completed: true } : null;
-            return lessonFullyDone(l, progress, hasQuiz.has(lid), passed.has(lid));
-          }).length;
-        }
-      } catch {}
+      // Quiz lessons are first-class: a required quiz only counts once passed;
+      // optional/empty quizzes don't hold back the percentage.
+      const completed = lessons.filter((l) => {
+        const lid = String(l.ROWID);
+        const progress = completedIds.has(lid) ? { completed: true } : null;
+        return lessonFullyDone(l, progress, hasQuiz.has(lid), passed.has(lid));
+      }).length;
 
       // Compute total course duration. For chapter-lessons (start/end set),
       // sum (end - start). For full-video lessons, use duration_seconds.

@@ -30,15 +30,19 @@ import {
   Check,
   Clock,
   Lock,
+  DatabaseBackup,
+  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import TemplatesEditor from '../components/TemplatesEditor';
+import DataMigration from '../components/DataMigration';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { invalidateOrgBranding } from '../hooks/useOrgBranding';
 import { PRESETS, presetSwatch, applyTheme, saveTheme } from '../utils/theme';
 import { DAY_NAMES, parseWorkingHours, serializeWorkingHours } from '../utils/workingHours';
+import { SUPPORT_PHONE_TEL } from '../config';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -52,6 +56,12 @@ const EMPTY_SETTINGS = {
   'billing.default_offline_fee': '',
   'billing.default_group_fee': '',
   'billing.default_min_classes': '',
+  // Fee collection mode — 'per_class' (rate × attended classes) or
+  // 'per_month' (flat monthly amount per student).
+  'billing.fee_mode': 'per_class',
+  'billing.default_monthly_fee': '',
+  // Class modes the academy offers — CSV of online / offline / group.
+  'billing.class_modes': 'online,offline,group',
   // Modules — string-encoded booleans ('true' / 'false').
   'modules.lessons':        'true',
   'modules.fees':           'true',
@@ -64,13 +74,24 @@ const EMPTY_SETTINGS = {
   'modules.question_papers':'false',
   'portal.show_lessons':       'true',
   'portal.show_fees':          'true',
+  'portal.show_attendance':    'true',
   'portal.allow_profile_edit': 'true',
+  // Alerts — consecutive absences before an attendance alert fires (2/3/4...).
+  'alerts.absence_threshold':  '2',
   // Appearance — accent theme ('default' | preset id | '#hex') + light/dark.
   'appearance.accent': 'default',
   'appearance.mode':   'light',
   // Working hours — JSON array (see utils/workingHours.js). Empty → defaults.
   'schedule.working_hours': '',
 };
+
+// Extract just the module flags that gate the sidebar nav, so we can tell when
+// a save changed the visible module set (and therefore needs a reload).
+function pickModuleFlags(obj) {
+  const out = {};
+  Object.keys(obj || {}).forEach((k) => { if (k.startsWith('modules.')) out[k] = obj[k]; });
+  return out;
+}
 
 const TABS = [
   { id: 'school',       label: 'School',       icon: School },
@@ -80,6 +101,7 @@ const TABS = [
   { id: 'modules',      label: 'Modules',      icon: ToggleLeft },
   { id: 'templates',    label: 'Templates',    icon: MessageSquare },
   { id: 'organization', label: 'Organization', icon: ShieldCheck },
+  { id: 'migration',    label: 'Backup & migrate', icon: DatabaseBackup },
 ];
 
 export default function Settings() {
@@ -90,6 +112,10 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState('school');
   const [plan, setPlan] = useState('complete');         // grandfather default
   const [entitlements, setEntitlements] = useState({}); // { lessons: bool, ... }
+  // Snapshot of the module flags as last loaded/saved. The sidebar reads module
+  // flags only once (useModuleFlags on mount), so when one of these changes we
+  // reload after saving to keep the nav in sync.
+  const navFlagsRef = useRef({});
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +128,7 @@ export default function Settings() {
         if (res?.entitlements) setEntitlements(res.entitlements);
         const merged = { ...EMPTY_SETTINGS, ...(settings || {}) };
         setForm(merged);
+        navFlagsRef.current = pickModuleFlags(merged);
         // Reconcile the server's saved appearance with this device: apply it
         // and cache it so the theme follows the academy across devices.
         const theme = { accent: merged['appearance.accent'], mode: merged['appearance.mode'] };
@@ -130,9 +157,18 @@ export default function Settings() {
       const settings = res?.settings;
       if (res?.entitlements) setEntitlements(res.entitlements);
       if (res?.plan) setPlan(res.plan);
-      setForm({ ...EMPTY_SETTINGS, ...(settings || {}) });
+      const saved = { ...EMPTY_SETTINGS, ...(settings || {}) };
+      setForm(saved);
+      // Did any sidebar-gating module flag change? If so, the nav (read once on
+      // mount) is now stale — reload so it reflects the new module set.
+      const navChanged = JSON.stringify(pickModuleFlags(saved)) !== JSON.stringify(navFlagsRef.current);
+      navFlagsRef.current = pickModuleFlags(saved);
       setSavedNotice(true);
-      toast.success('Settings saved');
+      toast.success(navChanged ? 'Settings saved. Refreshing…' : 'Settings saved');
+      if (navChanged) {
+        setTimeout(() => window.location.reload(), 700);
+        return;
+      }
       setTimeout(() => setSavedNotice(false), 2500);
     } catch (e) {
       toast.error('Save failed: ' + e.message);
@@ -153,7 +189,7 @@ export default function Settings() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200" data-tour="settings-tabs">
         <nav className="-mb-px flex flex-wrap gap-x-1 gap-y-0">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -180,13 +216,14 @@ export default function Settings() {
       {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
       {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
       {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
-      {activeTab === 'billing'      && <BillingTab form={form} set={set} />}
+      {activeTab === 'billing'      && <BillingTab form={form} set={set} setForm={setForm} />}
       {activeTab === 'modules'      && <ModulesTab form={form} set={set} plan={plan} entitlements={entitlements} />}
       {activeTab === 'templates'    && <TemplatesTab />}
       {activeTab === 'organization' && <OrganizationTab />}
+      {activeTab === 'migration'    && <DataMigration />}
 
       {/* Save bar (sticky bottom) — hidden for tabs that own their own UI */}
-      {activeTab !== 'templates' && activeTab !== 'organization' && (
+      {activeTab !== 'templates' && activeTab !== 'organization' && activeTab !== 'migration' && (
         <div className="sticky bottom-0 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-white border-t border-gray-200 flex items-center justify-between">
           <span className="text-xs text-gray-500">
             {savedNotice && (
@@ -361,57 +398,148 @@ function ScheduleTab({ form, setForm }) {
   );
 }
 
-function BillingTab({ form, set }) {
+function BillingTab({ form, set, setForm }) {
+  const feeMode = form['billing.fee_mode'] || 'per_class';
+  const perMonth = feeMode === 'per_month';
+
+  // Class modes are stored as a CSV ('online,offline,group'). Parse to a set
+  // for the checkboxes; write back as CSV preserving a stable order.
+  const MODE_ORDER = ['online', 'offline', 'group'];
+  const MODE_LABELS = { online: 'Online', offline: 'Offline', group: 'Group' };
+  const selectedModes = String(form['billing.class_modes'] || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const hasMode = (m) => selectedModes.includes(m);
+  const toggleMode = (m) => () => {
+    const next = hasMode(m)
+      ? selectedModes.filter((x) => x !== m)
+      : [...selectedModes, m];
+    const csv = MODE_ORDER.filter((x) => next.includes(x)).join(',');
+    setForm((f) => ({ ...f, 'billing.class_modes': csv }));
+  };
+  const setMode = (mode) => () => setForm((f) => ({ ...f, 'billing.fee_mode': mode }));
+
   return (
-    <div className="card space-y-4">
-      <div>
-        <h3 className="text-base font-semibold text-gray-900">Billing defaults</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Pre-fills the Add Student form. Leave blank to skip the pre-fill.
-        </p>
+    <div className="space-y-4">
+      <div className="card space-y-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Fee collection</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Choose how fees are figured for each student.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={setMode('per_class')}
+            className={`text-left rounded-lg border p-3 transition ${!perMonth ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50' : 'border-gray-200 hover:border-gray-300'}`}
+          >
+            <div className="text-sm font-semibold text-gray-900">Per class</div>
+            <div className="text-xs text-gray-500 mt-0.5">Hourly rate times classes attended each month.</div>
+          </button>
+          <button
+            type="button"
+            onClick={setMode('per_month')}
+            className={`text-left rounded-lg border p-3 transition ${perMonth ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50' : 'border-gray-200 hover:border-gray-300'}`}
+          >
+            <div className="text-sm font-semibold text-gray-900">Per month</div>
+            <div className="text-xs text-gray-500 mt-0.5">A flat monthly amount per student.</div>
+          </button>
+        </div>
+
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900">Class modes offered</h4>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Pick the ways you teach. Only these appear on the student fee form.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {MODE_ORDER.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={toggleMode(m)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${hasMode(m) ? 'border-brand-500 bg-brand-50 text-brand-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+              >
+                {MODE_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Online ₹/hr" icon={IndianRupee}>
-          <input
-            type="number"
-            min="0"
-            value={form['billing.default_online_fee']}
-            onChange={set('billing.default_online_fee')}
-            className="input-field"
-            placeholder="500"
-          />
-        </Field>
-        <Field label="Offline ₹/hr" icon={IndianRupee}>
-          <input
-            type="number"
-            min="0"
-            value={form['billing.default_offline_fee']}
-            onChange={set('billing.default_offline_fee')}
-            className="input-field"
-            placeholder="700"
-          />
-        </Field>
-        <Field label="Group ₹/hr" icon={IndianRupee}>
-          <input
-            type="number"
-            min="0"
-            value={form['billing.default_group_fee']}
-            onChange={set('billing.default_group_fee')}
-            className="input-field"
-            placeholder="350"
-          />
-        </Field>
-        <Field label="Min classes / month" icon={IndianRupee} hint="Fees page flags students below this.">
-          <input
-            type="number"
-            min="0"
-            max="31"
-            value={form['billing.default_min_classes']}
-            onChange={set('billing.default_min_classes')}
-            className="input-field"
-            placeholder="0 = no minimum"
-          />
-        </Field>
+
+      <div className="card space-y-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Billing defaults</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Pre-fills the Add Student form. Leave blank to skip the pre-fill.
+          </p>
+        </div>
+
+        {perMonth ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Monthly fee ₹" icon={IndianRupee} hint="Flat amount charged each month per student.">
+              <input
+                type="number"
+                min="0"
+                value={form['billing.default_monthly_fee']}
+                onChange={set('billing.default_monthly_fee')}
+                className="input-field"
+                placeholder="2000"
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {hasMode('online') && (
+              <Field label="Online ₹/hr" icon={IndianRupee}>
+                <input
+                  type="number"
+                  min="0"
+                  value={form['billing.default_online_fee']}
+                  onChange={set('billing.default_online_fee')}
+                  className="input-field"
+                  placeholder="500"
+                />
+              </Field>
+            )}
+            {hasMode('offline') && (
+              <Field label="Offline ₹/hr" icon={IndianRupee}>
+                <input
+                  type="number"
+                  min="0"
+                  value={form['billing.default_offline_fee']}
+                  onChange={set('billing.default_offline_fee')}
+                  className="input-field"
+                  placeholder="700"
+                />
+              </Field>
+            )}
+            {hasMode('group') && (
+              <Field label="Group ₹/hr" icon={IndianRupee}>
+                <input
+                  type="number"
+                  min="0"
+                  value={form['billing.default_group_fee']}
+                  onChange={set('billing.default_group_fee')}
+                  className="input-field"
+                  placeholder="350"
+                />
+              </Field>
+            )}
+            <Field label="Min classes / month" icon={IndianRupee} hint="Fees page flags students below this.">
+              <input
+                type="number"
+                min="0"
+                max="31"
+                value={form['billing.default_min_classes']}
+                onChange={set('billing.default_min_classes')}
+                className="input-field"
+                placeholder="0 = no minimum"
+              />
+            </Field>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -592,7 +720,7 @@ function ModulesTab({ form, set, plan = 'complete', entitlements = {} }) {
             <Lock className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
             <p className="text-xs text-amber-800">
               Online learning modules are part of the <span className="font-semibold">Complete</span> plan.
-              To unlock Lessons, Assignments and Question papers, <a href="tel:+919360390883" className="font-semibold underline">contact us to upgrade</a>.
+              To unlock Lessons, Assignments and Question papers, <a href={`tel:${SUPPORT_PHONE_TEL}`} className="font-semibold underline">contact us to upgrade</a>.
             </p>
           </div>
         )}
@@ -609,9 +737,68 @@ function ModulesTab({ form, set, plan = 'complete', entitlements = {} }) {
         <div className="space-y-1">
           <ModuleToggle label="My Lessons"        hint="Parents see enrolled courses + watch lessons" on={isOn('portal.show_lessons')}       onClick={toggle('portal.show_lessons')} />
           <ModuleToggle label="Fees tab"          hint="Parents can see their fee breakdown by month" on={isOn('portal.show_fees')}          onClick={toggle('portal.show_fees')} />
+          <ModuleToggle label="Class history"     hint="Parents can see their attendance / class history" on={isOn('portal.show_attendance')}    onClick={toggle('portal.show_attendance')} />
           <ModuleToggle label="Profile editing"   hint="Parents can edit name, DOB, address, photo. Disable to lock the profile." on={isOn('portal.allow_profile_edit')} onClick={toggle('portal.allow_profile_edit')} />
         </div>
       </div>
+
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Attendance alerts</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          How many classes in a row a student can miss before they show up in the absence-alert banner on the Attendance page.
+        </p>
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-gray-700">Alert after</label>
+          <select
+            value={form['alerts.absence_threshold'] || '2'}
+            onChange={set('alerts.absence_threshold')}
+            className="input-field w-auto"
+          >
+            <option value="2">2 absences in a row</option>
+            <option value="3">3 absences in a row</option>
+            <option value="4">4 absences in a row</option>
+            <option value="5">5 absences in a row</option>
+          </select>
+        </div>
+      </div>
+
+      <SetupGuideCard />
+    </div>
+  );
+}
+
+// Lets an owner replay the first-run setup guide on demand (e.g. to revisit the
+// class-mode / fee-model choices). Flips the server-side onboarding flag back
+// on, clears the per-device "done" marker, then reloads so the wizard mounts.
+function SetupGuideCard() {
+  const [busy, setBusy] = useState(false);
+  const rerun = async () => {
+    try {
+      setBusy(true);
+      await api.put('/settings/app', { settings: { 'onboarding.setup_pending': 'true' } });
+      try { localStorage.removeItem('setup_wizard_done'); } catch {}
+      toast.success('Opening the setup guide…');
+      setTimeout(() => window.location.assign('/dashboard'), 500);
+    } catch (e) {
+      toast.error('Could not start the setup guide: ' + e.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-1">
+        <School className="w-5 h-5 text-indigo-600" />
+        <h3 className="text-base font-semibold text-gray-900">Setup guide</h3>
+      </div>
+      <p className="text-xs text-gray-500 mb-4">
+        Run the short first-time setup again to revisit your class modes, fee model and parent-portal choices.
+      </p>
+      <button onClick={rerun} disabled={busy} className="btn-secondary">
+        {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Opening…</> : 'Re-run setup guide'}
+      </button>
     </div>
   );
 }

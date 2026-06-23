@@ -3,6 +3,7 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { overCapBlock } = require('../lib/studentLimit');
 
 // Helper: fetch member students for a group (org-scoped on both ends).
 async function fetchMembers(req, groupId) {
@@ -66,6 +67,10 @@ router.post('/', async (req, res) => {
   try {
     const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
+    // Group creation stays available only while the org is within its approved
+    // seat count. Over the limit, reduce active students or upgrade first.
+    const capped = await overCapBlock(req);
+    if (capped) return res.status(402).json(capped);
     const group = await insert(req, 'Groups', {
       name,
       description: description || '',

@@ -16,12 +16,14 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Compass,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Pagination, { usePagination } from '../components/Pagination';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { maskEmail } from '../utils/mask';
 import { useRevealTimer } from '../hooks/useRevealTimer';
@@ -101,6 +103,8 @@ export default function StudentLogins() {
     return list;
   }, [students, loginByStudent, search]);
 
+  const { page, setPage, pageCount, pageItems: pageRows, total, from, to } = usePagination(rows, 25);
+
   const openCreate = (student) => {
     setCreateFor(student);
     setCreateEmail('');
@@ -125,6 +129,15 @@ export default function StudentLogins() {
       toast.error('Failed: ' + e.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const resendTour = async (login) => {
+    try {
+      await api.post(`/student-logins/${login.id}/resend-tour`);
+      toast.success('Welcome tour will show again on the parent\'s next visit');
+    } catch (e) {
+      toast.error('Failed: ' + e.message);
     }
   };
 
@@ -157,7 +170,7 @@ export default function StudentLogins() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <h2 data-tour="logins-intro" className="text-xl font-semibold text-gray-900 flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-indigo-600" />
             Parent Logins
           </h2>
@@ -200,7 +213,7 @@ export default function StudentLogins() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.map(({ student, login }) => {
+              {pageRows.map(({ student, login }) => {
                 const waLink = login
                   ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email, branding.name)
                   : null;
@@ -250,6 +263,13 @@ export default function StudentLogins() {
                               </a>
                             )}
                             <button
+                              onClick={() => resendTour(login)}
+                              className="p-1.5 rounded-md hover:bg-indigo-50 text-indigo-600"
+                              title="Re-send the welcome tour for this parent"
+                            >
+                              <Compass className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => toggleStatus(login)}
                               className="p-1.5 rounded-md hover:bg-amber-50 text-amber-600"
                               title={login.status === 'active' ? 'Disable login' : 'Enable login'}
@@ -283,7 +303,7 @@ export default function StudentLogins() {
 
         {/* Mobile cards */}
         <div className="md:hidden divide-y divide-gray-100">
-          {rows.map(({ student, login }) => {
+          {pageRows.map(({ student, login }) => {
             const waLink = login
               ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email, branding.name)
               : null;
@@ -334,6 +354,13 @@ export default function StudentLogins() {
                         </a>
                       )}
                       <button
+                        onClick={() => resendTour(login)}
+                        className="btn-secondary btn-sm text-indigo-600"
+                        title="Re-send the welcome tour for this parent"
+                      >
+                        <Compass className="w-4 h-4" /> Tour
+                      </button>
+                      <button
                         onClick={() => toggleStatus(login)}
                         className="btn-secondary btn-sm text-amber-600"
                         title={login.status === 'active' ? 'Disable login' : 'Enable login'}
@@ -357,6 +384,18 @@ export default function StudentLogins() {
             <div className="py-8 text-center text-sm text-gray-400">No students match the search.</div>
           )}
         </div>
+
+        {rows.length > 0 && (
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            label="students"
+          />
+        )}
       </div>
 
       {/* Create login modal */}

@@ -20,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 import { useOrgBranding } from '../hooks/useOrgBranding';
 import api from '../utils/api';
+import { BRAND_NAME } from '../config';
 import Loader from '../components/Loader';
 import NotificationBell from '../components/NotificationBell';
 import OnboardingTour from '../components/OnboardingTour';
@@ -42,7 +43,7 @@ const ALL_NAV = [
   { to: '/portal/lessons',    label: 'My Lessons',    icon: Video,           flag: 'portal.show_lessons' },
   { to: '/portal/assignments',label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
   { to: '/portal/papers',     label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
-  { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck,  flag: null },
+  { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck,  flag: 'portal.show_attendance' },
   { to: '/portal/fees',       label: 'Fees',          icon: IndianRupee,     flag: 'portal.show_fees' },
   { to: '/portal/profile',    label: 'My Profile',    icon: UserCircle2,     flag: null },
   { to: '/portal/help',       label: 'Help & Guide',  icon: HelpCircle,      flag: null },
@@ -59,7 +60,7 @@ export default function ParentLayout() {
   const { flags } = useModuleFlags();
   const navItems = visibleNav(flags);
   const branding = useOrgBranding();
-  const displayName = branding.name || 'VidyaSetu';
+  const displayName = branding.name || BRAND_NAME;
   const [studentName, setStudentName] = useState('');
   // Reflect the academy name in the browser tab title.
   useEffect(() => {
@@ -85,7 +86,7 @@ export default function ParentLayout() {
   const currentLabel = navItems.find((i) => location.pathname.startsWith(i.to))?.label || 'Overview';
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="h-screen overflow-hidden bg-gray-50 flex">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-30 lg:hidden"
@@ -138,6 +139,7 @@ export default function ParentLayout() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                data-tour={`nav-${item.to.replace(/^\//, '')}`}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
@@ -173,7 +175,7 @@ export default function ParentLayout() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-6 sticky top-0 z-20">
           <button
             className="lg:hidden p-2 rounded-md hover:bg-gray-100 mr-3"
@@ -187,7 +189,7 @@ export default function ParentLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-auto">
           <Suspense fallback={<Loader text="Loading..." />}>
             <Routes>
               <Route path="/" element={<Navigate to="/portal/dashboard" replace />} />

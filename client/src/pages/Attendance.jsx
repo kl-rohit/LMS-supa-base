@@ -771,7 +771,12 @@ export default function Attendance() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="input-field w-auto min-w-0 flex-1 sm:flex-none"
+              // Tapping anywhere on the field opens the native calendar where the
+              // browser supports it (Chrome / Edge / Android), so the user does not
+              // have to hunt for the tiny calendar glyph. Falls back to the glyph
+              // elsewhere (Firefox / older Safari) where showPicker is absent.
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* not supported */ } }}
+              className="input-field w-auto min-w-[9.5rem] flex-1 sm:flex-none cursor-pointer"
             />
             <button onClick={() => changeDate(1)} className="p-2 rounded-lg hover:bg-gray-100 flex-shrink-0">
               <ChevronRight className="w-4 h-4 text-gray-600" />

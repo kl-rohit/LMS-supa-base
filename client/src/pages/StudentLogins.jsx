@@ -24,6 +24,7 @@ import Loader from '../components/Loader';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Pagination, { usePagination } from '../components/Pagination';
+import Tooltip from '../components/Tooltip';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { maskEmail } from '../utils/mask';
 import { useRevealTimer } from '../hooks/useRevealTimer';
@@ -252,37 +253,41 @@ export default function StudentLogins() {
                         ) : (
                           <>
                             {waLink && (
-                              <a
-                                href={waLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 rounded-md hover:bg-green-50 text-green-600"
-                                title="Send portal link via WhatsApp"
-                              >
-                                <MessageSquare className="w-4 h-4" />
-                              </a>
+                              <Tooltip label="Send portal link via WhatsApp">
+                                <a
+                                  href={waLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-md hover:bg-green-50 text-green-600"
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                </a>
+                              </Tooltip>
                             )}
-                            <button
-                              onClick={() => resendTour(login)}
-                              className="p-1.5 rounded-md hover:bg-indigo-50 text-indigo-600"
-                              title="Re-send the welcome tour for this parent"
-                            >
-                              <Compass className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => toggleStatus(login)}
-                              className="p-1.5 rounded-md hover:bg-amber-50 text-amber-600"
-                              title={login.status === 'active' ? 'Disable login' : 'Enable login'}
-                            >
-                              <Power className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteId(login.id)}
-                              className="p-1.5 rounded-md hover:bg-red-50 text-red-600"
-                              title="Delete login"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <Tooltip label="Re-send the welcome tour for this parent">
+                              <button
+                                onClick={() => resendTour(login)}
+                                className="p-1.5 rounded-md hover:bg-indigo-50 text-indigo-600"
+                              >
+                                <Compass className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
+                            <Tooltip label={login.status === 'active' ? 'Disable login' : 'Enable login'}>
+                              <button
+                                onClick={() => toggleStatus(login)}
+                                className="p-1.5 rounded-md hover:bg-amber-50 text-amber-600"
+                              >
+                                <Power className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
+                            <Tooltip label="Delete login">
+                              <button
+                                onClick={() => setConfirmDeleteId(login.id)}
+                                className="p-1.5 rounded-md hover:bg-red-50 text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
                           </>
                         )}
                       </div>

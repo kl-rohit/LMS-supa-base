@@ -293,7 +293,12 @@ function cardPositionFor(rect) {
   if (!rect) return null;
   const margin = 12;
   const cardW = 320;
-  const cardH = 230;
+  // Tall enough to cover the busiest step (icon header + a few lines of body +
+  // progress + controls). Under-estimating here let the bottom-clamp leave the
+  // Next button below the fold on shorter viewports, where the fixed overlay
+  // cannot scroll — so the user could not reach it. The wrapper also gets a
+  // max-height + overflow-y as a final safety net.
+  const cardH = 340;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
@@ -537,7 +542,7 @@ export default function OnboardingTour({ variant = 'parent', helpPath }) {
           }}
         />
         <div
-          className="fixed w-[20rem] max-w-[calc(100vw-1.5rem)] transition-all duration-200"
+          className="fixed w-[20rem] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-1.5rem)] overflow-y-auto transition-all duration-200"
           style={{ top: cardPos.top, left: cardPos.left }}
         >
           {card}

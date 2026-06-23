@@ -129,8 +129,14 @@
     }
     /* Magnetic CTA: the button springs back via this transition on pointerleave */
     .magnetic { transition: transform .25s cubic-bezier(.16,1,.3,1); will-change: transform; }
-    /* Gradient text shimmer: a slow light-sweep across the rotating hero word */
-    .shimmer-text {
+    /* Gradient text shimmer: a slow light-sweep across the rotating hero word.
+       background-clip:text only clips to text held DIRECTLY by the element with
+       the background. The .rotator wrapper has no direct text (the words live in
+       .rotator-item children), so the gradient must sit on the items themselves
+       — otherwise the wrapper paints nothing and the words turn invisible. The
+       wrapper keeps a solid gold color as a safe fallback. */
+    .shimmer-text { color: #fcd34d; }
+    .shimmer-text .rotator-item {
       background: linear-gradient(100deg, #fcd34d 20%, #fffbeb 42%, #fcd34d 64%);
       background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
       color: transparent; animation: shimmer 6s linear infinite;
@@ -164,7 +170,7 @@
     .wave-divider { display: block; width: 100%; height: 48px; line-height: 0; pointer-events: none; }
     .wave-divider svg { display: block; width: 100%; height: 100%; }
     @media (prefers-reduced-motion: reduce) {
-      .shimmer-text { animation: none; }
+      .shimmer-text, .shimmer-text .rotator-item { animation: none; }
       .word-underline { animation: none; transform: scaleX(1); opacity: 1; }
       .card-hover::after { transition: none; }
       .count-pop { animation: none; }

@@ -5,7 +5,7 @@
 // set, otherwise the plan default (planMaxStudents). A null cap means
 // unlimited. Platform-admin support impersonation bypasses the cap.
 
-const { zcql } = require('../db/catalystDb');
+const { zcql, readCount } = require('../db/catalystDb');
 const { planMaxStudents, normalizePlan } = require('./plans');
 
 // Effective seat cap for the caller's org. Returns null for unlimited.
@@ -19,7 +19,7 @@ async function activeStudentCount(req) {
     req,
     `SELECT COUNT(ROWID) AS total FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.status = 'active'`
   );
-  return rows[0]?.Students?.total || 0;
+  return readCount(rows, 'Students', 'total');
 }
 
 // Returns a 402-ready body when adding `delta` active students would exceed the

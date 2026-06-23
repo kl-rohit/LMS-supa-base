@@ -14,7 +14,7 @@
 
 const router = require('express').Router();
 const {
-  zcql, zcqlAll, unwrap, insert, update, safeId, appFor,
+  zcql, zcqlAll, unwrap, insert, update, safeId, appFor, readCount,
 } = require('../db/catalystDb');
 const {
   MODULES, SYSTEM_COLS, ALIAS_COLS, getModule, refTableFor,
@@ -295,8 +295,7 @@ router.get('/counts', async (req, res) => {
     for (const m of MODULES) {
       try {
         const rows = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
-        const r = rows && rows[0] && rows[0][m.table];
-        counts[m.key] = r ? Number(r.c) : 0;
+        counts[m.key] = readCount(rows, m.table);
       } catch (_e) {
         counts[m.key] = null; // table may not exist in this project
       }

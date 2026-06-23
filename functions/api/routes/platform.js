@@ -10,7 +10,7 @@
 const router = require('express').Router();
 const catalyst = require('zcatalyst-sdk-node');
 const {
-  insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor,
+  insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor, readCount, mapLimit,
 } = require('../db/catalystDb');
 const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION_DAYS } = require('../lib/plans');
 const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = require('../lib/onboarding');
@@ -390,25 +390,19 @@ router.get('/orgs/:id/detail', async (req, res) => {
       if (Number.isFinite(n) && n >= 0) override = n;
     }
 
-    // Module-wise record counts. Run concurrently — independent COUNT queries.
-    // ZCQL aggregate rows are wrapped under the table name, but with only an
-    // aggregate selected some Catalyst DCs key the result under an empty string
-    // ('') instead. Read both so a present count never reads back as missing.
-    const counts = await Promise.all(
-      MODULES.map(async (m) => {
-        try {
-          const rows = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
-          const row0 = (rows && rows[0]) || {};
-          const r = row0[m.table] || row0[''] || row0;
-          const raw = r && (r.c != null ? r.c : r.COUNT);
-          return { key: m.key, label: m.label, table: m.table, count: raw != null ? Number(raw) : 0 };
-        } catch (e) {
-          // table may genuinely be absent, or the query errored — surface the
-          // reason so the drawer can show why a module reads as unavailable.
-          return { key: m.key, label: m.label, table: m.table, count: null, detail: e.message };
-        }
-      })
-    );
+    // Module-wise record counts. Bounded concurrency — a bare Promise.all over
+    // every table trips Catalyst's in-flight-query cap. readCount() un-wraps the
+    // ZCRecord aggregate (a raw `rows[0][table].c` reads back as a silent 0).
+    const counts = await mapLimit(MODULES, async (m) => {
+      try {
+        const rows = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
+        return { key: m.key, label: m.label, table: m.table, count: readCount(rows, m.table) };
+      } catch (e) {
+        // table may genuinely be absent, or the query errored — surface the
+        // reason so the drawer can show why a module reads as unavailable.
+        return { key: m.key, label: m.label, table: m.table, count: null, detail: e.message };
+      }
+    });
 
     // Members of this org.
     let members = [];
@@ -438,39 +432,6 @@ router.get('/orgs/:id/detail', async (req, res) => {
       return { key: m.key, label: m.label, premium: m.premium, enabled };
     });
 
-    // Opt-in diagnostics (?debug=1). Reveals, per module table, the scoped count
-    // (current WHERE org_id filter), the global count (no filter), and a few of
-    // the actual org_id values present — so we can tell a mis-tagged org_id apart
-    // from a genuinely empty org without guessing.
-    let debug = null;
-    if (req.query.debug === '1' || req.query.debug === 'true') {
-      debug = {
-        queried_org_id_string: String(req.params.id),
-        queried_org_id_number: orgId,
-        org_rowid: rowId,
-        tables: await Promise.all(
-          MODULES.map(async (m) => {
-            const out = { key: m.key, table: m.table };
-            try {
-              const sr = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
-              const s0 = (sr && sr[0]) || {}; const sR = s0[m.table] || s0[''] || s0;
-              out.scoped = Number((sR && (sR.c != null ? sR.c : sR.COUNT)) || 0);
-            } catch (e) { out.scoped_error = e.message; }
-            try {
-              const gr = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table}`);
-              const g0 = (gr && gr[0]) || {}; const gR = g0[m.table] || g0[''] || g0;
-              out.global = Number((gR && (gR.c != null ? gR.c : gR.COUNT)) || 0);
-            } catch (e) { out.global_error = e.message; }
-            try {
-              const samp = await zcql(req, `SELECT org_id FROM ${m.table} LIMIT 5`);
-              out.sample_org_ids = unwrap(samp, m.table).map((r) => r.org_id);
-            } catch (e) { out.sample_error = e.message; }
-            return out;
-          })
-        ),
-      };
-    }
-
     res.json({
       org: {
         ...org,
@@ -484,7 +445,6 @@ router.get('/orgs/:id/detail', async (req, res) => {
       counts,
       members,
       module_flags,
-      ...(debug ? { debug } : {}),
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load org detail', detail: e.message });
@@ -692,17 +652,18 @@ router.get('/orgs/:id/export', async (req, res) => {
     const org = normalize(unwrap(existing, 'Organizations')[0] || null);
     if (!org) return res.status(404).json({ error: 'Org not found' });
 
+    // Bounded concurrency — an unbounded Promise.all over every table (each
+    // doing its own paginated reads) trips Catalyst's in-flight-query cap and
+    // the over-cap reads reject, which is why the export came back empty.
     const tables = {};
-    await Promise.all(
-      MODULES.map(async (m) => {
-        try {
-          const rows = await zcqlAll(req, `SELECT * FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`, m.table);
-          tables[m.table] = unwrap(rows, m.table).map(normalize);
-        } catch (_e) {
-          tables[m.table] = null; // table may not exist in this project
-        }
-      })
-    );
+    await mapLimit(MODULES, async (m) => {
+      try {
+        const rows = await zcqlAll(req, `SELECT * FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`, m.table);
+        tables[m.table] = unwrap(rows, m.table).map(normalize);
+      } catch (_e) {
+        tables[m.table] = null; // table may not exist in this project
+      }
+    });
 
     res.json({
       org: { id: org.ROWID, name: org.name, slug: org.slug, plan: org.plan, status: org.status },

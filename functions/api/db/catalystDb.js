@@ -148,6 +148,54 @@ function unwrap(rows, table) {
   return rows.map((r) => plain(r[table]));
 }
 
+// Read a COUNT(...) aggregate value out of a ZCQL result.
+//
+// IMPORTANT: executeZCQLQuery returns ZCRecord objects, not plain objects.
+// Their nested values are only exposed after toJSON() (that is what plain()
+// does, and why unwrap() always calls it). Reading the count straight off the
+// record — `rows[0][table].alias` — yields undefined, which collapses to a
+// SILENT 0 even when the table is full. This un-wraps both levels (the row and
+// the table-named sub-object), reads the alias, and falls back to the first
+// numeric value present so an alias/casing difference can never read as 0.
+function readCount(rows, table, alias = 'c') {
+  if (!rows || !rows.length) return 0;
+  const top = plain(rows[0]) || {};
+  // Aggregate is nested under the table name; some DCs key it under '' instead.
+  let inner = top[table];
+  if (inner == null) inner = top[''];
+  if (inner == null) inner = top;
+  inner = plain(inner) || {};
+  if (inner[alias] != null) {
+    const n = Number(inner[alias]);
+    if (Number.isFinite(n)) return n;
+  }
+  for (const k of Object.keys(inner)) {
+    const n = Number(inner[k]);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+// Run an async fn over items with BOUNDED concurrency, preserving order.
+//
+// Catalyst caps the number of in-flight ZCQL/datastore calls per function
+// invocation; a bare Promise.all over 20+ tables trips it with "Concurrency
+// limit reached for the feature COMPONENT" and the over-cap calls reject. A
+// limit of 4 stays comfortably under the cap while still parallelising.
+async function mapLimit(items, fn, limit = 4) {
+  const out = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const cur = idx++;
+      out[cur] = await fn(items[cur], cur);
+    }
+  }
+  const n = Math.min(limit, items.length) || 0;
+  await Promise.all(Array.from({ length: n }, worker));
+  return out;
+}
+
 module.exports = {
   appFor,
   q,
@@ -163,4 +211,6 @@ module.exports = {
   zcql,
   zcqlAll,
   unwrap,
+  readCount,
+  mapLimit,
 };

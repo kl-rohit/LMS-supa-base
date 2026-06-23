@@ -24,7 +24,7 @@
 //   {signature}               school.signature from AppSettings (fallback below)
 
 const router = require('express').Router();
-const { insert, update, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { insert, update, zcql, unwrap, normalize, readCount } = require('../db/catalystDb');
 const { normalizePlan, PREMIUM_MODULES, isModuleEntitled } = require('../lib/plans');
 
 // =============================================================================
@@ -274,7 +274,7 @@ async function entitlementBlock(req) {
         req,
         `SELECT COUNT(ROWID) AS total FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.status = 'active'`
       );
-      studentCount = rows[0]?.Students?.total ?? null;
+      studentCount = readCount(rows, 'Students', 'total');
     }
   } catch { /* non-fatal — leave null */ }
 

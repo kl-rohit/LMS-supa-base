@@ -1,7 +1,7 @@
 // /api/students — CRUD against Catalyst Data Store table "Students".
 
 const router = require('express').Router();
-const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize, q, appFor, safeId } = require('../db/catalystDb');
+const { insert, getById, getAll, update, remove, zcql, zcqlAll, unwrap, normalize, q, appFor, safeId, readCount } = require('../db/catalystDb');
 const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 const { planMaxStudents, normalizePlan } = require('../lib/plans');
 const { studentCapBlock } = require('../lib/studentLimit');
@@ -99,7 +99,7 @@ router.get('/', async (req, res) => {
       const limitNum = parseInt(limit);
       const offset = (pageNum - 1) * limitNum;
       const countRows = await zcql(req, `SELECT COUNT(ROWID) AS total FROM Students ${whereSql}`);
-      const total = countRows[0]?.Students?.total || 0;
+      const total = readCount(countRows, 'Students', 'total');
       const rows = await zcql(req, `SELECT * FROM Students ${whereSql} ORDER BY Students.name ASC LIMIT ${limitNum} OFFSET ${offset}`);
       return res.json({
         students: unwrap(rows, 'Students').map(normalize),

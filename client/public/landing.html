@@ -140,12 +140,10 @@
       background: linear-gradient(100deg, #fcd34d 20%, #fffbeb 42%, #fcd34d 64%);
       background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
       color: transparent; animation: shimmer 6s linear infinite;
-      /* Underline follows the text run, so it hugs each word's own width
-         instead of stretching across the wider rotator box. */
-      text-decoration-line: underline;
-      text-decoration-color: rgba(252, 211, 77, .8);
-      text-decoration-thickness: 3px;
-      text-underline-offset: 8px;
+      /* No underline here: the rotating word is clipped to a single line height
+         (overflow:hidden), so an offset underline gets sliced by the clip edges
+         and shows as stray slivers on the lines above/below. The shimmer gradient
+         already sets the word apart. */
     }
     @keyframes shimmer { to { background-position: -200% center; } }
     /* Hover spotlight: a soft radial highlight tracks the cursor across each card */
@@ -237,7 +235,7 @@
         </span>
         <span class="text-xl font-extrabold tracking-tight"><span class="text-brand-800">Vidya</span><span class="text-gold-600">Setu</span></span>
       </a>
-      <nav class="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600">
+      <nav class="hidden lg:flex items-center gap-5 xl:gap-6 text-sm font-medium text-slate-600 whitespace-nowrap">
         <a href="#features" class="hover:text-brand-700">Features</a>
         <a href="#how" class="hover:text-brand-700">How it works</a>
         <a href="#screens" class="hover:text-brand-700">Screenshots</a>
@@ -248,7 +246,7 @@
         <a href="#contact" class="hover:text-brand-700">Contact us</a>
       </nav>
       <div class="flex items-center gap-2">
-        <a href="tel:+919360390883" class="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 px-3 py-2 rounded-lg">
+        <a href="tel:+919360390883" class="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 px-3 py-2 rounded-lg whitespace-nowrap">
           <i data-lucide="phone" class="w-4 h-4"></i> +91 93603 90883
         </a>
         <a href="/app/login" class="magnetic inline-flex items-center gap-1.5 text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg transition-transform active:scale-95">
@@ -301,7 +299,7 @@
         </div>
         <p class="mt-4 text-sm text-slate-400">
           Already set up? <a href="/app/login" class="font-semibold text-gold-300 hover:text-gold-200 underline">Sign in to your academy</a>.
-          New here? Accounts are created by us, so <a href="tel:+919360390883" class="font-semibold text-gold-300 hover:text-gold-200 underline">call +91 93603 90883</a> to get started.
+          New here? Accounts are created by us, so <a href="#contact" class="font-semibold text-gold-300 hover:text-gold-200 underline">share your details</a> and we'll set you up.
         </p>
         <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-300">
           <span class="inline-flex items-center gap-2"><i data-lucide="smartphone" class="w-4 h-4 text-gold-300"></i> Mobile + Web (PWA)</span>

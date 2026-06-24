@@ -5,17 +5,23 @@
 // `process.env.API_BASE` is replaced at build time by webpack.DefinePlugin.
 const BASE_URL = process.env.API_BASE || '/api';
 
-// Platform-admin impersonation: when set in localStorage, every API call
-// gets `?org=<id>` appended so backend's resolveOrg picks that tenant.
-// Skips /auth/* (no org context) and any URL that already has ?org=.
+// Active-academy selection: every API call gets `?org=<id>` appended so the
+// backend's resolveOrg / requireParent scope to the academy the user is
+// currently viewing. Two sources, in priority order:
+//   1. veena_impersonate_org_id — platform admin "view as this org" override.
+//   2. veena_active_org_id       — the academy a multi-academy user picked in
+//                                  the org switcher (their own membership).
+// Skips /auth/* (the /me call passes ?org= itself) and /platform (cross-org).
+// Leaves URLs that already carry ?org= untouched.
 const IMPERSONATE_KEY = 'veena_impersonate_org_id';
+const ACTIVE_ORG_KEY = 'veena_active_org_id';
 
-function withImpersonation(url) {
+function withActiveOrg(url) {
   try {
     if (typeof window === 'undefined') return url;
     if (url.startsWith('/auth/') || url.startsWith('/platform')) return url;
     if (url.includes('?org=') || url.includes('&org=')) return url;
-    const orgId = localStorage.getItem(IMPERSONATE_KEY);
+    const orgId = localStorage.getItem(IMPERSONATE_KEY) || localStorage.getItem(ACTIVE_ORG_KEY);
     if (!orgId) return url;
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}org=${encodeURIComponent(orgId)}`;
@@ -36,7 +42,7 @@ async function request(url, options = {}) {
     config.body = JSON.stringify(config.body);
   }
 
-  const finalUrl = withImpersonation(url);
+  const finalUrl = withActiveOrg(url);
   const response = await fetch(`${BASE_URL}${finalUrl}`, {
     credentials: 'include', // include Catalyst session cookies
     ...config,

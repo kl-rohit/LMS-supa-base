@@ -251,11 +251,16 @@ router.post('/additional', async (req, res) => {
       return res.status(400).json({ error: 'student_ids[]/student_id, description, amount, fee_date, month, year required' });
     }
     const created = [];
+    const skipped = [];   // ids that did not belong to this academy
+    const failed = [];    // ids whose insert threw
     for (const sid of ids) {
+      // Verify student belongs to caller's org.
+      const s = await getById(req, 'Students', String(sid));
+      if (!s || Number(s.org_id) !== Number(req.orgId)) {
+        skipped.push(String(sid));
+        continue;
+      }
       try {
-        // Verify student belongs to caller's org.
-        const s = await getById(req, 'Students', String(sid));
-        if (!s || Number(s.org_id) !== Number(req.orgId)) continue;
         const row = await insert(req, 'AdditionalFees', {
           student_id: String(sid),
           description, amount: Number(amount),
@@ -266,11 +271,22 @@ router.post('/additional', async (req, res) => {
         });
         created.push(normalize(row));
       } catch (err) {
-        console.error('additional fee insert failed', err.message);
+        console.error('additional fee insert failed', String(sid), err.message);
+        failed.push(String(sid));
       }
     }
-    if (created.length === 1) return res.status(201).json({ additional_fee: created[0] });
-    res.status(201).json({ message: `Created ${created.length} additional fee(s)`, additional_fees: created });
+    // Surface a real failure instead of a misleading success toast.
+    if (created.length === 0) {
+      return res.status(422).json({
+        error: 'No additional fee was saved',
+        detail: skipped.length
+          ? 'The selected student(s) are not part of the active academy.'
+          : 'The fee could not be saved. Please try again.',
+        skipped, failed,
+      });
+    }
+    if (created.length === 1 && ids.length === 1) return res.status(201).json({ additional_fee: created[0] });
+    res.status(201).json({ message: `Created ${created.length} additional fee(s)`, additional_fees: created, skipped, failed });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create additional fee', detail: e.message });
   }

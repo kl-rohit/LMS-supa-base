@@ -24,6 +24,7 @@ import { BRAND_NAME } from '../config';
 import Loader from '../components/Loader';
 import NotificationBell from '../components/NotificationBell';
 import OnboardingTour from '../components/OnboardingTour';
+import OrgSwitcher from '../components/OrgSwitcher';
 
 // Lazy-load each portal route so parents only download what they visit.
 const PortalDashboard  = lazy(() => import('../pages/portal/Dashboard'));
@@ -184,7 +185,8 @@ export default function ParentLayout() {
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-semibold text-gray-800">{currentLabel}</h1>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <OrgSwitcher />
             <NotificationBell />
           </div>
         </header>

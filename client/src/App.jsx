@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import {
   LayoutDashboard,
@@ -18,7 +18,6 @@ import {
   Video,
   ClipboardList,
   FileText,
-  Shield,
   HelpCircle,
 } from 'lucide-react';
 
@@ -28,7 +27,9 @@ import {
 // first-load JS is the small shell + the destination route.
 import Login from './pages/Login';
 import ParentLayout from './layouts/ParentLayout';
+import PlatformLayout from './layouts/PlatformLayout';
 import NotificationBell from './components/NotificationBell';
+import OrgSwitcher from './components/OrgSwitcher';
 
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
 const Students       = lazy(() => import('./pages/Students'));
@@ -43,7 +44,6 @@ const StudentLogins  = lazy(() => import('./pages/StudentLogins'));
 const Lessons        = lazy(() => import('./pages/Lessons'));
 const Assignments    = lazy(() => import('./pages/Assignments'));
 const QuestionPapers = lazy(() => import('./pages/QuestionPapers'));
-const Platform       = lazy(() => import('./pages/Platform'));
 const Help           = lazy(() => import('./pages/Help'));
 const VerifyCertificate = lazy(() => import('./pages/VerifyCertificate'));
 
@@ -52,7 +52,7 @@ import OnboardingTour from './components/OnboardingTour';
 import SetupWizard from './components/SetupWizard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
-import RequireAuth from './components/RequireAuth';
+import RequireAuth, { roleHome } from './components/RequireAuth';
 import { useModuleFlags } from './hooks/useModuleFlags';
 import { useOrgBranding } from './hooks/useOrgBranding';
 import { BRAND_NAME } from './config';
@@ -72,23 +72,39 @@ const BASE_NAV = [
   { to: '/assignments',    label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
   { to: '/question-papers',label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
   { to: '/student-logins', label: 'Parent Logins', icon: KeyRound,        flag: null },
-  { to: '/settings',       label: 'Settings',      icon: SettingsIcon,    flag: null },
-  { to: '/help',           label: 'Help & Guide',  icon: HelpCircle,      flag: null },
 ];
-const PLATFORM_NAV = { to: '/platform', label: 'Platform Admin', icon: Shield, flag: null };
+// Maps the first URL segment to the Help article slug that documents it, so the
+// header Help icon opens context-aware help (e.g. on /students it opens the
+// Students article). Segments without a dedicated article fall back to the
+// help index ('welcome').
+const HELP_SLUG_BY_PATH = {
+  dashboard: 'dashboard',
+  students: 'students',
+  groups: 'students',
+  classes: 'classes',
+  attendance: 'attendance',
+  fees: 'fees',
+  messages: 'notifications',
+  reports: 'reports',
+  lessons: 'lessons',
+  assignments: 'assignments',
+  'question-papers': 'question-papers',
+  'student-logins': 'parent-logins',
+  settings: 'settings',
+};
 
 function navItemsFor(user, flags) {
-  const base = BASE_NAV.filter((item) => !item.flag || flags[item.flag] !== false);
-  // Camps is also a module — but we don't have a top-level Camps nav item,
-  // so no filtering needed here. (Camps live inside Attendance flows today.)
-  if (user?.role === 'App Administrator') return [...base, PLATFORM_NAV];
-  return base;
+  // Platform Admin is intentionally NOT a sidebar item. It lives on its own
+  // path (/platform) behind its own guard so it is invisible to academy users
+  // and never mixes with tenant data. The platform owner reaches it directly.
+  return BASE_NAV.filter((item) => !item.flag || flags[item.flag] !== false);
 }
 
 // Teacher app shell: sidebar + main content.
 function TeacherLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { flags } = useModuleFlags();
   const branding = useOrgBranding();
@@ -196,13 +212,47 @@ function TeacherLayout() {
           <h1 className="text-lg font-semibold text-gray-800 capitalize">
             {location.pathname.split('/')[1]?.replace(/-/g, ' ') || 'Dashboard'}
           </h1>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <OrgSwitcher />
             <NotificationBell
               listUrl="/notifications"
               readUrl={(id) => `/notifications/${id}/read`}
               readAllUrl="/notifications/read-all"
               pushBase="/notifications"
             />
+            {/* Context-aware Help — opens the article for the page you're on. */}
+            <button
+              type="button"
+              title="Help for this page"
+              aria-label="Help for this page"
+              data-tour="header-help"
+              onClick={() => {
+                const seg = location.pathname.split('/')[1] || 'dashboard';
+                navigate(`/help/${HELP_SLUG_BY_PATH[seg] || 'welcome'}`);
+              }}
+              className={`p-2 rounded-md transition-colors ${
+                location.pathname.startsWith('/help')
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            {/* Settings — opens the full-screen settings overlay. */}
+            <button
+              type="button"
+              title="Settings"
+              aria-label="Settings"
+              data-tour="header-settings"
+              onClick={() => navigate('/settings')}
+              className={`p-2 rounded-md transition-colors ${
+                location.pathname.startsWith('/settings')
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <SettingsIcon className="w-5 h-5" />
+            </button>
           </div>
         </header>
 
@@ -228,7 +278,6 @@ function TeacherLayout() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />
               <Route path="/help/:slug" element={<Help />} />
-              <Route path="/platform" element={<Platform />} />
             </Routes>
           </Suspense>
         </main>
@@ -242,6 +291,36 @@ function TeacherLayout() {
       <OnboardingTour variant="admin" helpPath="/help" />
     </div>
   );
+}
+
+// Guard for the Platform Admin area. Unlike RequireAuth's app_role check, this
+// keys off the Catalyst account role: ONLY the platform owner (Catalyst "App
+// Administrator") may enter. An academy owner has app_role 'admin' too, so we
+// must not use that here — we check the real account role. Anyone else is sent
+// to their own home. The server independently enforces this on /api/platform/*,
+// so this guard is purely about not rendering the page.
+function RequirePlatform({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader />
+      </div>
+    );
+  }
+  if (!user) {
+    const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
+    window.location.replace(`${base}/landing.html`);
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader />
+      </div>
+    );
+  }
+  if (user.role !== 'App Administrator') {
+    return <Navigate to={roleHome(user.app_role)} replace />;
+  }
+  return children;
 }
 
 export default function App() {
@@ -278,6 +357,17 @@ export default function App() {
             <RequireAuth>
               <ParentLayout />
             </RequireAuth>
+          }
+        />
+        {/* Platform Admin — its own path + guard, outside the academy shell.
+            Only the Catalyst App Administrator (platform owner) can enter; it
+            is intentionally absent from the academy sidebar. */}
+        <Route
+          path="/platform/*"
+          element={
+            <RequirePlatform>
+              <PlatformLayout />
+            </RequirePlatform>
           }
         />
         <Route

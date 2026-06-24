@@ -17,11 +17,15 @@ export default function Tooltip({ label, children, className = '' }) {
       {children}
       <span
         role="tooltip"
+        // The app's dark theme inverts the gray ramp (gray-700/900 become light),
+        // so a `dark:bg-gray-*` bubble would read as white-on-light and vanish.
+        // Use a fixed dark slate via an arbitrary value so the white text always
+        // stays legible in both themes.
         className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2
                    whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white
                    opacity-0 shadow-lg transition-opacity duration-150
                    group-hover/tip:opacity-100 group-focus-within/tip:opacity-100
-                   dark:bg-gray-700"
+                   dark:bg-[#11161f] dark:ring-1 dark:ring-white/10"
       >
         {label}
       </span>

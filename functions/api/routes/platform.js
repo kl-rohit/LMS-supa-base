@@ -453,6 +453,57 @@ router.get('/orgs/:id/detail', async (req, res) => {
 });
 
 // =============================================================================
+// GET /api/platform/orgs/:id/members — platform-admin only. Members of one
+// academy enriched with the real name + email (the "Show PII" reveal). Kept
+// out of the default /detail payload so the drawer loads fast and personal
+// data is only fetched when the platform admin explicitly asks for it.
+// Catalyst user details are resolved with bounded concurrency to stay under
+// the in-flight request cap. A user whose details cannot be resolved still
+// appears, with email/name left blank.
+// =============================================================================
+router.get('/orgs/:id/members', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const orgId = Number(req.params.id);
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
+    const org = normalize(unwrap(existing, 'Organizations')[0] || null);
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    let rows = [];
+    try {
+      const mr = await zcqlAll(req, `SELECT * FROM OrgMemberships WHERE OrgMemberships.org_id = ${orgId}`, 'OrgMemberships');
+      rows = unwrap(mr, 'OrgMemberships');
+    } catch {}
+
+    const um = catalyst.initialize(req, { scope: 'admin' }).userManagement();
+    const members = await mapLimit(rows, async (m) => {
+      let email = '', name = '';
+      try {
+        const d = await um.getUserDetails(String(m.user_id));
+        const det = d?.user_details || d || {};
+        email = det.email_id || '';
+        name = [det.first_name, det.last_name].filter(Boolean).join(' ').trim();
+      } catch { /* user details unavailable — leave blank */ }
+      return {
+        user_id:    m.user_id,
+        role:       m.role,
+        status:     m.status,
+        created_at: m.created_at || m.CREATEDTIME || null,
+        email,
+        name,
+      };
+    });
+
+    // Reveal of personal data is itself an auditable platform-admin action.
+    await writeAudit(req, { action: 'org.view_members_pii', orgId, orgName: org.name || '', detail: { count: members.length } });
+    res.json({ members });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load members', detail: e.message });
+  }
+});
+
+// =============================================================================
 // POST /api/platform/orgs/:id/resend-invite — platform-admin only.
 // Re-send the owner's access email. Catalyst's forgot-password flow emails a
 // link to set a new password, which works whether the owner never accepted
@@ -739,6 +790,281 @@ router.post('/notifications/broadcast', async (req, res) => {
     res.json({ message: `Sent to ${scopeLabel}`, orgs: targets.length, delivered, push });
   } catch (e) {
     res.status(500).json({ error: 'Failed to send broadcast', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/engagement — platform-admin only. Per-org "last active"
+// signal so you can spot academies that have gone quiet and reach out before
+// they lapse. For each org we take the most recent CREATEDTIME across the key
+// activity tables (attendance marked, payments recorded, messages sent,
+// students added) and report days since. GROUP BY org_id keeps every query at
+// one row per org, well under the ZCQL 300-row cap. Best-effort per table.
+// =============================================================================
+router.get('/engagement', async (req, res) => {
+  try {
+    const orgRows = await zcqlAll(req, `SELECT ROWID, name, CREATEDTIME FROM Organizations`, 'Organizations');
+    const orgs = unwrap(orgRows, 'Organizations');
+
+    // Activity tables, in priority order, and the friendly label per signal.
+    const ACTIVITY = [
+      { table: 'Attendance', label: 'attendance' },
+      { table: 'Payments',   label: 'payment' },
+      { table: 'Messages',   label: 'message' },
+      { table: 'Students',   label: 'student' },
+    ];
+
+    // rounded org id -> { ts, signals: { attendance: iso, ... } }
+    const lastByOrg = new Map();
+    for (const a of ACTIVITY) {
+      try {
+        const rows = await zcqlAll(
+          req,
+          `SELECT org_id, MAX(CREATEDTIME) AS last_at FROM ${a.table} GROUP BY org_id`,
+          a.table
+        );
+        for (const r of unwrap(rows, a.table)) {
+          if (!r.last_at) continue;
+          const k = String(r.org_id);
+          const ts = new Date(r.last_at).getTime();
+          if (!Number.isFinite(ts)) continue;
+          const cur = lastByOrg.get(k) || { ts: 0, signals: {} };
+          cur.signals[a.label] = r.last_at;
+          if (ts > cur.ts) cur.ts = ts;
+          lastByOrg.set(k, cur);
+        }
+      } catch { /* table absent or aggregate unsupported — skip this signal */ }
+    }
+
+    const now = Date.now();
+    const engagement = orgs.map((o) => {
+      const key = String(Number(o.ROWID));
+      const rec = lastByOrg.get(key);
+      const lastTs = rec?.ts || 0;
+      const createdTs = o.CREATEDTIME ? new Date(o.CREATEDTIME).getTime() : 0;
+      const refTs = lastTs || createdTs; // fall back to signup date when never active
+      const daysIdle = refTs ? Math.floor((now - refTs) / 86400000) : null;
+      const ageDays = createdTs ? Math.floor((now - createdTs) / 86400000) : null;
+      return {
+        id:             o.ROWID,
+        name:           o.name || '',
+        last_active_at: lastTs ? new Date(lastTs).toISOString() : null,
+        days_idle:      daysIdle,
+        age_days:       ageDays,
+        signals:        rec?.signals || {},
+      };
+    }).sort((a, b) => (b.days_idle ?? -1) - (a.days_idle ?? -1));
+
+    res.json({ engagement });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to compute engagement', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/search?q=... — platform-admin only. One search box that
+// spans every tenant: academies (by name or slug) and people (students plus
+// their parent/contact, by name, parent name, or mobile). Each person result
+// carries its org so you can jump to the right academy. Personal contact
+// reveal still lives behind the audited per-org members endpoint; this only
+// surfaces the already-stored student/parent record so a support request can
+// be located fast. Min 2 chars; results are bounded.
+// =============================================================================
+router.get('/search', async (req, res) => {
+  try {
+    const raw = String(req.query.q || '').trim();
+    if (raw.length < 2) return res.json({ query: raw, academies: [], people: [] });
+    const term = raw.replace(/'/g, "''").slice(0, 80);
+    const like = `'%${term}%'`;
+
+    // Academies by name / slug.
+    let academies = [];
+    try {
+      const rows = await zcql(
+        req,
+        `SELECT ROWID, name, slug, status, plan FROM Organizations WHERE Organizations.name LIKE ${like} OR Organizations.slug LIKE ${like} LIMIT 50`
+      );
+      academies = unwrap(rows, 'Organizations').map((o) => ({
+        id: o.ROWID, name: o.name || '', slug: o.slug || '', status: o.status || 'active', plan: o.plan || '',
+      }));
+    } catch { /* Organizations missing — leave empty */ }
+
+    // People: students and their parent/contact across all orgs.
+    let people = [];
+    try {
+      const rows = await zcql(
+        req,
+        `SELECT ROWID, org_id, name, parent_name, mobile_number FROM Students WHERE Students.name LIKE ${like} OR Students.parent_name LIKE ${like} OR Students.mobile_number LIKE ${like} LIMIT 100`
+      );
+      people = unwrap(rows, 'Students').map((s) => ({
+        id: s.ROWID, org_id: s.org_id, name: s.name || '', parent_name: s.parent_name || '', mobile_number: s.mobile_number || '',
+      }));
+    } catch { /* Students missing — leave empty */ }
+
+    // Tag each person with their academy name (org_id on children is rounded).
+    if (people.length) {
+      const orgNames = new Map();
+      try {
+        const orgRows = await zcqlAll(req, `SELECT ROWID, name FROM Organizations`, 'Organizations');
+        for (const o of unwrap(orgRows, 'Organizations')) orgNames.set(String(Number(o.ROWID)), o.name || '');
+      } catch {}
+      people = people.map((p) => ({ ...p, org_name: orgNames.get(String(p.org_id)) || `Org ${p.org_id}` }));
+    }
+
+    res.json({ query: raw, academies, people });
+  } catch (e) {
+    res.status(500).json({ error: 'Search failed', detail: e.message });
+  }
+});
+
+// =============================================================================
+// Billing & invoices — platform-admin only. A lightweight ledger to record
+// what each academy owes and mark invoices paid, since charging is not wired
+// to a payment processor yet. Backed by an Invoices table in the Catalyst
+// console; if that table is absent every endpoint degrades gracefully
+// (GET returns available:false, writes return 503 with a clear hint).
+//
+//   Invoices columns (Data Store):
+//     org_id    bigint     the academy this invoice is for
+//     amount    double     amount due (rupees)
+//     period    varchar    free-form label, e.g. "Jun 2026"
+//     status    varchar    pending | paid | void
+//     due_date  varchar    YYYY-MM-DD (optional)
+//     paid_at   varchar    ISO timestamp, stamped when marked paid
+//     notes     varchar    optional memo
+// =============================================================================
+const INVOICE_STATUSES = ['pending', 'paid', 'void'];
+
+router.get('/invoices', async (req, res) => {
+  try {
+    const orgFilter = req.query.org ? Number(req.query.org) : null;
+    const where = Number.isFinite(orgFilter) && orgFilter ? ` WHERE Invoices.org_id = ${orgFilter}` : '';
+    let invoices = [];
+    try {
+      const rows = await zcqlAll(req, `SELECT * FROM Invoices${where}`, 'Invoices');
+      invoices = unwrap(rows, 'Invoices').map(normalize);
+    } catch (e) {
+      return res.json({ invoices: [], available: false });
+    }
+
+    // Decorate with the academy name so the ledger reads clearly.
+    const orgNames = new Map();
+    try {
+      const orgRows = await zcqlAll(req, `SELECT ROWID, name FROM Organizations`, 'Organizations');
+      for (const o of unwrap(orgRows, 'Organizations')) orgNames.set(String(Number(o.ROWID)), o.name || '');
+    } catch {}
+
+    invoices = invoices
+      .map((inv) => ({ ...inv, org_name: orgNames.get(String(inv.org_id)) || `Org ${inv.org_id}` }))
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    res.json({ invoices, available: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load invoices', detail: e.message });
+  }
+});
+
+router.post('/invoices', async (req, res) => {
+  try {
+    const orgId = safeId(req.body.org_id);
+    if (!orgId) return res.status(400).json({ error: 'A valid org_id is required' });
+    const existing = await zcql(req, `SELECT ROWID, name FROM Organizations WHERE ROWID = ${orgId}`);
+    const org = unwrap(existing, 'Organizations')[0];
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    let amount = Number(req.body.amount);
+    if (!Number.isFinite(amount) || amount < 0) amount = 0;
+    const period   = String(req.body.period || '').slice(0, 60);
+    const due_date = String(req.body.due_date || '').slice(0, 40);
+    const notes    = String(req.body.notes || '').slice(0, 500);
+    const status   = INVOICE_STATUSES.includes(req.body.status) ? req.body.status : 'pending';
+
+    let row;
+    try {
+      row = await insert(req, 'Invoices', {
+        org_id:   Number(req.body.org_id),
+        amount, period, due_date, notes, status,
+        paid_at:  status === 'paid' ? new Date().toISOString() : '',
+      });
+    } catch (e) {
+      return res.status(503).json({
+        error: 'Invoices table not set up',
+        hint: 'Create an Invoices table in the Catalyst console (Data Store) with columns org_id, amount, period, status, due_date, paid_at, notes.',
+        detail: e.message,
+      });
+    }
+
+    await writeAudit(req, { action: 'invoice.create', orgId: org.ROWID, orgName: org.name || '', detail: { amount, period, status } });
+    res.json({ invoice: normalize(row) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to create invoice', detail: e.message });
+  }
+});
+
+router.put('/invoices/:id', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid invoice id' });
+    const existing = await zcql(req, `SELECT * FROM Invoices WHERE ROWID = ${rowId}`);
+    const inv = unwrap(existing, 'Invoices')[0];
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+
+    const patch = {};
+    if (req.body.status !== undefined) {
+      const s = String(req.body.status);
+      if (!INVOICE_STATUSES.includes(s)) return res.status(400).json({ error: 'Invalid status' });
+      patch.status = s;
+      patch.paid_at = s === 'paid' ? (inv.paid_at || new Date().toISOString()) : '';
+    }
+    if (req.body.amount !== undefined) {
+      const a = Number(req.body.amount);
+      if (Number.isFinite(a) && a >= 0) patch.amount = a;
+    }
+    if (req.body.period   !== undefined) patch.period   = String(req.body.period).slice(0, 60);
+    if (req.body.due_date !== undefined) patch.due_date = String(req.body.due_date).slice(0, 40);
+    if (req.body.notes    !== undefined) patch.notes    = String(req.body.notes).slice(0, 500);
+
+    if (!Object.keys(patch).length) return res.json({ invoice: normalize(inv) });
+
+    const updated = await update(req, 'Invoices', req.params.id, patch);
+    await writeAudit(req, { action: 'invoice.update', orgId: Number(inv.org_id), orgName: '', detail: { status: patch.status, amount: patch.amount } });
+    res.json({ invoice: normalize(updated) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update invoice', detail: e.message });
+  }
+});
+
+// =============================================================================
+// GET /api/platform/broadcasts — platform-admin only. Recent broadcasts you
+// have sent, read back from the audit log (action 'platform.broadcast'). Lets
+// the composer show a sent history without a separate table. Empty + available
+// false when the AuditLog table is not set up yet.
+// =============================================================================
+router.get('/broadcasts', async (req, res) => {
+  try {
+    let broadcasts = [];
+    try {
+      const rows = await zcql(
+        req,
+        `SELECT ROWID, actor_email, target_org_name, detail, CREATEDTIME FROM AuditLog WHERE AuditLog.action = 'platform.broadcast' ORDER BY CREATEDTIME DESC LIMIT 50`
+      );
+      broadcasts = unwrap(rows, 'AuditLog').map((r) => {
+        let detail = null;
+        if (r.detail) { try { detail = JSON.parse(r.detail); } catch { detail = null; } }
+        return {
+          id:          r.ROWID,
+          actor_email: r.actor_email,
+          scope:       r.target_org_name,
+          detail,
+          created_at:  r.CREATEDTIME,
+        };
+      });
+    } catch (e) {
+      return res.json({ broadcasts: [], available: false });
+    }
+    res.json({ broadcasts, available: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load broadcast history', detail: e.message });
   }
 });
 

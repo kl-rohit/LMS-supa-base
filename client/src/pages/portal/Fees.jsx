@@ -107,11 +107,11 @@ function Stat({ label, value, accent }) {
   );
 }
 
-// Builds a UPI pay deep link the parent's phone understands. Amount is
-// prefilled when there is a positive balance; the parent can still edit it in
-// their UPI app. Returns '' when there is no UPI id (we then rely on an
+// Builds the UPI pay query a phone understands (pa = payee id, am = amount).
+// Amount is prefilled when there is a positive balance; the parent can still
+// edit it in their app. Returns '' when there is no UPI id (we then rely on an
 // uploaded QR image instead).
-function buildUpiLink(payment, amount) {
+function buildUpiQuery(payment, amount) {
   const pa = String(payment?.upi_id || '').trim();
   if (!pa) return '';
   const params = new URLSearchParams();
@@ -119,7 +119,43 @@ function buildUpiLink(payment, amount) {
   if (payment.payee_name) params.set('pn', payment.payee_name);
   if (amount > 0) params.set('am', amount.toFixed(2));
   params.set('cu', 'INR');
-  return `upi://pay?${params.toString()}`;
+  return params.toString();
+}
+
+// The generic UPI link (used for the QR and the "Pay now" chooser).
+function buildUpiLink(payment, amount) {
+  const q = buildUpiQuery(payment, amount);
+  return q ? `upi://pay?${q}` : '';
+}
+
+// iPhone / iPad detection. On iOS there is no system UPI chooser, and other
+// apps (notably WhatsApp) register the generic `upi://` scheme — so tapping a
+// bare `upi://pay` link opens WhatsApp instead of a payment app. We therefore
+// route iOS users to the app-specific schemes (tez://, phonepe://, paytmmp://)
+// and hold back the generic link there. iPadOS reports as MacIntel with touch.
+const IS_IOS =
+  typeof navigator !== 'undefined' &&
+  (/iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+// Per-app deep links. Android shows a chooser for the generic upi:// link, but
+// iOS has no chooser and ignores upi://, so we also offer each common app's own
+// scheme. Same query (so the amount is prefilled). On a device where an app is
+// not installed its button simply does nothing, so showing all four is safe.
+// `iosSafe: false` marks the generic `upi://pay` entry that WhatsApp hijacks on
+// iOS, so it can be left out of the iOS list.
+const UPI_APPS = [
+  { key: 'gpay',    label: 'Google Pay', scheme: 'tez://upi/pay', iosSafe: true },
+  { key: 'phonepe', label: 'PhonePe',    scheme: 'phonepe://pay', iosSafe: true },
+  { key: 'paytm',   label: 'Paytm',      scheme: 'paytmmp://pay', iosSafe: true },
+  { key: 'bhim',    label: 'BHIM / other', scheme: 'upi://pay', iosSafe: false },
+];
+function buildAppLinks(payment, amount) {
+  const q = buildUpiQuery(payment, amount);
+  if (!q) return [];
+  return UPI_APPS
+    .filter((a) => !IS_IOS || a.iosSafe)
+    .map((a) => ({ ...a, href: `${a.scheme}?${q}` }));
 }
 
 function PaymentCard({ payment, amount }) {
@@ -144,6 +180,7 @@ function PaymentCard({ payment, amount }) {
   }, [uploaded, upiLink]);
 
   const qrSrc = uploaded || genQr;
+  const appLinks = buildAppLinks(payment, amount);
   const copyUpi = async () => {
     try {
       await navigator.clipboard.writeText(payment.upi_id);
@@ -161,7 +198,7 @@ function PaymentCard({ payment, amount }) {
       <p className="text-xs text-gray-500 mb-4">
         Pay
         {amount > 0 ? <> the balance of <span className="font-medium text-gray-700">₹{amount.toLocaleString('en-IN')}</span></> : <> your fees</>}
-        {' '}with any UPI app (GPay, PhonePe, Paytm). On your phone, tap Pay now to open your app. On a computer, scan the QR with your phone.
+        {' '}with any UPI app (GPay, PhonePe, Paytm). On your phone, tap your app below to open it with the amount ready. On a computer, scan the QR with your phone.
       </p>
 
       <div className="flex flex-col items-center text-center gap-3">
@@ -175,11 +212,14 @@ function PaymentCard({ payment, amount }) {
           </div>
         )}
 
-        {/* Mobile: a tap-to-pay deep link that opens the installed UPI app.
-            Only meaningful on a phone (sm:hidden hides it on laptops/desktops,
-            which have no UPI app) and only when a UPI id is set — an uploaded
-            QR image alone cannot produce a deep link. */}
-        {upiLink && (
+        {/* Mobile: a tap-to-pay deep link that opens the installed UPI app via
+            the generic upi:// scheme. Android shows its UPI chooser here. On
+            iOS the scheme is hijacked by other apps (e.g. WhatsApp), so this
+            generic button is held back and the per-app buttons below are used
+            instead. sm:hidden hides it on laptops/desktops, which have no UPI
+            app; only shown when a UPI id is set (an uploaded QR image alone
+            cannot produce a deep link). */}
+        {upiLink && !IS_IOS && (
           <a
             href={upiLink}
             className="sm:hidden w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
@@ -187,6 +227,27 @@ function PaymentCard({ payment, amount }) {
             <Smartphone className="w-4 h-4" />
             Pay now
           </a>
+        )}
+
+        {/* Per-app buttons: each common app's own scheme, with the amount
+            carried in the link so it arrives prefilled. On iOS these are the
+            primary way to pay (the generic upi:// link is unsafe there), so the
+            label leads; on Android they are an alternative to the chooser. */}
+        {appLinks.length > 0 && (
+          <div className="sm:hidden w-full">
+            <p className="text-xs text-gray-400 mb-2">{IS_IOS ? 'Pay with your app' : 'Or open a specific app'}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {appLinks.map((a) => (
+                <a
+                  key={a.key}
+                  href={a.href}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  {a.label}
+                </a>
+              ))}
+            </div>
+          </div>
         )}
 
         {payment.payee_name && (

@@ -31,6 +31,7 @@ import Select from '../components/Select';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import StudentDetailPanel from '../components/StudentDetailPanel';
+import ImageCropper from '../components/ImageCropper';
 import SeatLimitNotice from '../components/SeatLimitNotice';
 import Pagination, { usePagination } from '../components/Pagination';
 import { readPhotoCache, writePhotoCache, invalidatePhotoCache } from '../utils/photoCache';
@@ -120,6 +121,7 @@ export default function Students() {
   // Pending photo (data URL) selected via the modal file picker — not yet
   // uploaded to Stratus. handleSubmit POSTs it on save.
   const [photoPending, setPhotoPending] = useState('');
+  const [photoCropSrc, setPhotoCropSrc] = useState(''); // picked image awaiting crop
   const photoFileRef = useRef(null);
 
   // Billing defaults pulled from /api/settings/app on mount. Used to
@@ -299,7 +301,8 @@ export default function Students() {
     }
   };
 
-  // File picker → base64 preview → stored in photoPending until Save.
+  // File picker → base64 → open the cropper. The framed result is stored in
+  // photoPending until Save (handleSubmit POSTs it).
   const handlePickPhoto = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -312,9 +315,10 @@ export default function Students() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setPhotoPending(String(reader.result || ''));
+    reader.onload = () => setPhotoCropSrc(String(reader.result || ''));
     reader.onerror = () => toast.error('Could not read the file');
     reader.readAsDataURL(file);
+    if (photoFileRef.current) photoFileRef.current.value = '';
   };
 
   const clearPickedPhoto = () => {
@@ -1305,6 +1309,20 @@ export default function Students() {
         formatMobile={formatMobileDisplay}
         phoneRevealed={phoneReveal.revealed}
       />
+
+      {photoCropSrc && (
+        <ImageCropper
+          src={photoCropSrc}
+          aspect={1}
+          round
+          mime="image/jpeg"
+          outputSize={512}
+          title="Crop student photo"
+          hint="Drag to position, then zoom so the face sits in the frame."
+          onCancel={() => setPhotoCropSrc('')}
+          onConfirm={(dataUrl) => { setPhotoPending(dataUrl); setPhotoCropSrc(''); }}
+        />
+      )}
     </div>
   );
 }

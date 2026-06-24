@@ -202,6 +202,24 @@ router.post('/cron-class-reminder', classReminderHandler);
 // `/cron-class-reminder` fan-out (that endpoint is left in place as an
 // optional "30 min before" reminder but need not be scheduled).
 
+// Returns true if at least one Notifications row matches the given WHERE
+// clause. Used to make the morning digest idempotent: each digest carries a
+// date-stamped link, so a repeat run on the same day finds the existing row
+// and skips re-inserting. Best-effort — on any error we report "not sent" so
+// the digest still goes out rather than being silently suppressed.
+async function alreadySent(req, whereClause) {
+  try {
+    const rows = await zcqlAll(
+      req,
+      `SELECT ROWID FROM Notifications WHERE ${whereClause} LIMIT 1`,
+      'Notifications'
+    );
+    return unwrap(rows, 'Notifications').length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function minToTime(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -227,6 +245,14 @@ async function morningDigestHandler(req, res) {
       return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
     }
 
+    // IST calendar date (YYYY-MM-DD). Embedded in each digest's deep link so a
+    // repeat run on the same day can detect "already sent" and skip — keeping
+    // the bell to one digest per org (and per student) per day even if the
+    // cron fires more than once.
+    const istDate = ist.toISOString().slice(0, 10);
+    const adminLink = `/dashboard?d=${istDate}`;
+    const portalLink = `/portal?d=${istDate}`;
+
     const summary = [];
     for (const org of orgs) {
       const orgId = Number(org.id);
@@ -246,15 +272,21 @@ async function morningDigestHandler(req, res) {
           continue;
         }
 
-        // 1) Admin/teacher digest — all of today's classes.
-        const adminLines = classes.map((c) => `${minToTime(c._min)} — ${c.name || 'Class'}`);
-        const adminRes = await createAdminNotifications(req, {
-          orgId,
-          type: 'class',
-          title: `Today's classes (${classes.length})`,
-          body: adminLines.join('\n'),
-          link: '/dashboard',
-        });
+        // 1) Admin/teacher digest — all of today's classes. Skip if today's
+        // digest is already in the bell (idempotent on repeat runs).
+        let adminRes = { created: 0, pushed: 0 };
+        if (await alreadySent(req, `Notifications.org_id = ${orgId} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${adminLink}'`)) {
+          adminRes = { created: 0, pushed: 0, skipped: true };
+        } else {
+          const adminLines = classes.map((c) => `${c.name || 'Class'} at ${minToTime(c._min)}`);
+          adminRes = await createAdminNotifications(req, {
+            orgId,
+            type: 'class',
+            title: `Today's classes (${classes.length})`,
+            body: adminLines.join('\n'),
+            link: adminLink,
+          });
+        }
 
         // 2) Per-student digests — each parent sees only their classes.
         const perStudent = new Map(); // studentId → [{ min, name }]
@@ -267,18 +299,22 @@ async function morningDigestHandler(req, res) {
         }
         let studentsNotified = 0;
         for (const [sid, list] of perStudent.entries()) {
+          // Skip if this student already has today's digest in their bell.
+          if (await alreadySent(req, `Notifications.student_id = ${Number(sid)} AND Notifications.recipient_role = 'parent' AND Notifications.link = '${portalLink}'`)) {
+            continue;
+          }
           list.sort((a, b) => a.min - b.min);
           const title = list.length === 1 ? 'Class today' : `${list.length} classes today`;
           const body = list.length === 1
             ? `“${list[0].name}” at ${minToTime(list[0].min)}.`
-            : list.map((x) => `${minToTime(x.min)} — ${x.name}`).join('\n');
+            : list.map((x) => `${x.name} at ${minToTime(x.min)}`).join('\n');
           await createNotifications(req, {
             orgId,
             studentIds: [sid],
             type: 'class',
             title,
             body,
-            link: '/portal',
+            link: portalLink,
           });
           studentsNotified++;
         }

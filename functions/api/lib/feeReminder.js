@@ -6,7 +6,7 @@
 // monthly total (class fees + additional fees − discount). The template
 // body comes from MessageTemplates (with hard-coded fallback).
 
-const { insert, zcql, unwrap, q } = require('../db/catalystDb');
+const { insert, update, zcql, unwrap, q } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('../routes/settings');
 
 // Build the {school} + {signature} ctx pieces from AppSettings, falling
@@ -86,6 +86,14 @@ async function generateFeeReminders(req, { month, year, orgId }) {
 
   const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${effectiveOrgId}`);
   const students = unwrap(studentRows, 'Students');
+
+  // Reuse an existing pending (unsent) fee_reminder per student instead of
+  // stacking a second draft, so re-running generation (or the monthly cron
+  // firing after a manual run) never produces a duplicate notification.
+  const pendingRows = await zcql(req, `SELECT ROWID, student_id FROM Messages WHERE Messages.org_id = ${effectiveOrgId} AND Messages.message_type = 'fee_reminder' AND Messages.is_sent = 0`);
+  const pendingByStudent = new Map();
+  for (const m of unwrap(pendingRows, 'Messages')) pendingByStudent.set(String(m.student_id), m.ROWID);
+
   const reminders = [];
 
   for (const s of students) {
@@ -125,15 +133,26 @@ async function generateFeeReminders(req, { month, year, orgId }) {
         });
         text = applyFeeReminderConditionalBlock(text, positiveAdditionalRounded);
 
-        const inserted = await insert(req, 'Messages', {
-          student_id: String(s.ROWID),
-          parent_name: s.parent_name || '',
-          mobile_number: s.mobile_number || '',
-          message: text,
-          message_type: 'fee_reminder',
-          is_sent: 0,
-          org_id: effectiveOrgId,
-        });
+        const existingId = pendingByStudent.get(String(s.ROWID));
+        let messageId = existingId;
+        if (existingId) {
+          await update(req, 'Messages', existingId, {
+            message: text,
+            parent_name: s.parent_name || '',
+            mobile_number: s.mobile_number || '',
+          });
+        } else {
+          const inserted = await insert(req, 'Messages', {
+            student_id: String(s.ROWID),
+            parent_name: s.parent_name || '',
+            mobile_number: s.mobile_number || '',
+            message: text,
+            message_type: 'fee_reminder',
+            is_sent: 0,
+            org_id: effectiveOrgId,
+          });
+          messageId = inserted?.ROWID;
+        }
         reminders.push({
           student_id: s.ROWID,
           student_name: s.name,
@@ -141,7 +160,7 @@ async function generateFeeReminders(req, { month, year, orgId }) {
           class_fees: classFees,
           additional_fees: additionalTotal,
           total,
-          message_id: inserted?.ROWID,
+          message_id: messageId,
         });
       }
     } catch (err) {

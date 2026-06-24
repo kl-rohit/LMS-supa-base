@@ -35,17 +35,22 @@ import {
   Award,
   Upload,
   QrCode,
+  X,
+  Download,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
+import ImageCropper from '../components/ImageCropper';
 import TemplatesEditor from '../components/TemplatesEditor';
 import DataMigration from '../components/DataMigration';
 import { useConfirm } from '../contexts/ConfirmContext';
-import { invalidateOrgBranding } from '../hooks/useOrgBranding';
+import { invalidateOrgBranding, useOrgBranding } from '../hooks/useOrgBranding';
 import { PRESETS, presetSwatch, applyTheme, saveTheme } from '../utils/theme';
 import { DAY_NAMES, parseWorkingHours, serializeWorkingHours } from '../utils/workingHours';
-import { SUPPORT_PHONE_TEL } from '../config';
+import { SUPPORT_PHONE_TEL, BRAND_NAME } from '../config';
+import { useNavigate } from 'react-router-dom';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -128,6 +133,8 @@ const TABS = [
 ];
 
 export default function Settings() {
+  const navigate = useNavigate();
+  const branding = useOrgBranding();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_SETTINGS);
@@ -200,20 +207,66 @@ export default function Settings() {
     }
   };
 
-  if (loading) return <Loader text="Loading settings..." />;
+  const orgName = form['school.name'] || branding.name || BRAND_NAME;
+  const activeTabMeta = TABS.find((t) => t.id === activeTab) || TABS[0];
+  // These tabs render their own save controls, so the shared Save bar is hidden.
+  const ownsUi = activeTab === 'templates' || activeTab === 'organization' || activeTab === 'migration';
+
+  // Close returns to wherever the gear icon was clicked from; if there's no
+  // in-app history (e.g. a deep link / refresh on /settings), go to Dashboard.
+  const closeSettings = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/dashboard');
+  };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <Loader text="Loading settings..." />
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
-      <div>
-        <h2 className="page-header mb-0">Settings</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Configure your academy identity, billing defaults, and message wording.
-        </p>
-      </div>
+    <div className="fixed inset-0 z-50 bg-gray-50 dark:bg-gray-900 flex flex-col">
+      {/* Top bar — academy identity stays visible, plus a Close button. */}
+      <header className="h-14 flex-shrink-0 flex items-center gap-2 px-3 sm:px-4 border-b border-gray-200 bg-white">
+        {branding.logoUrl ? (
+          <img
+            src={branding.logoUrl}
+            alt=""
+            className="w-7 h-7 rounded-md object-cover flex-shrink-0"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : (
+          <img
+            src={`${process.env.PUBLIC_URL || '/'}logo.png`}
+            alt=""
+            className="w-7 h-7 rounded-md object-cover flex-shrink-0"
+          />
+        )}
+        <span className="font-semibold text-gray-900 truncate max-w-[38vw]">{orgName}</span>
+        <span className="text-gray-300">/</span>
+        <span className="text-sm text-gray-600 flex items-center gap-1.5 min-w-0">
+          <SettingsIcon className="w-4 h-4 flex-shrink-0" />
+          <span className="hidden sm:inline">Settings</span>
+          <span className="sm:hidden truncate">{activeTabMeta.label}</span>
+        </span>
+        <button
+          type="button"
+          onClick={closeSettings}
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+        >
+          <X className="w-4 h-4" /> <span className="hidden sm:inline">Close</span>
+        </button>
+      </header>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200" data-tour="settings-tabs">
-        <nav className="-mb-px flex flex-wrap gap-x-1 gap-y-0">
+      <div className="flex-1 flex min-h-0">
+        {/* Vertical tab rail — icons everywhere, labels alongside on desktop. */}
+        <nav
+          data-tour="settings-tabs"
+          className="w-16 lg:w-60 flex-shrink-0 border-r border-gray-200 bg-white overflow-y-auto py-3 px-1.5 lg:px-3 space-y-1"
+        >
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -221,50 +274,57 @@ export default function Settings() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                title={tab.label}
+                className={`w-full flex flex-col lg:flex-row items-center gap-1 lg:gap-3 px-1 lg:px-3 py-2.5 rounded-lg text-[10px] lg:text-sm font-medium transition-colors ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-700 dark:text-white'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-600 dark:text-white'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                {tab.label}
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <span className="text-center leading-tight">{tab.label}</span>
               </button>
             );
           })}
         </nav>
-      </div>
 
-      {/* Tab content */}
-      {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
-      {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
-      {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
-      {activeTab === 'billing'      && <BillingTab form={form} set={set} setForm={setForm} />}
-      {activeTab === 'modules'      && <ModulesTab form={form} set={set} plan={plan} entitlements={entitlements} />}
-      {activeTab === 'certificate'  && <CertificateTab form={form} set={set} setForm={setForm} />}
-      {activeTab === 'templates'    && <TemplatesTab />}
-      {activeTab === 'organization' && <OrganizationTab />}
-      {activeTab === 'migration'    && <DataMigration />}
+        {/* Content column — scrolls; the Save bar is pinned to its bottom. */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-3xl mx-auto p-4 lg:p-6 space-y-4">
+              {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
+              {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
+              {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
+              {activeTab === 'billing'      && <BillingTab form={form} set={set} setForm={setForm} />}
+              {activeTab === 'modules'      && <ModulesTab form={form} set={set} plan={plan} entitlements={entitlements} />}
+              {activeTab === 'certificate'  && <CertificateTab form={form} set={set} setForm={setForm} />}
+              {activeTab === 'templates'    && <TemplatesTab />}
+              {activeTab === 'organization' && <OrganizationTab />}
+              {activeTab === 'migration'    && <DataMigration />}
+            </div>
+          </div>
 
-      {/* Save bar (sticky bottom) — hidden for tabs that own their own UI */}
-      {activeTab !== 'templates' && activeTab !== 'organization' && activeTab !== 'migration' && (
-        <div className="sticky bottom-0 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-white border-t border-gray-200 flex items-center justify-between">
-          <span className="text-xs text-gray-500">
-            {savedNotice && (
-              <span className="inline-flex items-center gap-1 text-green-700">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+          {/* Save bar — hidden for tabs that own their own UI. */}
+          {!ownsUi && (
+            <div className="flex-shrink-0 px-4 lg:px-6 py-3 bg-white border-t border-gray-200 flex items-center justify-between">
+              <span className="text-xs text-gray-500">
+                {savedNotice && (
+                  <span className="inline-flex items-center gap-1 text-green-700">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-          <button
-            onClick={handleSave}
-            className="btn-primary"
-            disabled={saving}
-          >
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save changes</>}
-          </button>
+              <button
+                onClick={handleSave}
+                className="btn-primary"
+                disabled={saving}
+              >
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save changes</>}
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -362,7 +422,7 @@ function ScheduleTab({ form, setForm }) {
     setForm((f) => ({ ...f, [key]: e?.target?.value ?? e }));
 
   return (
-    <>
+    <div className="space-y-5">
     <div className="card space-y-4">
       <div>
         <h3 className="text-base font-semibold text-gray-900">Working hours</h3>
@@ -425,7 +485,7 @@ function ScheduleTab({ form, setForm }) {
       </div>
     </div>
 
-    <div className="card space-y-4 mt-6">
+    <div className="card space-y-4">
       <div>
         <h3 className="text-base font-semibold text-gray-900">Online classes</h3>
         <p className="text-xs text-gray-500 mt-0.5">
@@ -459,11 +519,14 @@ function ScheduleTab({ form, setForm }) {
         />
         <p className="text-xs text-gray-400 mt-1">
           Used for any online class that has no link of its own. A per-class
-          link set on the class always takes priority.
+          link set on the class always takes priority. Tip: Google Meet makes a
+          fresh link each time, so paste a reusable room link here (for example a
+          Zoom personal room or a fixed Meet/Jitsi room) so the Join button keeps
+          working.
         </p>
       </div>
     </div>
-    </>
+    </div>
   );
 }
 
@@ -478,33 +541,38 @@ function BillingTab({ form, set, setForm }) {
   // (kind 'fee_qr'); its key lands in form['fees.qr_key'].
   const [qrData, setQrData] = useState('');     // local preview of just-picked image
   const [busyQr, setBusyQr] = useState(false);
+  const [qrCropSrc, setQrCropSrc] = useState(''); // picked image awaiting crop
   const qrRef = useRef(null);
   const hasQr = !!form['fees.qr_key'] || !!qrData;
 
+  // Pick → read to a data URL → open the cropper. The actual upload happens
+  // once the academy frames the QR (uploadQr below).
   const pickQr = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Please pick an image file'); return; }
     if (file.size > 8 * 1024 * 1024)     { toast.error('Image must be 8MB or smaller'); return; }
     const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = String(reader.result || '');
-      setQrData(dataUrl);
-      try {
-        setBusyQr(true);
-        const res = await api.post('/settings/app/certificate-asset', { kind: 'fee_qr', data: dataUrl });
-        setForm((f) => ({ ...f, 'fees.qr_key': res?.object_key || '' }));
-        if (qrRef.current) qrRef.current.value = '';
-        toast.success('Payment QR uploaded');
-      } catch (err) {
-        toast.error('Upload failed: ' + err.message);
-        setQrData('');
-      } finally {
-        setBusyQr(false);
-      }
-    };
+    reader.onload = () => setQrCropSrc(String(reader.result || ''));
     reader.onerror = () => toast.error('Could not read the file');
     reader.readAsDataURL(file);
+    if (qrRef.current) qrRef.current.value = '';
+  };
+
+  const uploadQr = async (dataUrl) => {
+    setQrCropSrc('');
+    setQrData(dataUrl);
+    try {
+      setBusyQr(true);
+      const res = await api.post('/settings/app/certificate-asset', { kind: 'fee_qr', data: dataUrl });
+      setForm((f) => ({ ...f, 'fees.qr_key': res?.object_key || '' }));
+      toast.success('Payment QR uploaded');
+    } catch (err) {
+      toast.error('Upload failed: ' + err.message);
+      setQrData('');
+    } finally {
+      setBusyQr(false);
+    }
   };
 
   const removeQr = async () => {
@@ -537,7 +605,7 @@ function BillingTab({ form, set, setForm }) {
   const setMode = (mode) => () => setForm((f) => ({ ...f, 'billing.fee_mode': mode }));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="card space-y-4">
         <div>
           <h3 className="text-base font-semibold text-gray-900">Fee collection</h3>
@@ -718,6 +786,19 @@ function BillingTab({ form, set, setForm }) {
           </p>
         </div>
       </div>
+
+      {qrCropSrc && (
+        <ImageCropper
+          src={qrCropSrc}
+          aspect={1}
+          mime="image/png"
+          outputSize={640}
+          title="Crop payment QR"
+          hint="Keep the whole QR code inside the frame so it stays scannable."
+          onCancel={() => setQrCropSrc('')}
+          onConfirm={uploadQr}
+        />
+      )}
     </div>
   );
 }
@@ -831,7 +912,7 @@ function AppearanceTab({ form, setForm }) {
                 onClick={() => update({ mode: opt.id })}
                 className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm font-medium transition-colors ${
                   selected
-                    ? 'border-indigo-600 bg-indigo-50 text-gray-900 dark:bg-indigo-600 dark:text-white'
+                    ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50 text-brand-700'
                     : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
               >
@@ -1360,8 +1441,15 @@ function CertificateTab({ form, set, setForm }) {
   const [busyLogo, setBusyLogo] = useState(false);
   const [busySig, setBusySig] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
   const logoRef = useRef(null);
   const sigRef = useRef(null);
+
+  // Revoke the blob URL when the modal closes or the component unmounts.
+  const closePreview = () => {
+    setPreviewUrl((u) => { if (u) { try { URL.revokeObjectURL(u); } catch {} } return ''; });
+  };
+  useEffect(() => () => { if (previewUrl) { try { URL.revokeObjectURL(previewUrl); } catch {} } }, [previewUrl]);
 
   const pick = (kind, setData, ref) => (e) => {
     const file = e.target.files?.[0];
@@ -1410,9 +1498,9 @@ function CertificateTab({ form, set, setForm }) {
   const runPreview = async () => {
     try {
       setPreviewing(true);
-      const { downloadCertificate } = await import('../utils/certificate');
+      const { previewCertificate } = await import('../utils/certificate');
       const verifyOn = isOn('certificate.verify_enabled');
-      await downloadCertificate({
+      const { url } = await previewCertificate({
         student_name: 'Sample Student',
         course_name: 'Sample Course',
         academy_name: form['school.name'] || 'Your Academy',
@@ -1437,6 +1525,8 @@ function CertificateTab({ form, set, setForm }) {
         verify_code: verifyOn ? 'preview' : '',
         verify_url: verifyOn ? '/app/verify/CERT-PREVIEW?c=preview' : '',
       });
+      closePreview();
+      setPreviewUrl(url);
     } catch (err) {
       toast.error('Could not build preview: ' + err.message);
     } finally {
@@ -1553,17 +1643,55 @@ function CertificateTab({ form, set, setForm }) {
       <div className="card">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <QrCode className="w-5 h-5 text-indigo-600" />
+            <Eye className="w-5 h-5 text-indigo-600" />
             <div>
               <h3 className="text-base font-semibold text-gray-900">Preview</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Download a sample certificate using your current settings.</p>
+              <p className="text-xs text-gray-500 mt-0.5">View a sample certificate using your current settings, right here.</p>
             </div>
           </div>
           <button type="button" onClick={runPreview} disabled={previewing} className="btn-secondary">
-            {previewing ? <><Loader2 className="w-4 h-4 animate-spin" /> Building…</> : <><Award className="w-4 h-4" /> Preview certificate</>}
+            {previewing ? <><Loader2 className="w-4 h-4 animate-spin" /> Building…</> : <><Eye className="w-4 h-4" /> Preview certificate</>}
           </button>
         </div>
       </div>
+
+      {/* Inline preview modal — shows the generated PDF in an iframe so the
+          owner can see the certificate without a download. */}
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3 sm:p-6"
+          onClick={closePreview}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2 min-w-0">
+                <Award className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+                <h3 className="text-sm font-semibold text-gray-900 truncate">Certificate preview</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewUrl}
+                  download="Certificate - preview.pdf"
+                  className="btn-secondary"
+                >
+                  <Download className="w-4 h-4" /> Download
+                </a>
+                <button type="button" onClick={closePreview} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={previewUrl}
+              title="Certificate preview"
+              className="flex-1 w-full border-0 bg-gray-100"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

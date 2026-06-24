@@ -145,8 +145,8 @@ const MODULE_TOURS = {
       { icon: KeyRound, title: 'Invite a parent', body: 'Create a login for any student and the parent gets an email to set their password.', route: '/student-logins', target: '[data-tour="logins-intro"]' },
     ],
     settings: [
-      { icon: SettingsIcon, title: 'Settings & branding', body: 'Set your academy name, logo, colours, fee mode and working hours here.', route: '/settings', target: '[data-tour="nav-settings"]' },
-      { icon: SettingsIcon, title: 'Find each section', body: 'These tabs group your setup: school details, schedule, appearance and more.', route: '/settings', target: '[data-tour="settings-tabs"]' },
+      { icon: SettingsIcon, title: 'Settings & branding', body: 'Open Settings any time from this gear icon. Set your academy name, logo, colours, fee mode and working hours.', route: '/dashboard', target: '[data-tour="header-settings"]' },
+      { icon: SettingsIcon, title: 'Find each section', body: 'Settings opens full screen. These tabs on the left group your setup: school details, schedule, appearance and more. Close returns you here.', route: '/settings', target: '[data-tour="settings-tabs"]' },
     ],
   },
   parent: {

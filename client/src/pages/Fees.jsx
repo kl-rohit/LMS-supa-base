@@ -168,18 +168,20 @@ export default function Fees() {
     }
     try {
       setSavingFee(true);
-      const dateObj = new Date(feeForm.date);
       // Discount stored as a negative AdditionalFees amount.
       const rawAmount = Math.abs(Number(feeForm.amount));
       const signedAmount = feeForm.adjustment_type === 'discount' ? -rawAmount : rawAmount;
+      // The fee belongs to the billing month currently being viewed (same as the
+      // auto-generated shortfall fee), so it appears right away after saving.
+      // feeForm.date stays as the literal record date.
       await api.post('/fees/additional', {
         // Send IDs as strings to preserve Catalyst ROWID precision (17-digit).
         student_ids: feeForm.student_ids.map(String),
         description: feeForm.description,
         amount: signedAmount,
         fee_date: feeForm.date,
-        month: dateObj.getMonth() + 1,
-        year: dateObj.getFullYear(),
+        month: selectedMonth,
+        year: selectedYear,
       });
       const label = feeForm.adjustment_type === 'discount' ? 'discount' : 'additional fee';
       toast.success(`${label.charAt(0).toUpperCase() + label.slice(1)} applied for ${feeForm.student_ids.length} student(s)`);

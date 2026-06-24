@@ -38,7 +38,9 @@ async function makeQrDataUrl(text) {
 //     show_logo, show_photo, show_signature, show_seal, show_footer,
 //     use_brand_color, accent, logo_data, signature_data, student_photo_data,
 //     contact_phone, contact_email, verify_code, verify_url }
-export async function downloadCertificate(cert) {
+// Build the jsPDF document + a suggested filename for a certificate. Shared by
+// downloadCertificate (saves it) and previewCertificate (shows it inline).
+async function buildCertificateDoc(cert) {
   const c = cert || {};
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
@@ -149,21 +151,72 @@ export async function downloadCertificate(cert) {
     } catch { /* skip bad photo */ }
   }
 
-  // Gold completion seal (bottom-left area).
+  // Gold completion seal (bottom-left area). An award medallion: a tinted
+  // disc with layered gold rings, a notched ribbon edge, ribbon tails, and a
+  // crowning star above the two text lines.
   if (c.show_seal !== false) {
     const sx = 130;
     const sy = H - 96;
+    const GOLD_TINT = [248, 236, 197];
+    const GOLD_DEEP = [166, 130, 28];
+
+    // Ribbon tails hang below the disc so the medallion reads as a hanging
+    // award. Drawn first so the disc layers over their tops.
+    doc.setFillColor(...GOLD_DEEP);
+    doc.setDrawColor(...GOLD_DEEP);
+    doc.setLineWidth(0.5);
+    doc.triangle(sx - 12, sy + 18, sx - 4, sy + 18, sx - 14, sy + 46, 'F');
+    doc.triangle(sx - 14, sy + 46, sx - 4, sy + 18, sx - 4, sy + 40, 'F');
+    doc.triangle(sx + 4, sy + 18, sx + 12, sy + 18, sx + 14, sy + 46, 'F');
+    doc.triangle(sx + 14, sy + 46, sx + 4, sy + 18, sx + 4, sy + 40, 'F');
+
+    // Notched outer edge: short radial ticks around the circumference read as
+    // a ribbon medallion's scalloped rim.
     doc.setDrawColor(...GOLD);
-    doc.setFillColor(...GOLD);
     doc.setLineWidth(2);
-    doc.circle(sx, sy, 30, 'S');
-    doc.circle(sx, sy, 24, 'S');
+    const rimOuter = 32;
+    const rimInner = 28;
+    for (let i = 0; i < 24; i += 1) {
+      const a = (i / 24) * Math.PI * 2;
+      doc.line(
+        sx + Math.cos(a) * rimInner, sy + Math.sin(a) * rimInner,
+        sx + Math.cos(a) * rimOuter, sy + Math.sin(a) * rimOuter,
+      );
+    }
+
+    // Tinted disc with a solid gold ring border for depth.
+    doc.setFillColor(...GOLD_TINT);
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(2.5);
+    doc.circle(sx, sy, 27, 'FD');
+
+    // Inner ring sets off the centre field.
+    doc.setLineWidth(1);
+    doc.circle(sx, sy, 22, 'S');
+
+    // Crowning five-point star above the text, built from a filled polygon.
+    const starPts = [];
+    const starR = 6;
+    const starCy = sy - 10;
+    for (let i = 0; i < 5; i += 1) {
+      const outerA = -Math.PI / 2 + (i / 5) * Math.PI * 2;
+      const innerA = outerA + Math.PI / 5;
+      starPts.push([sx + Math.cos(outerA) * starR, starCy + Math.sin(outerA) * starR]);
+      starPts.push([sx + Math.cos(innerA) * starR * 0.4, starCy + Math.sin(innerA) * starR * 0.4]);
+    }
+    const starDeltas = starPts.slice(1).map((p, i) => [p[0] - starPts[i][0], p[1] - starPts[i][1]]);
+    doc.setFillColor(...GOLD_DEEP);
+    doc.setDrawColor(...GOLD_DEEP);
+    doc.setLineWidth(0.3);
+    doc.lines(starDeltas, starPts[0][0], starPts[0][1], [1, 1], 'F', true);
+
+    // Two text lines centred in the disc with airy all-caps spacing.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.setTextColor(...GOLD);
-    doc.text('CERTIFIED', sx, sy - 2, { align: 'center' });
-    doc.setFontSize(7);
-    doc.text('COMPLETION', sx, sy + 9, { align: 'center' });
+    doc.setTextColor(...GOLD_DEEP);
+    doc.text('CERTIFIED', sx, sy + 4, { align: 'center', charSpace: 1.2 });
+    doc.setFontSize(6.5);
+    doc.text('COMPLETION', sx, sy + 14, { align: 'center', charSpace: 1 });
   }
 
   // Signature image + signatory name (bottom-right area).
@@ -219,6 +272,12 @@ export async function downloadCertificate(cert) {
 
   const safe = String(c.course_name || 'course').replace(/[^\w\d\- ]+/g, '').slice(0, 60).trim();
   const filename = `Certificate - ${safe || 'course'}.pdf`;
+  return { doc, filename };
+}
+
+// Build a certificate and trigger a download.
+export async function downloadCertificate(cert) {
+  const { doc, filename } = await buildCertificateDoc(cert);
 
   // doc.save() works on desktop, but inside mobile browsers and in-app webviews
   // a blob download is often dropped silently. So build the blob ourselves and
@@ -243,4 +302,15 @@ export async function downloadCertificate(cert) {
     doc.save(filename);
     return true;
   }
+}
+
+// Build a certificate and return a blob URL the caller can show inline (e.g. in
+// an iframe modal or a new tab) without triggering a download. The caller owns
+// the URL and should revoke it with URL.revokeObjectURL when done. Returns
+// { url, filename }.
+export async function previewCertificate(cert) {
+  const { doc, filename } = await buildCertificateDoc(cert);
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  return { url, filename };
 }

@@ -14,7 +14,15 @@ async function requireParent(req, res, next) {
       req,
       `SELECT * FROM Students WHERE Students.login_user_id = ${q(userId)}`
     );
-    const student = unwrap(rows, 'Students')[0];
+    const students = unwrap(rows, 'Students');
+    // A parent can be linked to students in more than one academy. The active
+    // academy arrives as ?org=<id> (the client persists the user's pick); pick
+    // the linked student in that academy when present, else the first link.
+    const requested = req.query?.org ? String(req.query.org).trim() : '';
+    const requestedId = /^\d+$/.test(requested) ? Number(requested) : null;
+    const student =
+      (requestedId && students.find((s) => Number(s.org_id) === requestedId)) ||
+      students[0];
     if (!student) {
       return res.status(403).json({ error: 'No student linked to this account' });
     }

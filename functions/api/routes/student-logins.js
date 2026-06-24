@@ -60,32 +60,62 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'A login already exists for this student' });
     }
 
-    // Create the Catalyst user via admin-scoped userManagement.
+    // Find or create the Catalyst user. A parent may already have an account
+    // because they are linked in ANOTHER academy (one parent can belong to
+    // several academies) or are also staff somewhere. In that case registerUser
+    // fails with an "already exists" error, so we fall back to looking the user
+    // up by email and reuse their existing account — they keep their current
+    // password and simply gain access to this academy too. (Same approach the
+    // teacher-invite flow in organization.js uses.)
+    const normalizedEmail = String(email).trim().toLowerCase();
     const adminApp = catalyst.initialize(req, { scope: 'admin' });
     const userDetails = {
       email_id: email,
       first_name: first_name || student.parent_name || student.name || 'Parent',
       last_name: last_name || '',
     };
-    let catalystUser;
+    let userId = null;
+    let reusedExisting = false;
     try {
-      catalystUser = await adminApp.userManagement().registerUser(userDetails);
+      const created = await adminApp.userManagement().registerUser(userDetails);
+      userId = created?.user_id || created?.user_details?.user_id || created?.userId;
     } catch (e1) {
       try {
-        catalystUser = await adminApp.userManagement().registerUser({ platform_type: 'web' }, userDetails);
+        const created = await adminApp.userManagement().registerUser({ platform_type: 'web' }, userDetails);
+        userId = created?.user_id || created?.user_details?.user_id || created?.userId;
       } catch (e2) {
-        return res.status(500).json({
-          error: 'Failed to create Catalyst user',
-          detail: `${e1.message} / fallback: ${e2.message}`,
-        });
+        // Likely already a Catalyst user (member of another academy). Look them
+        // up by email and link that existing account to this student.
+        try {
+          const userList = await adminApp.userManagement().getAllUsers();
+          const list = Array.isArray(userList) ? userList : (userList?.data || []);
+          const found = list.find((u) =>
+            String(u?.email_id || u?.email || '').toLowerCase() === normalizedEmail
+          );
+          if (found) {
+            userId = found.user_id || found.userId;
+            reusedExisting = true;
+          }
+        } catch { /* lookup failed — fall through to the error below */ }
+        if (!userId) {
+          return res.status(500).json({
+            error: 'Could not create or find a Catalyst user for this email',
+            detail: `${e1.message} / fallback: ${e2.message}`,
+          });
+        }
       }
     }
-    const userId =
-      catalystUser?.user_id ||
-      catalystUser?.user_details?.user_id ||
-      catalystUser?.userId;
     if (!userId) {
-      return res.status(500).json({ error: 'Catalyst did not return a user_id', detail: JSON.stringify(catalystUser) });
+      return res.status(500).json({ error: 'Catalyst did not return a user_id' });
+    }
+
+    // If we're reusing an existing account, make sure it is enabled — it may
+    // have been disabled when the parent was removed from another academy.
+    // Best-effort: a no-op if the account is already active.
+    if (reusedExisting) {
+      try {
+        await adminApp.userManagement().updateUserStatus(String(userId), 'enable');
+      } catch { /* already enabled, or status change not permitted — ignore */ }
     }
 
     const updated = await update(req, 'Students', student_id, {
@@ -100,7 +130,10 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({
       login: toLogin(updated),
-      message: 'Invitation email sent. Parent will set their password from the email link.',
+      reused_existing: reusedExisting,
+      message: reusedExisting
+        ? 'Linked to the parent\'s existing account. They can sign in with their current password and switch to this academy from the academy menu.'
+        : 'Invitation email sent. Parent will set their password from the email link.',
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create login', detail: e.message });
@@ -146,12 +179,29 @@ router.delete('/:id', async (req, res) => {
     if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Student not found' });
     if (!existing.login_user_id) return res.status(404).json({ error: 'No login for this student' });
 
-    // Best-effort disable on Catalyst (don't fail the row update if this errors)
+    // One parent can be linked across several academies (the SAME Catalyst
+    // user_id appears on a Students row in each). Disabling the Catalyst account
+    // here would lock them out of those other academies too. So only disable the
+    // account when this is their LAST link anywhere; otherwise just unlink it
+    // from this student and leave the account active for the others.
+    let stillLinkedElsewhere = false;
     try {
-      const adminApp = catalyst.initialize(req, { scope: 'admin' });
-      await adminApp.userManagement().updateUserStatus(existing.login_user_id, 'disable');
-    } catch (e) {
-      console.error('Failed to disable Catalyst user', existing.login_user_id, e.message);
+      const others = await zcql(
+        req,
+        `SELECT ROWID FROM Students WHERE Students.login_user_id = '${String(existing.login_user_id).replace(/'/g, "''")}'`
+      );
+      stillLinkedElsewhere = unwrap(others, 'Students')
+        .some((s) => Number(s.ROWID) !== Number(req.params.id));
+    } catch { /* if the check fails, err on the safe side and skip the disable */ }
+
+    if (!stillLinkedElsewhere) {
+      // Best-effort disable on Catalyst (don't fail the row update if this errors)
+      try {
+        const adminApp = catalyst.initialize(req, { scope: 'admin' });
+        await adminApp.userManagement().updateUserStatus(existing.login_user_id, 'disable');
+      } catch (e) {
+        console.error('Failed to disable Catalyst user', existing.login_user_id, e.message);
+      }
     }
 
     await update(req, 'Students', req.params.id, {
@@ -159,7 +209,11 @@ router.delete('/:id', async (req, res) => {
       login_user_id: '',
       login_status: '',
     });
-    res.json({ message: 'Login removed' });
+    res.json({
+      message: stillLinkedElsewhere
+        ? 'Login removed from this academy. The parent keeps access to their other academies.'
+        : 'Login removed.',
+    });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete login', detail: e.message });
   }

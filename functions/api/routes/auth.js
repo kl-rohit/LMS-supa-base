@@ -21,8 +21,23 @@ router.get('/me', async (req, res) => {
   // them active. They get here only by successfully logging in, which
   // implies they accepted the email invite.
   try { await activateMemberships(req, user.user_id); } catch {}
-  const app_role = await resolveAppRole(req, user);
-  res.json({ user: { ...publicUser(user), app_role } });
+
+  // A user can belong to several academies — as staff in one and as a parent
+  // in another (their relationship is per academy, not global). So we resolve
+  // the role FOR THE ACTIVE ACADEMY. The active academy comes from ?org=<id>
+  // (the client persists the user's pick and sends it on every call). When it
+  // is missing or not one of theirs, we fall back to their first academy.
+  let orgs = [];
+  try { orgs = await listMyOrgs(req, user); } catch { orgs = []; }
+
+  const requested = req.query?.org ? String(req.query.org).trim() : '';
+  const requestedId = /^\d+$/.test(requested) ? Number(requested) : null;
+  const match = requestedId && orgs.find((o) => Number(o.org_id) === requestedId);
+  const active = match || orgs[0] || null;
+  const active_org_id = active ? Number(active.org_id) : null;
+
+  const app_role = await resolveAppRole(req, user, active);
+  res.json({ user: { ...publicUser(user), app_role, active_org_id, orgs } });
 });
 
 // POST /api/auth/logout
@@ -174,22 +189,30 @@ function slugify(s) {
     .slice(0, 100);
 }
 
-// Decide where a logged-in user belongs, based on APP DATA — not the Catalyst
-// role. (Both academy owners and parents are created as Catalyst "App User";
-// public signup never assigned "App Administrator", so the role string can't be
-// trusted to tell admin from parent.) Resolution order:
-//   1. Catalyst "App Administrator"        → 'admin'  (the platform owner)
-//   2. Active OrgMembership owner/admin/teacher → 'admin'  (academy staff)
-//   3. A Students row links this user_id   → 'parent'
-//   4. Otherwise                           → 'unlinked' (signed in, nothing attached)
-async function resolveAppRole(req, user) {
+// Decide where a logged-in user belongs FOR A GIVEN ACADEMY, based on APP DATA
+// — not the Catalyst role. (Both academy owners and parents are created as
+// Catalyst "App User"; the role string can't be trusted to tell admin from
+// parent.) The same user can be staff in academy A and a parent in academy B,
+// so the role is resolved against the ACTIVE academy (`active`, one entry from
+// listMyOrgs). Resolution order:
+//   1. Catalyst "App Administrator"     → 'admin'  (the platform owner)
+//   2. active academy context 'staff'   → 'admin'  (owner/admin/teacher there)
+//   3. active academy context 'parent'  → 'parent' (linked student there)
+//   4. No active academy → fall back to a global scan (staff anywhere → admin,
+//      parent link anywhere → parent), then 'unlinked'.
+async function resolveAppRole(req, user, active) {
   const catalystRole = user?.role_details?.role_name || user?.role || '';
   if (catalystRole === 'App Administrator') return 'admin';
 
   const userId = String(user?.user_id || '');
   if (!userId) return 'unlinked';
 
-  // Academy staff? Any active membership with a staff role makes them an admin.
+  // Preferred path: decide from the active academy's context.
+  if (active && active.context) {
+    return active.context === 'staff' ? 'admin' : 'parent';
+  }
+
+  // Fallback (no active academy resolved). Academy staff anywhere?
   try {
     const rows = await zcql(
       req,
@@ -202,7 +225,7 @@ async function resolveAppRole(req, user) {
     if (staff) return 'admin';
   } catch { /* table may not exist in un-bootstrapped envs — fall through */ }
 
-  // Linked parent?
+  // Linked parent anywhere?
   try {
     const rows = await zcql(
       req,
@@ -212,6 +235,71 @@ async function resolveAppRole(req, user) {
   } catch { /* ignore */ }
 
   return 'unlinked';
+}
+
+// List every academy this user can enter, unioning the two sources of
+// belonging:
+//   - OrgMemberships (active staff rows)          → context 'staff'
+//   - Students.login_user_id links (per org)      → context 'parent'
+// Each entry: { org_id, org_name, context, role }. A user could appear in
+// both lists for the same org (rare); we keep both so the switcher can show
+// each hat, keyed by org_id + context. Names come from one Organizations
+// lookup. Best-effort: any source that errors just contributes nothing.
+async function listMyOrgs(req, user) {
+  const userId = String(user?.user_id || '');
+  if (!userId) return [];
+  const out = [];
+  const orgIds = new Set();
+
+  // Staff memberships.
+  try {
+    const rows = await zcql(
+      req,
+      `SELECT org_id, role, status FROM OrgMemberships WHERE OrgMemberships.user_id = ${q(userId)}`
+    );
+    for (const m of unwrap(rows, 'OrgMemberships').map(normalize)) {
+      if (m.status !== 'active') continue;
+      if (!['owner', 'admin', 'teacher'].includes(String(m.role))) continue;
+      const id = Number(m.org_id);
+      if (!id) continue;
+      out.push({ org_id: id, org_name: '', context: 'staff', role: String(m.role) });
+      orgIds.add(id);
+    }
+  } catch { /* no memberships table → skip */ }
+
+  // Parent links (one row per linked student; collapse to one entry per org).
+  try {
+    const rows = await zcql(
+      req,
+      `SELECT org_id, login_status FROM Students WHERE Students.login_user_id = ${q(userId)}`
+    );
+    const seenParentOrgs = new Set();
+    for (const s of unwrap(rows, 'Students').map(normalize)) {
+      if (s.login_status && s.login_status !== 'active') continue;
+      const id = Number(s.org_id);
+      if (!id || seenParentOrgs.has(id)) continue;
+      seenParentOrgs.add(id);
+      out.push({ org_id: id, org_name: '', context: 'parent', role: 'parent' });
+      orgIds.add(id);
+    }
+  } catch { /* ignore */ }
+
+  // Attach academy names in one pass.
+  if (orgIds.size) {
+    try {
+      const list = [...orgIds].join(',');
+      const rows = await zcql(req, `SELECT ROWID, name FROM Organizations WHERE ROWID IN (${list})`);
+      const nameById = {};
+      for (const o of unwrap(rows, 'Organizations')) {
+        nameById[Number(o.ROWID ?? o.id)] = o.name || '';
+      }
+      for (const e of out) e.org_name = nameById[e.org_id] || `Academy ${e.org_id}`;
+    } catch {
+      for (const e of out) e.org_name = e.org_name || `Academy ${e.org_id}`;
+    }
+  }
+
+  return out;
 }
 
 // Flip any 'invited' OrgMemberships for this user to 'active'.

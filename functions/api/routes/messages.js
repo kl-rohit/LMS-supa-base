@@ -82,7 +82,15 @@ router.post('/generate-absence-alert', async (req, res) => {
     const filter = onlyStudent ? ` AND Students.ROWID = ${onlyStudent}` : '';
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.status = 'active' AND Students.org_id = ${Number(req.orgId)}${filter}`);
     const students = unwrap(studentRows, 'Students');
+
+    // Reuse an existing pending (unsent) absence_alert per student instead of
+    // stacking a second draft, so a parent never receives the same alert twice.
+    const pendingRows = await zcqlAll(req, `SELECT ROWID, student_id FROM Messages WHERE Messages.org_id = ${Number(req.orgId)} AND Messages.message_type = 'absence_alert' AND Messages.is_sent = 0`, 'Messages');
+    const pendingByStudent = new Map();
+    for (const m of unwrap(pendingRows, 'Messages')) pendingByStudent.set(String(m.student_id), m.ROWID);
+
     let created = 0;
+    let refreshed = 0;
     for (const s of students) {
       try {
         const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
@@ -96,20 +104,30 @@ router.post('/generate-absence-alert', async (req, res) => {
             count: streak,
             ...schoolCtx,
           });
-          await insert(req, 'Messages', {
-            student_id: String(s.ROWID),
-            parent_name: s.parent_name || '',
-            mobile_number: s.mobile_number || '',
-            message: text,
-            message_type: 'absence_alert',
-            is_sent: 0,
-            org_id: Number(req.orgId),
-          });
-          created++;
+          const existingId = pendingByStudent.get(String(s.ROWID));
+          if (existingId) {
+            await update(req, 'Messages', existingId, {
+              message: text,
+              parent_name: s.parent_name || '',
+              mobile_number: s.mobile_number || '',
+            });
+            refreshed++;
+          } else {
+            await insert(req, 'Messages', {
+              student_id: String(s.ROWID),
+              parent_name: s.parent_name || '',
+              mobile_number: s.mobile_number || '',
+              message: text,
+              message_type: 'absence_alert',
+              is_sent: 0,
+              org_id: Number(req.orgId),
+            });
+            created++;
+          }
         }
       } catch {}
     }
-    res.json({ created });
+    res.json({ created, refreshed });
   } catch (e) {
     res.status(500).json({ error: 'Failed to generate absence alerts', detail: e.message });
   }

@@ -167,11 +167,11 @@ export default function NotificationBell({
                       <MIcon className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className={`text-sm truncate ${n.read ? 'text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-gray-100'}`}>{n.title}</p>
-                        {!n.read && <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />}
+                      <div className="flex items-start gap-2">
+                        <p className={`text-sm break-words ${n.read ? 'text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-gray-100'}`}>{n.title}</p>
+                        {!n.read && <span className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
                       </div>
-                      {n.body && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 whitespace-pre-wrap">{n.body}</p>}
+                      {n.body && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words whitespace-pre-wrap">{n.body}</p>}
                       <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                     {!n.read && (

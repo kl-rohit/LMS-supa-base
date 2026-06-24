@@ -7,6 +7,17 @@ const { insert, getById, update, remove, zcql, unwrap, normalize, safeId } = req
 const VALID_TYPES = ['online', 'offline', 'offline_group', 'online_group'];
 const VALID_EXCEPTION_STATUS = ['cancelled', 'moved'];
 const isGroupType = (t) => t === 'offline_group' || t === 'online_group';
+const isOnlineType = (t) => t === 'online' || t === 'online_group';
+
+// Online classes carry an optional meeting link (Google Meet / Zoom / Zoho
+// Meet). We store whatever the academy pastes; only online types keep it.
+// Length-capped so a bad paste can't blow past the Classes.meeting_link
+// (Text) column. Offline types always clear it.
+function cleanMeetingLink(raw) {
+  if (raw === undefined || raw === null) return undefined; // caller decides default
+  const s = String(raw).trim();
+  return s ? s.slice(0, 500) : '';
+}
 
 // Schedule exceptions are stored as a JSON array in the Classes.exceptions
 // (Multi-line Text) column — one entry per overridden date, keyed by `date`:
@@ -168,7 +179,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/classes
 router.post('/', async (req, res) => {
   try {
-    const { name, group_id, student_id, student_ids, class_type, day_of_week, start_time, end_time, is_active } = req.body;
+    const { name, group_id, student_id, student_ids, class_type, day_of_week, start_time, end_time, is_active, meeting_link } = req.body;
     if (!name || class_type === undefined || day_of_week === undefined || !start_time || !end_time) {
       return res.status(400).json({ error: 'name, class_type, day_of_week, start_time, end_time are required' });
     }
@@ -192,6 +203,7 @@ router.post('/', async (req, res) => {
       start_time, end_time,
       duration_hours,
       is_active: is_active !== undefined ? parseInt(is_active) : 1,
+      meeting_link: isOnlineType(class_type) ? (cleanMeetingLink(meeting_link) || '') : '',
       org_id: Number(req.orgId),
     };
     const cls = await insert(req, 'Classes', baseRow);
@@ -219,7 +231,7 @@ router.put('/:id', async (req, res) => {
     if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
       return res.status(404).json({ error: 'Class not found' });
     }
-    const { name, group_id, student_id, student_ids, class_type, day_of_week, start_time, end_time, is_active } = req.body;
+    const { name, group_id, student_id, student_ids, class_type, day_of_week, start_time, end_time, is_active, meeting_link } = req.body;
     const newType = class_type ?? existing.class_type;
     if (!VALID_TYPES.includes(newType)) return res.status(400).json({ error: 'invalid class_type' });
     const finalStart = start_time ?? existing.start_time;
@@ -234,6 +246,11 @@ router.put('/:id', async (req, res) => {
       is_active: is_active !== undefined ? parseInt(is_active) : existing.is_active,
       group_id: isGroupType(newType) ? String(group_id ?? existing.group_id) : null,
       student_id: !isGroupType(newType) && student_id !== undefined ? (student_id ? String(student_id) : null) : (isGroupType(newType) ? null : existing.student_id),
+      // Online types keep their link (new value if given, else preserve);
+      // switching to an offline type clears it.
+      meeting_link: isOnlineType(newType)
+        ? (cleanMeetingLink(meeting_link) ?? (existing.meeting_link || ''))
+        : '',
     };
     const updated = await update(req, 'Classes', req.params.id, patch);
     if (Array.isArray(student_ids)) {

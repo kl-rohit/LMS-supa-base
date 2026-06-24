@@ -45,6 +45,7 @@ const Assignments    = lazy(() => import('./pages/Assignments'));
 const QuestionPapers = lazy(() => import('./pages/QuestionPapers'));
 const Platform       = lazy(() => import('./pages/Platform'));
 const Help           = lazy(() => import('./pages/Help'));
+const VerifyCertificate = lazy(() => import('./pages/VerifyCertificate'));
 
 import Loader from './components/Loader';
 import OnboardingTour from './components/OnboardingTour';
@@ -260,6 +261,17 @@ export default function App() {
             the Platform Admin page). The public signup form is retired — any
             stale /signup link just bounces to sign-in. */}
         <Route path="/signup" element={<Navigate to="/login" replace />} />
+        {/* PUBLIC certificate verification — no login. Mounted before the
+            RequireAuth routes so anyone with a certificate QR / link can
+            confirm it is genuine. Backed by the no-auth /api/verify route. */}
+        <Route
+          path="/verify/:id"
+          element={
+            <Suspense fallback={<Loader />}>
+              <VerifyCertificate />
+            </Suspense>
+          }
+        />
         <Route
           path="/portal/*"
           element={

@@ -633,6 +633,7 @@ export default function CoursePlayer() {
     try {
       const data = await api.get(`/portal/courses/${courseId}/certificate`);
       await downloadCertificate(data.certificate);
+      toast.success('Certificate ready — check your downloads or the opened tab.');
     } catch (err) {
       const remaining = err?.response?.data?.remaining;
       if (remaining > 0) {

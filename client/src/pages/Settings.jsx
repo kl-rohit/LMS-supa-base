@@ -32,6 +32,9 @@ import {
   Lock,
   DatabaseBackup,
   AlertTriangle,
+  Award,
+  Upload,
+  QrCode,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -83,6 +86,25 @@ const EMPTY_SETTINGS = {
   'appearance.mode':   'light',
   // Working hours — JSON array (see utils/workingHours.js). Empty → defaults.
   'schedule.working_hours': '',
+  // Online classes — provider label + a single fallback join link reused by
+  // every online class that has no link of its own.
+  'online.provider':     'gmeet',
+  'online.default_link': '',
+  // Certificate customisation — toggles are 'true'/'false' strings; *_key hold
+  // a Stratus object key written by the asset-upload endpoint.
+  'certificate.enabled':        'true',
+  'certificate.title':          'Certificate of Completion',
+  'certificate.body':           'has successfully completed the course',
+  'certificate.signatory_name': '',
+  'certificate.show_logo':       'true',
+  'certificate.show_photo':      'false',
+  'certificate.show_signature':  'true',
+  'certificate.show_seal':       'true',
+  'certificate.show_footer':     'true',
+  'certificate.use_brand_color': 'true',
+  'certificate.verify_enabled':  'true',
+  'certificate.logo_key':        '',
+  'certificate.signature_key':   '',
 };
 
 // Extract just the module flags that gate the sidebar nav, so we can tell when
@@ -99,6 +121,7 @@ const TABS = [
   { id: 'appearance',   label: 'Appearance',   icon: Palette },
   { id: 'billing',      label: 'Billing',      icon: IndianRupee },
   { id: 'modules',      label: 'Modules',      icon: ToggleLeft },
+  { id: 'certificate',  label: 'Certificate',  icon: Award },
   { id: 'templates',    label: 'Templates',    icon: MessageSquare },
   { id: 'organization', label: 'Organization', icon: ShieldCheck },
   { id: 'migration',    label: 'Backup & migrate', icon: DatabaseBackup },
@@ -218,6 +241,7 @@ export default function Settings() {
       {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
       {activeTab === 'billing'      && <BillingTab form={form} set={set} setForm={setForm} />}
       {activeTab === 'modules'      && <ModulesTab form={form} set={set} plan={plan} entitlements={entitlements} />}
+      {activeTab === 'certificate'  && <CertificateTab form={form} set={set} setForm={setForm} />}
       {activeTab === 'templates'    && <TemplatesTab />}
       {activeTab === 'organization' && <OrganizationTab />}
       {activeTab === 'migration'    && <DataMigration />}
@@ -333,7 +357,12 @@ function ScheduleTab({ form, setForm }) {
     writeBack(days.map((d) => ({ ...d, start: src.start, end: src.end })));
   };
 
+  const provider = form['online.provider'] || 'gmeet';
+  const setOnline = (key) => (e) =>
+    setForm((f) => ({ ...f, [key]: e?.target?.value ?? e }));
+
   return (
+    <>
     <div className="card space-y-4">
       <div>
         <h3 className="text-base font-semibold text-gray-900">Working hours</h3>
@@ -395,12 +424,99 @@ function ScheduleTab({ form, setForm }) {
         ))}
       </div>
     </div>
+
+    <div className="card space-y-4 mt-6">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900">Online classes</h3>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Pick the tool you use for online classes, then paste a default join
+          link. Any online class without its own link will use this one, so
+          parents always get a Join button.
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Meeting tool</label>
+        <select
+          value={provider}
+          onChange={setOnline('online.provider')}
+          className="select-field"
+        >
+          <option value="gmeet">Google Meet</option>
+          <option value="zoom">Zoom</option>
+          <option value="zoho_meet">Zoho Meet</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Default meeting link</label>
+        <input
+          type="url"
+          value={form['online.default_link'] || ''}
+          onChange={setOnline('online.default_link')}
+          placeholder="https://meet.google.com/abc-defg-hij"
+          className="input-field"
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Used for any online class that has no link of its own. A per-class
+          link set on the class always takes priority.
+        </p>
+      </div>
+    </div>
+    </>
   );
 }
 
 function BillingTab({ form, set, setForm }) {
   const feeMode = form['billing.fee_mode'] || 'per_class';
   const perMonth = feeMode === 'per_month';
+
+  // ---- Payment QR (static UPI per academy) ----
+  // Parents see a QR on their portal Fees tab. The academy can either set a UPI
+  // id (the portal builds a scan-to-pay QR from it) or upload a payment-QR
+  // image. The uploaded image is stored in Stratus via the asset endpoint
+  // (kind 'fee_qr'); its key lands in form['fees.qr_key'].
+  const [qrData, setQrData] = useState('');     // local preview of just-picked image
+  const [busyQr, setBusyQr] = useState(false);
+  const qrRef = useRef(null);
+  const hasQr = !!form['fees.qr_key'] || !!qrData;
+
+  const pickQr = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please pick an image file'); return; }
+    if (file.size > 8 * 1024 * 1024)     { toast.error('Image must be 8MB or smaller'); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result || '');
+      setQrData(dataUrl);
+      try {
+        setBusyQr(true);
+        const res = await api.post('/settings/app/certificate-asset', { kind: 'fee_qr', data: dataUrl });
+        setForm((f) => ({ ...f, 'fees.qr_key': res?.object_key || '' }));
+        if (qrRef.current) qrRef.current.value = '';
+        toast.success('Payment QR uploaded');
+      } catch (err) {
+        toast.error('Upload failed: ' + err.message);
+        setQrData('');
+      } finally {
+        setBusyQr(false);
+      }
+    };
+    reader.onerror = () => toast.error('Could not read the file');
+    reader.readAsDataURL(file);
+  };
+
+  const removeQr = async () => {
+    try {
+      await api.delete('/settings/app/certificate-asset?kind=fee_qr');
+      setForm((f) => ({ ...f, 'fees.qr_key': '' }));
+      setQrData('');
+      toast.success('Payment QR removed');
+    } catch (err) {
+      toast.error('Could not remove: ' + err.message);
+    }
+  };
 
   // Class modes are stored as a CSV ('online,offline,group'). Parse to a set
   // for the checkboxes; write back as CSV preserving a stable order.
@@ -540,6 +656,67 @@ function BillingTab({ form, set, setForm }) {
             </Field>
           </div>
         )}
+      </div>
+
+      {/* Payment QR — static UPI per academy, shown to parents on the portal */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <QrCode className="w-5 h-5 text-indigo-600" />
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Payment QR for parents</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Parents see a scan-to-pay QR on their Fees tab. Enter your UPI id
+              and we build the QR for you, or upload your own payment QR image.
+            </p>
+          </div>
+        </div>
+
+        <Field label="UPI id" icon={IndianRupee} hint="e.g. academy@okhdfcbank. The portal builds a QR that opens any UPI app with the amount due prefilled.">
+          <input
+            type="text"
+            className="input-field"
+            value={form['fees.upi_id'] || ''}
+            onChange={set('fees.upi_id')}
+            placeholder="academy@okhdfcbank"
+          />
+        </Field>
+
+        <Field label="Payee name" icon={PenLine} hint="The name shown in the parent's UPI app when they scan.">
+          <input
+            type="text"
+            className="input-field"
+            value={form['fees.payee_name'] || ''}
+            onChange={set('fees.payee_name')}
+            placeholder="Your Academy"
+          />
+        </Field>
+
+        <Field label="Note for parents" icon={PenLine} hint="Optional line shown under the QR, e.g. a reference to add when paying.">
+          <input
+            type="text"
+            className="input-field"
+            value={form['fees.note'] || ''}
+            onChange={set('fees.note')}
+            placeholder="Add your child's name as the payment reference"
+          />
+        </Field>
+
+        <div>
+          <p className="text-sm font-medium text-gray-700 mb-2">Or upload your own QR image</p>
+          <AssetUploader
+            label="Payment QR image"
+            icon={QrCode}
+            uploaded={hasQr}
+            previewSrc={qrData}
+            busy={busyQr}
+            inputRef={qrRef}
+            onPick={pickQr}
+            onRemove={removeQr}
+          />
+          <p className="text-xs text-gray-400 mt-2">
+            An uploaded image is shown as-is. If you set both, the upload takes priority.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -1166,6 +1343,259 @@ function ModuleToggle({ label, hint, on, onClick, locked = false }) {
         <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
       </span>
     </button>
+  );
+}
+
+// ----- Certificate customisation --------------------------------------------
+
+function CertificateTab({ form, set, setForm }) {
+  const isOn = (k) => form[k] === 'true' || form[k] === true;
+  const toggle = (k) => () => set(k)({ target: { value: isOn(k) ? 'false' : 'true' } });
+
+  // Local previews of the just-picked images (data URLs). Used to render the
+  // thumbnail AND embedded into the live preview PDF (the saved key only yields
+  // a server-side data URL on the real download).
+  const [logoData, setLogoData] = useState('');
+  const [sigData, setSigData] = useState('');
+  const [busyLogo, setBusyLogo] = useState(false);
+  const [busySig, setBusySig] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const logoRef = useRef(null);
+  const sigRef = useRef(null);
+
+  const pick = (kind, setData, ref) => (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please pick an image file'); return; }
+    if (file.size > 8 * 1024 * 1024)     { toast.error('Image must be 8MB or smaller'); return; }
+    const reader = new FileReader();
+    reader.onload  = () => {
+      const dataUrl = String(reader.result || '');
+      setData(dataUrl);
+      upload(kind, dataUrl, ref);
+    };
+    reader.onerror = () => toast.error('Could not read the file');
+    reader.readAsDataURL(file);
+  };
+
+  const upload = async (kind, dataUrl, ref) => {
+    const setBusy = kind === 'logo' ? setBusyLogo : setBusySig;
+    try {
+      setBusy(true);
+      const res = await api.post('/settings/app/certificate-asset', { kind, data: dataUrl });
+      // Persist the returned key into the form so the next Save keeps it (and
+      // never clobbers it back to empty).
+      setForm((f) => ({ ...f, [`certificate.${kind}_key`]: res?.object_key || '' }));
+      if (ref?.current) ref.current.value = '';
+      toast.success(`${kind === 'logo' ? 'Logo' : 'Signature'} uploaded`);
+    } catch (err) {
+      toast.error('Upload failed: ' + err.message);
+      if (kind === 'logo') setLogoData(''); else setSigData('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeAsset = async (kind) => {
+    try {
+      await api.delete(`/settings/app/certificate-asset?kind=${kind}`);
+      setForm((f) => ({ ...f, [`certificate.${kind}_key`]: '' }));
+      if (kind === 'logo') setLogoData(''); else setSigData('');
+      toast.success(`${kind === 'logo' ? 'Logo' : 'Signature'} removed`);
+    } catch (err) {
+      toast.error('Could not remove: ' + err.message);
+    }
+  };
+
+  const runPreview = async () => {
+    try {
+      setPreviewing(true);
+      const { downloadCertificate } = await import('../utils/certificate');
+      const verifyOn = isOn('certificate.verify_enabled');
+      await downloadCertificate({
+        student_name: 'Sample Student',
+        course_name: 'Sample Course',
+        academy_name: form['school.name'] || 'Your Academy',
+        lessons_total: 8,
+        completed_at: new Date().toISOString(),
+        certificate_id: 'CERT-PREVIEW',
+        title: form['certificate.title'] || 'Certificate of Completion',
+        body: form['certificate.body'] || 'has successfully completed the course',
+        signatory_name: form['certificate.signatory_name'] || '',
+        show_logo: isOn('certificate.show_logo'),
+        show_photo: false, // no sample photo in preview
+        show_signature: isOn('certificate.show_signature'),
+        show_seal: isOn('certificate.show_seal'),
+        show_footer: isOn('certificate.show_footer'),
+        use_brand_color: isOn('certificate.use_brand_color'),
+        accent: form['appearance.accent'] || 'default',
+        logo_data: isOn('certificate.show_logo') ? logoData : '',
+        signature_data: isOn('certificate.show_signature') ? sigData : '',
+        student_photo_data: '',
+        contact_phone: form['school.contact_phone'] || '',
+        contact_email: form['school.contact_email'] || '',
+        verify_code: verifyOn ? 'preview' : '',
+        verify_url: verifyOn ? '/app/verify/CERT-PREVIEW?c=preview' : '',
+      });
+    } catch (err) {
+      toast.error('Could not build preview: ' + err.message);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const hasLogo = !!form['certificate.logo_key'] || !!logoData;
+  const hasSig = !!form['certificate.signature_key'] || !!sigData;
+
+  return (
+    <div className="space-y-5">
+      {/* Intro + master switch */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <Award className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Completion certificate</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Students download a certificate once they finish every lesson in a course. Tailor how it looks for your academy below, then use Preview to see a sample.
+        </p>
+        <div className="space-y-1">
+          <ModuleToggle
+            label="Offer certificates"
+            hint="When on, finishing a course unlocks a downloadable certificate for the student."
+            on={isOn('certificate.enabled')}
+            onClick={toggle('certificate.enabled')}
+          />
+        </div>
+      </div>
+
+      {/* Wording */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <Type className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Wording</h3>
+        </div>
+        <Field label="Title" icon={Type} hint="The big heading printed across the certificate.">
+          <input
+            type="text"
+            className="input-field"
+            value={form['certificate.title'] || ''}
+            onChange={set('certificate.title')}
+            placeholder="Certificate of Completion"
+          />
+        </Field>
+        <Field label="Body line" icon={PenLine} hint="Printed between the student name and the course name.">
+          <input
+            type="text"
+            className="input-field"
+            value={form['certificate.body'] || ''}
+            onChange={set('certificate.body')}
+            placeholder="has successfully completed the course"
+          />
+        </Field>
+        <Field label="Signatory name" icon={PenLine} hint="Printed under the signature line (e.g. the principal or head of academy).">
+          <input
+            type="text"
+            className="input-field"
+            value={form['certificate.signatory_name'] || ''}
+            onChange={set('certificate.signatory_name')}
+            placeholder="e.g. Smt. Lakshmi Rao, Principal"
+          />
+        </Field>
+      </div>
+
+      {/* Layout toggles */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <Eye className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">What to show</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">Turn each element on or off to match your academy style.</p>
+        <div className="space-y-1">
+          <ModuleToggle label="Institute logo"  hint="Your academy logo across the top of the certificate." on={isOn('certificate.show_logo')}       onClick={toggle('certificate.show_logo')} />
+          <ModuleToggle label="Student photo"   hint="The student's profile photo, when they have one on file." on={isOn('certificate.show_photo')}      onClick={toggle('certificate.show_photo')} />
+          <ModuleToggle label="Signature"       hint="The signature image above the signatory name." on={isOn('certificate.show_signature')}  onClick={toggle('certificate.show_signature')} />
+          <ModuleToggle label="Gold seal"       hint="A gold completion seal in the corner." on={isOn('certificate.show_seal')}       onClick={toggle('certificate.show_seal')} />
+          <ModuleToggle label="Academy footer"  hint="Your contact phone + email along the bottom." on={isOn('certificate.show_footer')}     onClick={toggle('certificate.show_footer')} />
+          <ModuleToggle label="Brand colour"    hint="Use your appearance accent for the border + title. Off uses classic indigo." on={isOn('certificate.use_brand_color')} onClick={toggle('certificate.use_brand_color')} />
+          <ModuleToggle label="Verification QR" hint="A QR code linking to a public page that confirms the certificate is genuine." on={isOn('certificate.verify_enabled')}  onClick={toggle('certificate.verify_enabled')} />
+        </div>
+      </div>
+
+      {/* Images */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <ImageIcon className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Images</h3>
+        </div>
+        <AssetUploader
+          label="Institute logo"
+          icon={ImageIcon}
+          uploaded={hasLogo}
+          previewSrc={logoData}
+          busy={busyLogo}
+          inputRef={logoRef}
+          onPick={pick('logo', setLogoData, logoRef)}
+          onRemove={() => removeAsset('logo')}
+        />
+        <AssetUploader
+          label="Signature image"
+          icon={PenLine}
+          uploaded={hasSig}
+          previewSrc={sigData}
+          busy={busySig}
+          inputRef={sigRef}
+          onPick={pick('signature', setSigData, sigRef)}
+          onRemove={() => removeAsset('signature')}
+        />
+      </div>
+
+      {/* Preview */}
+      <div className="card">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <QrCode className="w-5 h-5 text-indigo-600" />
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">Preview</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Download a sample certificate using your current settings.</p>
+            </div>
+          </div>
+          <button type="button" onClick={runPreview} disabled={previewing} className="btn-secondary">
+            {previewing ? <><Loader2 className="w-4 h-4 animate-spin" /> Building…</> : <><Award className="w-4 h-4" /> Preview certificate</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssetUploader({ label, icon: Icon, uploaded, previewSrc, busy, inputRef, onPick, onRemove }) {
+  return (
+    <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-14 h-14 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+          {previewSrc
+            ? <img src={previewSrc} alt={label} className="w-full h-full object-contain" />
+            : <Icon className="w-6 h-6 text-gray-300" />}
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-gray-900">{label}</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {uploaded ? 'On file' : 'No image uploaded yet'}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={busy} className="btn-secondary">
+          {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</> : <><Upload className="w-4 h-4" /> {uploaded ? 'Replace' : 'Upload'}</>}
+        </button>
+        {uploaded && (
+          <button type="button" onClick={onRemove} className="btn-secondary text-red-600">
+            <Trash2 className="w-4 h-4" /> Remove
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

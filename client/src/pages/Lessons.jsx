@@ -29,6 +29,7 @@ import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import Tooltip from '../components/Tooltip';
 import QuizEditor from '../components/QuizEditor';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters, extractDriveId } from '../utils/youtube';
@@ -1168,19 +1169,38 @@ export default function Lessons() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {courses.map((c) => (
-            <button
+            <div
               key={c.id}
-              onClick={() => { setSelectedCourse(c); setTab('lessons'); }}
-              className="card text-left hover:border-indigo-300 hover:shadow-md transition-all"
+              className="card relative hover:border-indigo-300 hover:shadow-md transition-all"
             >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <h3 className="font-semibold text-gray-900">{c.name}</h3>
-                <PlayCircle className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+              <button
+                type="button"
+                onClick={() => { setSelectedCourse(c); setTab('lessons'); }}
+                className="absolute inset-0 z-0 rounded-lg"
+                aria-label={`Open ${c.name}`}
+              />
+              <div className="relative z-10 pointer-events-none">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-gray-900">{c.name}</h3>
+                  <PlayCircle className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+                </div>
+                {c.description && (
+                  <p className="text-xs text-gray-500 line-clamp-2">{c.description}</p>
+                )}
               </div>
-              {c.description && (
-                <p className="text-xs text-gray-500 line-clamp-2">{c.description}</p>
-              )}
-            </button>
+              <div className="relative z-10 mt-3 flex justify-end">
+                <Tooltip label="Archive course">
+                  <button
+                    type="button"
+                    onClick={() => deleteCourse(c)}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    aria-label={`Archive ${c.name}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              </div>
+            </div>
           ))}
         </div>
       )}

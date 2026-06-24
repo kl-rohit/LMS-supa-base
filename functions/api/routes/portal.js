@@ -5,6 +5,8 @@
 const router = require('express').Router();
 const { getById, zcql, zcqlAll, unwrap, normalize, q, safeId, insert, update, remove: removeRow, appFor } = require('../db/catalystDb');
 const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
+const { loadAssetDataUrl } = require('../lib/orgAsset');
+const { codeFor } = require('../lib/certVerify');
 const { loadLessonQuiz, PASS_THRESHOLD } = require('./quizzes');
 const { loadAssignments } = require('./assignments');
 const { loadPapers } = require('./questionpapers');
@@ -70,6 +72,67 @@ async function loadQuizMeta(req, studentId) {
     } catch { /* table not created yet */ }
   }
   return { hasQuiz, passed };
+}
+
+// Count how far a student is through a course. Returns { total, done, remaining }.
+// Shared by the certificate endpoint and the completion-stamp helper so the
+// "fully done?" rule lives in exactly one place (lessonFullyDone above).
+async function courseCompletionStatus(req, sid, cid) {
+  const lessonRows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${cid} AND Lessons.org_id = ${Number(req.orgId)}`);
+  const lessons = unwrap(lessonRows, 'Lessons').map(normalize);
+  if (lessons.length === 0) return { total: 0, done: 0, remaining: 0 };
+
+  const progressRows = await zcql(req,
+    `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${sid} AND LessonProgress.org_id = ${Number(req.orgId)}`
+  );
+  const byLesson = {};
+  unwrap(progressRows, 'LessonProgress').forEach((p) => { const n = normalize(p); byLesson[String(n.lesson_id)] = n; });
+
+  const { hasQuiz, passed } = await loadQuizMeta(req, sid);
+  let done = 0;
+  for (const l of lessons) {
+    const progress = byLesson[String(l.id)] || null;
+    if (lessonFullyDone(l, progress, hasQuiz.has(String(l.id)), passed.has(String(l.id)))) done++;
+  }
+  return { total: lessons.length, done, remaining: lessons.length - done };
+}
+
+// Lock a one-time completion date onto the enrollment the FIRST time a course
+// is fully done — Udemy-style. Once CourseEnrollments.completed_at is set it is
+// NEVER overwritten, so the certificate always shows the real completion date
+// rather than the day the certificate button happens to be pressed.
+//
+// Idempotent + best-effort: returns the stored ISO date, or '' when the course
+// isn't complete yet. If the completed_at / completed columns don't exist in
+// this environment we degrade gracefully (caller falls back to "now").
+async function ensureCourseCompletionStamp(req, sid, cid) {
+  const sidN = safeId(sid);
+  const cidN = safeId(cid);
+  if (!sidN || !cidN) return '';
+
+  let enroll;
+  try {
+    const rows = await zcql(req,
+      `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.student_id = ${sidN} AND CourseEnrollments.course_id = ${cidN} AND CourseEnrollments.org_id = ${Number(req.orgId)}`
+    );
+    enroll = unwrap(rows, 'CourseEnrollments').map(normalize)[0];
+  } catch { return ''; }
+  if (!enroll) return '';
+
+  // Already stamped → return it untouched (the date is permanent).
+  if (enroll.completed_at) return String(enroll.completed_at);
+
+  const { total, remaining } = await courseCompletionStatus(req, sidN, cidN);
+  if (total === 0 || remaining > 0) return '';
+
+  const nowIso = new Date().toISOString();
+  try {
+    await update(req, 'CourseEnrollments', enroll.id || enroll.ROWID, { completed: true, completed_at: nowIso });
+  } catch (e) {
+    // Columns not added yet — don't fail the request; just report the date.
+    console.error('completion stamp failed (add CourseEnrollments.completed + completed_at?):', e.message);
+  }
+  return nowIso;
 }
 
 // GET /api/portal/me — info about the linked student
@@ -160,11 +223,9 @@ router.get('/fees', async (req, res) => {
     // Fee mode decides how the class fee is figured:
     //   per_class → sum of each attended class's fee_charged (default)
     //   per_month → a flat monthly_fee on the student record
-    let feeMode = 'per_class';
-    try {
-      const appSettings = await loadAppSettings(req);
-      if (appSettings['billing.fee_mode'] === 'per_month') feeMode = 'per_month';
-    } catch { /* settings unavailable → default per_class */ }
+    let appSettings = {};
+    try { appSettings = await loadAppSettings(req); } catch { appSettings = {}; }
+    const feeMode = appSettings['billing.fee_mode'] === 'per_month' ? 'per_month' : 'per_class';
 
     let classFees;
     if (feeMode === 'per_month') {
@@ -190,6 +251,20 @@ router.get('/fees', async (req, res) => {
     const discountTotal = additional.reduce((s, a) => s + Math.min(0, Number(a.amount) || 0), 0); // negative
 
     const total = classFees + positiveAdditional + discountTotal;
+
+    // Payment QR for the parent: a UPI id (the portal builds a UPI deep-link QR
+    // client-side) and/or an uploaded payment-QR image (streamed inline as a
+    // data URL so it embeds without a cross-origin Stratus fetch). Both are
+    // optional — the portal shows whichever the academy configured.
+    const upiId = String(appSettings['fees.upi_id'] || '').trim();
+    const payeeName = String(appSettings['fees.payee_name'] || '').trim();
+    const feeNote = String(appSettings['fees.note'] || '').trim();
+    let qrImage = '';
+    const qrKey = String(appSettings['fees.qr_key'] || '').trim();
+    if (qrKey) {
+      try { qrImage = await loadAssetDataUrl(req, qrKey); } catch { qrImage = ''; }
+    }
+
     res.json({
       month: month || null,
       class_fees: classFees,
@@ -197,6 +272,13 @@ router.get('/fees', async (req, res) => {
       discount: Math.abs(discountTotal),
       total,
       classes_attended: attendance.filter((a) => a.status === 'present' || a.status === 'late').length,
+      payment: {
+        upi_id: upiId,
+        payee_name: payeeName,
+        note: feeNote,
+        qr_image: qrImage,
+        enabled: !!(upiId || qrImage),
+      },
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch fees', detail: e.message });
@@ -432,7 +514,49 @@ router.get('/courses/:id/certificate', async (req, res) => {
     } catch {}
     if (!academyName) academyName = 'Your Academy';
 
-    const completedAt = lastTouched ? new Date(lastTouched).toISOString() : new Date().toISOString();
+    // Completion date is the one LOCKED on the enrollment when the course was
+    // first finished (Udemy-style), NOT recomputed here — so re-downloading the
+    // certificate weeks later still shows the true completion date. Falls back
+    // to the latest progress timestamp / now only if no stamp exists yet.
+    let completedAt = await ensureCourseCompletionStamp(req, sid, cid);
+    if (!completedAt) {
+      completedAt = lastTouched ? new Date(lastTouched).toISOString() : new Date().toISOString();
+    }
+
+    // --- Customisation: per-academy look + content from AppSettings ---------
+    // All toggles default ON-ish from APP_SETTINGS_DEFAULTS; loadAppSettings
+    // always returns a complete map. We only stream/embed an image when both
+    // the toggle is on AND a key exists, so the PDF stays light otherwise.
+    let settings = {};
+    try { settings = await loadAppSettings(req); } catch { settings = {}; }
+    const on = (k, dflt) => {
+      const v = settings[k];
+      if (v === undefined || v === null || v === '') return dflt;
+      return String(v) === 'true';
+    };
+
+    const showLogo = on('certificate.show_logo', true);
+    const showPhoto = on('certificate.show_photo', false);
+    const showSignature = on('certificate.show_signature', true);
+    const useBrandColor = on('certificate.use_brand_color', true);
+    const verifyEnabled = on('certificate.verify_enabled', true);
+
+    // Embed images as base64 data URLs so the client PDF never makes a
+    // cross-origin fetch to a signed Stratus URL (same trick as migration.js).
+    let logoData = '';
+    let signatureData = '';
+    let studentPhotoData = '';
+    if (showLogo && settings['certificate.logo_key']) {
+      try { logoData = await loadAssetDataUrl(req, settings['certificate.logo_key']); } catch {}
+    }
+    if (showSignature && settings['certificate.signature_key']) {
+      try { signatureData = await loadAssetDataUrl(req, settings['certificate.signature_key']); } catch {}
+    }
+    if (showPhoto && student && normalize(student).photo_url) {
+      try { studentPhotoData = await loadAssetDataUrl(req, normalize(student).photo_url); } catch {}
+    }
+
+    const certId = `CERT-${req.orgId}-${cid}-${sid}`;
 
     res.json({
       certificate: {
@@ -442,7 +566,37 @@ router.get('/courses/:id/certificate', async (req, res) => {
         lessons_total: lessons.length,
         completed_at: completedAt,
         // Stable, human-shareable id for the printed certificate.
-        certificate_id: `CERT-${req.orgId}-${cid}-${sid}`,
+        certificate_id: certId,
+
+        // Editable copy.
+        title: String(settings['certificate.title'] || 'Certificate of Completion'),
+        body: String(settings['certificate.body'] || 'has successfully completed the course'),
+        signatory_name: String(settings['certificate.signatory_name'] || ''),
+
+        // Layout toggles.
+        show_logo: showLogo,
+        show_photo: showPhoto,
+        show_signature: showSignature,
+        show_seal: on('certificate.show_seal', true),
+        show_footer: on('certificate.show_footer', true),
+        use_brand_color: useBrandColor,
+
+        // Brand accent ('default' | preset id | '#rrggbb') — client maps to hex.
+        accent: useBrandColor ? String(settings['appearance.accent'] || 'default') : 'default',
+
+        // Embedded images (empty string when off / missing).
+        logo_data: logoData,
+        signature_data: signatureData,
+        student_photo_data: studentPhotoData,
+
+        // Academy contact footer.
+        contact_phone: String(settings['school.contact_phone'] || ''),
+        contact_email: String(settings['school.contact_email'] || ''),
+
+        // Public verification: code + relative verify URL the client renders
+        // into a QR. Empty when verification is turned off for this academy.
+        verify_code: verifyEnabled ? codeFor(req.orgId, cid, sid) : '',
+        verify_url: verifyEnabled ? `/app/verify/${certId}?c=${codeFor(req.orgId, cid, sid)}` : '',
       },
     });
   } catch (e) {
@@ -507,10 +661,19 @@ router.post('/lessons/:id/progress', async (req, res) => {
       const segmentLen   = Math.max(0, effectiveEnd - startSec);
       const maxWatched = Math.max(watched, Number(existing?.watched_seconds) || 0);
       const watchedInSegment = Math.max(0, Math.min(maxWatched, effectiveEnd) - startSec);
-      const percent = segmentLen > 0
+      const computedPercent = segmentLen > 0
         ? Math.min(100, Math.round((watchedInSegment / segmentLen) * 100))
         : 0;
-      const completed = percent >= 90;
+      // Progress only moves forward. A later save can report a slightly larger
+      // duration (e.g. YouTube refines getDuration once fully buffered) which
+      // would otherwise recompute a smaller percent — so never let the stored
+      // figure regress, and keep a lesson "completed" once it has been.
+      const wasCompleted = existing?.completed === true || existing?.completed === 1;
+      const completed = computedPercent >= 90 || wasCompleted;
+      // A completed lesson reads a clean 100%; otherwise hold the high-water mark.
+      const percent = completed
+        ? 100
+        : Math.max(computedPercent, Number(existing?.percent_complete) || 0);
       payload = {
         student_id: String(sid),
         lesson_id: String(lid),
@@ -528,7 +691,16 @@ router.post('/lessons/:id/progress', async (req, res) => {
     } else {
       row = await insert(req, 'LessonProgress', payload);
     }
-    res.json({ progress: normalize(row) });
+
+    // If this save just finished the course, lock the completion date now so
+    // the certificate reflects the day they actually completed it.
+    let completedAt = '';
+    if (payload.completed) {
+      try { completedAt = await ensureCourseCompletionStamp(req, sid, safeId(lesson.course_id)); }
+      catch (err) { console.error('completion stamp (progress) failed:', err.message); }
+    }
+
+    res.json({ progress: normalize(row), course_completed_at: completedAt || null });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update progress', detail: e.message });
   }
@@ -638,6 +810,13 @@ router.post('/lessons/:id/quiz/submit', async (req, res) => {
       else await insert(req, 'QuizAttempts', payload);
     } catch (err) {
       console.error('QuizAttempts upsert failed (table missing?)', err.message);
+    }
+
+    // Passing a required final quiz can be the last thing gating a course — so
+    // re-check completion and lock the date if this pass just finished it.
+    if (passedNow && lesson.course_id) {
+      try { await ensureCourseCompletionStamp(req, sid, safeId(lesson.course_id)); }
+      catch (err) { console.error('completion stamp (quiz) failed:', err.message); }
     }
 
     res.json({ score, correct_count: correct, total, passed: passedNow, pass_threshold: PASS_THRESHOLD, results });
@@ -896,6 +1075,13 @@ router.post('/assignments/:id/quiz/submit', async (req, res) => {
       console.error('QuizAttempts upsert failed (table missing?)', err.message);
     }
 
+    // Passing a required final quiz can be the last thing gating a course — so
+    // re-check completion and lock the date if this pass just finished it.
+    if (passedNow && lesson.course_id) {
+      try { await ensureCourseCompletionStamp(req, sid, safeId(lesson.course_id)); }
+      catch (err) { console.error('completion stamp (quiz) failed:', err.message); }
+    }
+
     res.json({ score, correct_count: correct, total, passed: passedNow, pass_threshold: PASS_THRESHOLD, results });
   } catch (e) {
     res.status(500).json({ error: 'Failed to submit quiz', detail: e.message });
@@ -1143,6 +1329,31 @@ router.get('/upcoming-class', async (req, res) => {
     if (c.group_id) {
       try { const g = await getById(req, 'Groups', c.group_id); groupName = g ? g.name : null; } catch { /* ignore */ }
     }
+
+    // Online classes get a join link: the class's own link wins, otherwise
+    // the academy-wide default (online.default_link). Offline classes never
+    // surface a link. We only expose the join button inside a sensible window
+    // (15 min before start through the end of the class today) so the link
+    // appears when it is actually useful.
+    const isOnline = c.class_type === 'online' || c.class_type === 'online_group';
+    let meetingLink = '';
+    let provider = '';
+    if (isOnline) {
+      meetingLink = String(c.meeting_link || '').trim();
+      try {
+        const appSettings = await loadAppSettings(req);
+        provider = String(appSettings['online.provider'] || 'gmeet');
+        if (!meetingLink) meetingLink = String(appSettings['online.default_link'] || '').trim();
+      } catch { /* settings unavailable → no default */ }
+    }
+    // Join window: today's occurrence, from 15 min before start to end_time.
+    let joinOpen = false;
+    if (isOnline && meetingLink && best.daysAhead === 0) {
+      const endMin = timeToMin(c.end_time);
+      const earliest = best.startMin - 15;
+      if (nowMin >= earliest && (endMin === null || nowMin <= endMin)) joinOpen = true;
+    }
+
     const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     res.json({
       upcoming: {
@@ -1155,6 +1366,10 @@ router.get('/upcoming-class', async (req, res) => {
         start_time: c.start_time || '',
         end_time: c.end_time || '',
         days_ahead: best.daysAhead,
+        is_online: isOnline,
+        meeting_link: meetingLink,
+        meeting_provider: provider,
+        join_open: joinOpen,
       },
     });
   } catch (e) {

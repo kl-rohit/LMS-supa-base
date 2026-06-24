@@ -26,6 +26,8 @@ import {
   IndianRupee,
   Download,
   ToggleLeft,
+  Megaphone,
+  Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -374,6 +376,46 @@ export default function Platform() {
     }
   };
 
+  // ----- Broadcast in-app notification to academies -------------------------
+  // Sends an admin-level notification (with web push) to one academy or to all
+  // of them. Lands in each owner's dashboard bell.
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcasting, setBroadcasting] = useState(false);
+  const emptyBroadcast = { target: 'all', title: '', body: '', link: '' };
+  const [broadcastForm, setBroadcastForm] = useState(emptyBroadcast);
+  const setBF = (k) => (e) => setBroadcastForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const sendBroadcast = async (e) => {
+    e.preventDefault();
+    const title = broadcastForm.title.trim();
+    if (!title) { toast.error('Add a title for the notification'); return; }
+    const targetName = broadcastForm.target === 'all'
+      ? 'every academy'
+      : (orgs.find((o) => String(o.id) === String(broadcastForm.target))?.name || 'the selected academy');
+    const ok = await confirm({
+      title: 'Send this notification?',
+      message: `"${title}" will be delivered to ${targetName}. It appears in the dashboard bell and as a push notification on registered devices.`,
+      confirmText: 'Send',
+    });
+    if (!ok) return;
+    setBroadcasting(true);
+    try {
+      const res = await api.post('/platform/notifications/broadcast', {
+        target: broadcastForm.target,
+        title,
+        body: broadcastForm.body.trim(),
+        link: broadcastForm.link.trim(),
+      });
+      toast.success(`${res?.message || 'Sent'} · ${res?.delivered || 0} in-app, ${res?.push || 0} push`);
+      setBroadcastForm(emptyBroadcast);
+      setShowBroadcast(false);
+    } catch (err) {
+      toast.error('Could not send: ' + err.message);
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
   const startImpersonate = (org) => {
     try {
       localStorage.setItem(IMPERSONATE_KEY, String(org.id));
@@ -468,6 +510,13 @@ export default function Platform() {
             <RefreshCw className="w-4 h-4" /> Refresh
           </button>
           <button
+            onClick={() => setShowBroadcast((v) => !v)}
+            className="btn-secondary btn-sm"
+          >
+            {showBroadcast ? <X className="w-4 h-4" /> : <Megaphone className="w-4 h-4" />}
+            {showBroadcast ? 'Cancel' : 'Send notification'}
+          </button>
+          <button
             onClick={() => setShowCreate((v) => !v)}
             className="btn-primary btn-sm"
           >
@@ -515,6 +564,53 @@ export default function Platform() {
           <div className="flex justify-end">
             <button type="submit" disabled={creating} className="btn-primary disabled:opacity-50">
               {creating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : <><Plus className="w-4 h-4" /> Create & send invite</>}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Broadcast an in-app notification to academies */}
+      {showBroadcast && (
+        <form onSubmit={sendBroadcast} className="card border-indigo-100 bg-indigo-50/40 space-y-4">
+          <div className="flex items-start gap-2">
+            <Megaphone className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-gray-900">Send an in-app notification</p>
+              <p className="text-sm text-gray-500">
+                Reaches academy owners in their dashboard bell, plus a push notification on devices
+                that have it enabled. Pick one academy or send to all.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Send to</label>
+              <select value={broadcastForm.target} onChange={setBF('target')} className="input-field">
+                <option value="all">All academies</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={String(o.id)}>{o.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Link (optional)</label>
+              <input type="text" value={broadcastForm.link} onChange={setBF('link')}
+                className="input-field" placeholder="/dashboard" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input type="text" value={broadcastForm.title} onChange={setBF('title')}
+                className="input-field" placeholder="e.g. New feature: Question papers" maxLength={250} required />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label>
+              <textarea value={broadcastForm.body} onChange={setBF('body')}
+                className="input-field min-h-[80px]" placeholder="Add a short detail or call to action." maxLength={1000} />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" disabled={broadcasting} className="btn-primary disabled:opacity-50">
+              {broadcasting ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : <><Send className="w-4 h-4" /> Send notification</>}
             </button>
           </div>
         </form>

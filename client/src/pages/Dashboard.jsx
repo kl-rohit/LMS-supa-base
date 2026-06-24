@@ -21,6 +21,7 @@ import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { useOrgBranding } from '../hooks/useOrgBranding';
 import InstallAppButton from '../components/InstallAppButton';
+import SeatLimitNotice from '../components/SeatLimitNotice';
 
 export default function Dashboard() {
   // Bank-style mask for the financial stat. Auto-hides 20s after toggle.
@@ -88,6 +89,10 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Install-as-app prompt (phones only, hidden once installed) */}
       <InstallAppButton />
+
+      {/* Seat over-limit notice (also shown on the Students page). Links there
+          so the owner can set students inactive or reach out for more seats. */}
+      <SeatLimitNotice linkToStudents />
 
       {/* Tiny show/hide toggle for the Fees stat */}
       <div className="flex justify-end">

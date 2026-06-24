@@ -38,9 +38,11 @@ const emptyForm = {
   end_time: '10:00',
   student_ids: [],
   group_id: '',
+  meeting_link: '',
 };
 
 const isGroupType = (type) => type === 'offline_group' || type === 'online_group';
+const isOnlineType = (type) => type === 'online' || type === 'online_group';
 
 export default function Classes() {
   const confirm = useConfirm();
@@ -391,6 +393,7 @@ export default function Classes() {
         group_id: isGroup ? String(form.group_id) : null,
         student_ids: form.student_ids.map(String),
         duration_hours: durationHours,
+        meeting_link: isOnlineType(form.class_type) ? (form.meeting_link || '').trim() : '',
       };
 
       if (editingClass) {
@@ -427,6 +430,7 @@ export default function Classes() {
       end_time: cls.end_time || '10:00',
       student_ids: ids,
       group_id: cls.group_id || '',
+      meeting_link: cls.meeting_link || '',
     });
     setStudentSearch('');
     setModalOpen(true);
@@ -1110,6 +1114,22 @@ export default function Classes() {
             <p className="text-sm text-gray-500">
               Duration: <span className="font-medium">{calcDuration(form.start_time, form.end_time) || 'Invalid'}</span>
             </p>
+          )}
+
+          {isOnlineType(form.class_type) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Meeting link</label>
+              <input
+                type="url"
+                value={form.meeting_link}
+                onChange={(e) => setForm({ ...form, meeting_link: e.target.value })}
+                placeholder="https://meet.google.com/... or Zoom / Zoho Meet link"
+                className="input-field"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Parents see a Join button on this class. Leave it blank to use the academy default link from Settings.
+              </p>
+            </div>
           )}
 
           {isGroupType(form.class_type) && (

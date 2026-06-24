@@ -40,6 +40,24 @@ const TABS = [
   { id: 'lessons', label: 'Lesson Activity', icon: Youtube },
 ];
 
+// Parse a Catalyst CREATEDTIME / MODIFIEDTIME value into a Date. Most data
+// centres return a human format ("Jun 20, 2026 02:30 PM") that new Date()
+// reads directly; some return an ISO-ish form with colon-separated millis
+// ("2026-06-20 14:30:05:123"). Try the native parse first, then fix the
+// ISO-with-colon-millis shape. Returns null when unparseable (so callers can
+// fall back instead of rendering "Invalid Date").
+function parseTs(v) {
+  if (!v) return null;
+  let d = new Date(v);
+  if (!isNaN(d.getTime())) return d;
+  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?::(\d{1,3}))?/);
+  if (m) {
+    d = new Date(`${m[1]}T${m[2]}${m[3] ? '.' + m[3].padStart(3, '0') : ''}`);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
 export default function Reports() {
   const now = new Date();
   const [activeTab, setActiveTab] = useState('overall');
@@ -507,8 +525,8 @@ export default function Reports() {
                             </div>
                             <p className="text-xs text-gray-400 mt-1">
                               {r.total_watched_minutes > 0 ? `${r.total_watched_minutes} min watched` : 'Not started'}
-                              {r.last_activity_at && (
-                                <> · Last opened {new Date(String(r.last_activity_at).replace(' ', 'T')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</>
+                              {parseTs(r.last_activity_at) && (
+                                <> · Last opened {parseTs(r.last_activity_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</>
                               )}
                             </p>
                           </div>
@@ -1346,8 +1364,8 @@ export default function Reports() {
                                   {r.total_watched_minutes > 0 ? `${r.total_watched_minutes} min` : '—'}
                                 </td>
                                 <td className="table-cell text-gray-500 whitespace-nowrap text-xs">
-                                  {r.last_activity_at
-                                    ? new Date(String(r.last_activity_at).replace(' ', 'T')).toLocaleString('en-IN', {
+                                  {parseTs(r.last_activity_at)
+                                    ? parseTs(r.last_activity_at).toLocaleString('en-IN', {
                                         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                                       })
                                     : 'Never opened'}
@@ -1385,8 +1403,8 @@ export default function Reports() {
                               <span>{r.total_watched_minutes > 0 ? `${r.total_watched_minutes} min` : '—'}</span>
                             </div>
                             <p className="mt-1 text-xs text-gray-400">
-                              {r.last_activity_at
-                                ? new Date(String(r.last_activity_at).replace(' ', 'T')).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                              {parseTs(r.last_activity_at)
+                                ? parseTs(r.last_activity_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
                                 : 'Never opened'}
                             </p>
                           </div>

@@ -26,6 +26,7 @@
 const router = require('express').Router();
 const { insert, update, zcql, unwrap, normalize, readCount } = require('../db/catalystDb');
 const { normalizePlan, PREMIUM_MODULES, isModuleEntitled } = require('../lib/plans');
+const { uploadOrgAsset, deleteOrgAsset } = require('../lib/orgAsset');
 
 // =============================================================================
 // MessageTemplates (existing)
@@ -201,6 +202,44 @@ const APP_SETTINGS_DEFAULTS = {
   // Empty by default — the client falls back to all days open 08:00–20:00
   // (utils/workingHours.js). Fits comfortably in setting_value (Text 4000).
   'schedule.working_hours': '',
+
+  // ---- Certificate customisation (Phase 6) -----------------------------
+  // Controls how the completion certificate PDF (utils/certificate.js) is
+  // rendered for this academy. All toggles are 'true'/'false' strings. The
+  // two *_key fields hold a Stratus object key written by the asset-upload
+  // endpoints below (POST /app/certificate-asset) — never a raw URL.
+  'certificate.enabled':        'true',  // master switch for the feature
+  'certificate.title':          'Certificate of Completion',
+  'certificate.body':           'has successfully completed the course',
+  'certificate.signatory_name': '',      // printed under the signature line
+  'certificate.show_logo':      'true',  // institute logo across the top
+  'certificate.show_photo':     'false', // student photo on the certificate
+  'certificate.show_signature': 'true',  // signature graphic above signatory
+  'certificate.show_seal':      'true',  // gold completion seal
+  'certificate.show_footer':    'true',  // academy contact footer line
+  'certificate.use_brand_color':'true',  // accent border + title in brand color
+  'certificate.verify_enabled': 'true',  // QR + public /verify page link
+  'certificate.logo_key':       '',      // Stratus key for the logo image
+  'certificate.signature_key':  '',      // Stratus key for the signature image
+
+  // ---- Online classes (Phase 7) ----------------------------------------
+  // Manual meeting-link approach (no OAuth). The academy picks which provider
+  // it uses for branding/labels, and may set a single default link reused by
+  // every online class that has no link of its own. Per-class links live on
+  // Classes.meeting_link and take precedence over this default.
+  'online.provider':     'gmeet',  // 'gmeet' | 'zoom' | 'zoho_meet'
+  'online.default_link': '',       // fallback join link for online classes
+
+  // ---- Fee collection QR (Phase 8) -------------------------------------
+  // Static UPI collection per academy (no payment-gateway / OAuth). The
+  // portal Fees tab renders a QR a parent can scan: either a UPI deep-link QR
+  // built client-side from fees.upi_id (+ fees.payee_name), or an image the
+  // academy uploaded (fees.qr_key, a Stratus object key). A short note can be
+  // shown alongside (e.g. account holder name or reference instructions).
+  'fees.upi_id':      '',   // e.g. academy@okhdfcbank
+  'fees.payee_name':  '',   // name shown in the UPI app
+  'fees.qr_key':      '',   // Stratus key for an uploaded payment QR image
+  'fees.note':        '',   // free-text note shown under the QR
 };
 
 const APP_SETTINGS_KEYS = Object.keys(APP_SETTINGS_DEFAULTS);
@@ -361,6 +400,77 @@ router.put('/app', async (req, res) => {
     res.json({ upserted, settings, ...(await entitlementBlock(req)) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to save app settings', detail: e.message });
+  }
+});
+
+// =============================================================================
+// Certificate assets (logo + signature image)
+//
+// These live in Stratus (lib/orgAsset.js), NOT in AppSettings — only the
+// resulting object KEY is stored back into certificate.logo_key /
+// certificate.signature_key so the certificate renderer can stream + embed
+// them. Upload writes the image and persists its key in one round-trip.
+// =============================================================================
+
+// Upsert a single whitelisted AppSettings key (used by the asset endpoints).
+async function setAppSetting(req, key, value) {
+  if (!APP_SETTINGS_KEYS.includes(key)) return;
+  const rows = await zcql(req, `SELECT * FROM ${APP_TABLE} WHERE ${APP_TABLE}.${APP_KEY_COL} = '${key}' AND ${APP_TABLE}.org_id = ${Number(req.orgId)}`);
+  const existing = unwrap(rows, APP_TABLE).map(normalize);
+  const row = existing[0];
+  const v = value === null || value === undefined ? '' : String(value);
+  if (row) {
+    if (row[APP_VAL_COL] !== v) await update(req, APP_TABLE, row.id, { [APP_VAL_COL]: v });
+  } else {
+    await insert(req, APP_TABLE, { [APP_KEY_COL]: key, [APP_VAL_COL]: v, org_id: Number(req.orgId) });
+  }
+}
+
+// kind → the AppSettings key that stores its object key.
+const ASSET_KEY_SETTING = {
+  logo: 'certificate.logo_key',
+  signature: 'certificate.signature_key',
+  fee_qr: 'fees.qr_key',
+};
+
+const ASSET_KINDS_MSG = "kind must be 'logo', 'signature', or 'fee_qr'";
+
+// POST /api/settings/app/certificate-asset
+// Body: { kind: 'logo'|'signature'|'fee_qr', data: '<base64 or data URL>' }
+// Stores the image in Stratus and records its key in AppSettings. Despite the
+// route name it also handles the fee-collection QR image (kind 'fee_qr') —
+// same upload + key-persist flow, just a different AppSettings key.
+router.post('/app/certificate-asset', async (req, res) => {
+  try {
+    const kind = String(req.body?.kind || '');
+    if (!ASSET_KEY_SETTING[kind]) {
+      return res.status(400).json({ error: ASSET_KINDS_MSG });
+    }
+    const { status, json } = await uploadOrgAsset(req, kind, req.body);
+    if (status === 200 && json.object_key) {
+      try { await setAppSetting(req, ASSET_KEY_SETTING[kind], json.object_key); }
+      catch (err) { console.error('persist asset key failed', err.message); }
+    }
+    res.status(status).json(json);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to upload asset', detail: e.message });
+  }
+});
+
+// DELETE /api/settings/app/certificate-asset?kind=logo
+// Removes the stored image and clears its key.
+router.delete('/app/certificate-asset', async (req, res) => {
+  try {
+    const kind = String(req.query?.kind || '');
+    if (!ASSET_KEY_SETTING[kind]) {
+      return res.status(400).json({ error: ASSET_KINDS_MSG });
+    }
+    await deleteOrgAsset(req, kind);
+    try { await setAppSetting(req, ASSET_KEY_SETTING[kind], ''); }
+    catch (err) { console.error('clear asset key failed', err.message); }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to remove asset', detail: e.message });
   }
 });
 

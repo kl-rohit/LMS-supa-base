@@ -55,6 +55,11 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, function: 'api', comm
 // /api/auth — public; /me returns 401 itself when logged out.
 app.use('/api/auth', require('./routes/auth'));
 
+// /api/verify — PUBLIC certificate verification (no session). Validates an
+// HMAC code so it can't be used to enumerate students. Mounted before
+// requireAuth on purpose.
+app.use('/api/verify', require('./routes/verify'));
+
 // /api/internal/* — unattended jobs (Catalyst cron). Protected by a shared
 // secret header (X-Cron-Secret), NOT by the user-session middleware below.
 // Must be mounted before requireAuth so the cron can reach it without a login.

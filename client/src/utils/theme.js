@@ -47,6 +47,16 @@ export const PRESETS = [
 // Convenience: the Primary swatch for a preset (falls back to indigo for stock).
 export function presetSwatch(p) { return p.base || '#4f46e5'; }
 
+// Resolve a stored accent value ('default' | preset id | '#rrggbb') to a single
+// brand hex. 'default' (and anything unrecognised) maps to stock indigo #4f46e5.
+// Used outside the live theme — e.g. the certificate PDF border + title colour.
+export function accentToHex(accent) {
+  if (!accent || accent === 'default') return '#4f46e5';
+  const preset = PRESETS.find((p) => p.id === accent);
+  if (preset) return preset.base || '#4f46e5';
+  return parseHex(accent) ? (accent.startsWith('#') ? accent : `#${accent}`) : '#4f46e5';
+}
+
 function clamp(n) { return Math.max(0, Math.min(255, Math.round(n))); }
 
 function parseHex(hex) {

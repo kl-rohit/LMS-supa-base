@@ -16,6 +16,7 @@ const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION
 const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = require('../lib/onboarding');
 const { MODULES } = require('../db/migrationRegistry');
 const { writeAudit } = require('../lib/audit');
+const { createAdminNotifications } = require('../lib/notify');
 
 // Admin module toggles a platform admin may flip per org. Mirrors the DEFAULTS
 // in client/src/hooks/useModuleFlags.js — keep the two in sync. Premium modules
@@ -672,6 +673,72 @@ router.get('/orgs/:id/export', async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to export org', detail: e.message });
+  }
+});
+
+// =============================================================================
+// POST /api/platform/notifications/broadcast — platform-admin only.
+// Send an in-app notification (with web push) to academy owners/teachers.
+//   Body: { target: 'all' | '<orgId>', title, body, link }
+//     target 'all'   → every academy receives it
+//     target '<id>'  → only that one academy
+// Each academy gets one admin-level Notifications row (recipient_role='admin'),
+// so it lands in the owner's dashboard bell. Best-effort and bounded so a large
+// fan-out stays within Catalyst's in-flight-query cap.
+// =============================================================================
+router.post('/notifications/broadcast', async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').trim();
+    if (!title) return res.status(400).json({ error: 'A title is required' });
+    const body = String(req.body?.body || '').trim();
+    const link = String(req.body?.link || '').trim();
+    const type = 'announcement';
+
+    const rawTarget = req.body?.target;
+    const targetAll = rawTarget === 'all' || rawTarget == null || rawTarget === '';
+
+    // Resolve the list of target org ids.
+    let targets = [];
+    let scopeLabel = 'all academies';
+    if (targetAll) {
+      const orgRows = await zcqlAll(req, `SELECT ROWID, name FROM Organizations`, 'Organizations');
+      targets = unwrap(orgRows, 'Organizations').map((o) => ({ id: Number(o.ROWID), name: o.name || '' }));
+    } else {
+      const rowId = safeId(rawTarget);
+      if (!rowId) return res.status(400).json({ error: 'Invalid target org id' });
+      const existing = await zcql(req, `SELECT ROWID, name FROM Organizations WHERE ROWID = ${rowId}`);
+      const org = unwrap(existing, 'Organizations')[0];
+      if (!org) return res.status(404).json({ error: 'Org not found' });
+      targets = [{ id: Number(org.ROWID), name: org.name || '' }];
+      scopeLabel = org.name || `org ${org.ROWID}`;
+    }
+
+    if (!targets.length) return res.json({ message: 'No academies to notify', delivered: 0, push: 0, orgs: 0 });
+
+    // Fan out with bounded concurrency. createAdminNotifications is best-effort
+    // per org (a single failure never rejects the batch).
+    const results = await mapLimit(targets, async (t) => {
+      try {
+        const r = await createAdminNotifications(req, { orgId: t.id, type, title, body, link });
+        return { created: r.created || 0, pushed: r.pushed || 0 };
+      } catch (e) {
+        return { created: 0, pushed: 0, error: e.message };
+      }
+    });
+
+    const delivered = results.reduce((n, r) => n + (r.created || 0), 0);
+    const push = results.reduce((n, r) => n + (r.pushed || 0), 0);
+
+    await writeAudit(req, {
+      action: 'platform.broadcast',
+      orgId: targetAll ? null : targets[0].id,
+      orgName: scopeLabel,
+      detail: { target: targetAll ? 'all' : String(targets[0].id), title, orgs: targets.length, delivered, push },
+    });
+
+    res.json({ message: `Sent to ${scopeLabel}`, orgs: targets.length, delivered, push });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to send broadcast', detail: e.message });
   }
 });
 

@@ -17,7 +17,6 @@ import {
   Camera,
   Columns3,
   ChevronRight,
-  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
@@ -32,6 +31,7 @@ import Select from '../components/Select';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import StudentDetailPanel from '../components/StudentDetailPanel';
+import SeatLimitNotice from '../components/SeatLimitNotice';
 import Pagination, { usePagination } from '../components/Pagination';
 import { readPhotoCache, writePhotoCache, invalidatePhotoCache } from '../utils/photoCache';
 
@@ -344,6 +344,10 @@ export default function Students() {
     });
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
+    // Close the right-side detail panel first — otherwise it sits at the same
+    // stacking level as the modal and overlaps its right edge (and the submit
+    // button) on narrower screens.
+    setDetailStudent(null);
     setModalOpen(true);
   };
 
@@ -354,6 +358,8 @@ export default function Students() {
     setForm({ ...emptyForm, ...billingDefaults });
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
+    // Close the detail panel so the two overlays don't compete (see openEdit).
+    setDetailStudent(null);
     setModalOpen(true);
   };
 
@@ -570,29 +576,12 @@ export default function Students() {
   // owner sets students active/inactive), falling back to the server figure.
   const liveActive = students.filter((s) => String(s.status || '').toLowerCase() === 'active').length;
   const activeCount = students.length ? liveActive : seat.count;
-  const overLimit = seat.max != null && activeCount != null && activeCount > seat.max;
-  const overBy = overLimit ? activeCount - seat.max : 0;
 
   return (
     <div className={`space-y-4 transition-all duration-200 ${isDetailOpen ? 'lg:mr-[30rem]' : ''}`}>
       {/* Over-limit notice — manual owner action (no auto-deactivation). Shows
           when active students exceed the plan's approved seat count. */}
-      {overLimit && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3" data-tour="students-seat-notice">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-semibold text-amber-800">
-              {activeCount} active students on a {seat.max}-seat plan
-            </p>
-            <p className="text-amber-700 mt-1">
-              You are {overBy} over your approved seat count. To keep everyone within plan,
-              set {overBy} student{overBy === 1 ? '' : 's'} to inactive from the list below, or
-              reach out to add more seats. Attendance and group creation stay available once your
-              active students are within the seat count.
-            </p>
-          </div>
-        </div>
-      )}
+      <SeatLimitNotice activeCount={activeCount} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

@@ -1,7 +1,7 @@
 // Parent view: read-only fees with month picker.
 
 import { useEffect, useState } from 'react';
-import { IndianRupee, TrendingDown } from 'lucide-react';
+import { IndianRupee, TrendingDown, QrCode, Copy, Check, Smartphone } from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 
@@ -85,9 +85,15 @@ export default function PortalFees() {
         )}
       </div>
 
-      <p className="text-xs text-gray-400 px-2">
-        For payment, please contact your teacher directly. This page is for reference only.
-      </p>
+      {!loading && data?.payment?.enabled && (
+        <PaymentCard payment={data.payment} amount={Number(data.total) || 0} />
+      )}
+
+      {!loading && !data?.payment?.enabled && (
+        <p className="text-xs text-gray-400 px-2">
+          For payment, please contact your teacher directly. This page is for reference only.
+        </p>
+      )}
     </div>
   );
 }
@@ -97,6 +103,111 @@ function Stat({ label, value, accent }) {
     <div className="p-3 rounded-lg bg-gray-50">
       <p className="text-xs text-gray-500">{label}</p>
       <p className={`text-xl font-semibold mt-1 ${accent || 'text-gray-900'}`}>{value}</p>
+    </div>
+  );
+}
+
+// Builds a UPI pay deep link the parent's phone understands. Amount is
+// prefilled when there is a positive balance; the parent can still edit it in
+// their UPI app. Returns '' when there is no UPI id (we then rely on an
+// uploaded QR image instead).
+function buildUpiLink(payment, amount) {
+  const pa = String(payment?.upi_id || '').trim();
+  if (!pa) return '';
+  const params = new URLSearchParams();
+  params.set('pa', pa);
+  if (payment.payee_name) params.set('pn', payment.payee_name);
+  if (amount > 0) params.set('am', amount.toFixed(2));
+  params.set('cu', 'INR');
+  return `upi://pay?${params.toString()}`;
+}
+
+function PaymentCard({ payment, amount }) {
+  // Prefer the academy's uploaded QR image; otherwise generate one from the
+  // UPI id with the qrcode lib (dynamic import keeps it out of the main chunk).
+  const uploaded = String(payment?.qr_image || '');
+  const upiLink = buildUpiLink(payment, amount);
+  const [genQr, setGenQr] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    if (uploaded || !upiLink) { setGenQr(''); return; }
+    (async () => {
+      try {
+        const QRCode = (await import('qrcode')).default;
+        const url = await QRCode.toDataURL(upiLink, { width: 320, margin: 1 });
+        if (alive) setGenQr(url);
+      } catch { if (alive) setGenQr(''); }
+    })();
+    return () => { alive = false; };
+  }, [uploaded, upiLink]);
+
+  const qrSrc = uploaded || genQr;
+  const copyUpi = async () => {
+    try {
+      await navigator.clipboard.writeText(payment.upi_id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard unavailable */ }
+  };
+
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-1">
+        <QrCode className="w-5 h-5 text-indigo-600" />
+        Pay fees
+      </h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Pay
+        {amount > 0 ? <> the balance of <span className="font-medium text-gray-700">₹{amount.toLocaleString('en-IN')}</span></> : <> your fees</>}
+        {' '}with any UPI app (GPay, PhonePe, Paytm). On your phone, tap Pay now to open your app. On a computer, scan the QR with your phone.
+      </p>
+
+      <div className="flex flex-col items-center text-center gap-3">
+        {qrSrc ? (
+          <div className="p-3 bg-white rounded-xl border border-gray-200">
+            <img src={qrSrc} alt="Payment QR" className="w-44 h-44 object-contain" />
+          </div>
+        ) : (
+          <div className="w-44 h-44 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-300">
+            <QrCode className="w-10 h-10" />
+          </div>
+        )}
+
+        {/* Mobile: a tap-to-pay deep link that opens the installed UPI app.
+            Only meaningful on a phone (sm:hidden hides it on laptops/desktops,
+            which have no UPI app) and only when a UPI id is set — an uploaded
+            QR image alone cannot produce a deep link. */}
+        {upiLink && (
+          <a
+            href={upiLink}
+            className="sm:hidden w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+          >
+            <Smartphone className="w-4 h-4" />
+            Pay now
+          </a>
+        )}
+
+        {payment.payee_name && (
+          <p className="text-sm font-medium text-gray-900">{payment.payee_name}</p>
+        )}
+
+        {payment.upi_id && (
+          <button
+            type="button"
+            onClick={copyUpi}
+            className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {payment.upi_id}
+          </button>
+        )}
+
+        {payment.note && (
+          <p className="text-xs text-gray-500 max-w-sm">{payment.note}</p>
+        )}
+      </div>
     </div>
   );
 }

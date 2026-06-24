@@ -231,7 +231,7 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
   return (
     <Modal isOpen onClose={onClose} title={`Quiz — ${lesson.title}`} size="lg">
       <div className="space-y-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+        <p className="text-sm text-gray-500 flex items-center gap-2">
           <ListChecks className="w-4 h-4 text-indigo-500" />
           Students need 70% to pass. Mark the lesson "required" to gate the certificate on it.
         </p>

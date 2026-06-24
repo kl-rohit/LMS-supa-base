@@ -46,7 +46,7 @@ export default function Login() {
             />
           </div>
           <h1 className="text-2xl font-bold">
-            <span className="text-gray-900 dark:text-gray-100">Vidya</span><span className="text-amber-500">Setu</span>
+            <span className="text-gray-900">Vidya</span><span className="text-amber-500">Setu</span>
           </h1>
           <p className="text-sm text-gray-500 mt-1">Bridging teachers and learners</p>
         </div>

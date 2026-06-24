@@ -44,16 +44,16 @@ export default function VerifyCertificate() {
   } catch { dateStr = ''; }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-700">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-100">
           <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-300">{BRAND_NAME}</p>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Certificate verification</h1>
+          <h1 className="text-lg font-bold text-gray-900">Certificate verification</h1>
         </div>
 
         <div className="px-6 py-8">
           {loading && (
-            <div className="flex flex-col items-center gap-3 text-gray-500 dark:text-gray-400">
+            <div className="flex flex-col items-center gap-3 text-gray-500">
               <Loader2 className="w-8 h-8 animate-spin" />
               <p>Checking this certificate…</p>
             </div>
@@ -66,9 +66,9 @@ export default function VerifyCertificate() {
               </div>
               <div>
                 <p className="text-emerald-700 dark:text-emerald-400 font-semibold">This certificate is genuine</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Issued by {result.academy_name}</p>
+                <p className="text-sm text-gray-500 mt-1">Issued by {result.academy_name}</p>
               </div>
-              <dl className="w-full text-left mt-2 divide-y divide-gray-100 dark:divide-gray-700">
+              <dl className="w-full text-left mt-2 divide-y divide-gray-100">
                 <Row label="Awarded to" value={result.student_name} />
                 <Row label="Course" value={result.course_name} />
                 <Row label="Academy" value={result.academy_name} />
@@ -84,18 +84,18 @@ export default function VerifyCertificate() {
                 <ShieldAlert className="w-9 h-9 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-gray-900 dark:text-gray-100 font-semibold">We could not verify this certificate</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-gray-900 font-semibold">We could not verify this certificate</p>
+                <p className="text-sm text-gray-500 mt-1">
                   The link may be incomplete or the certificate may not have been issued. Please check the full link from the certificate and try again.
                 </p>
-                {error && <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">{error}</p>}
+                {error && <p className="text-xs text-gray-400 mt-2">{error}</p>}
               </div>
             </div>
           )}
         </div>
 
-        <div className="px-6 py-3 bg-gray-50 dark:bg-gray-900/40 border-t border-gray-100 dark:border-gray-700 text-center">
-          <p className="text-xs text-gray-400 dark:text-gray-500">Verified securely by {BRAND_NAME}</p>
+        <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-center">
+          <p className="text-xs text-gray-400">Verified securely by {BRAND_NAME}</p>
         </div>
       </div>
     </div>
@@ -105,8 +105,8 @@ export default function VerifyCertificate() {
 function Row({ label, value, mono }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2.5">
-      <dt className="text-sm text-gray-500 dark:text-gray-400 shrink-0">{label}</dt>
-      <dd className={`text-sm font-medium text-gray-900 dark:text-gray-100 text-right ${mono ? 'font-mono text-xs break-all' : ''}`}>
+      <dt className="text-sm text-gray-500 shrink-0">{label}</dt>
+      <dd className={`text-sm font-medium text-gray-900 text-right ${mono ? 'font-mono text-xs break-all' : ''}`}>
         {value || '-'}
       </dd>
     </div>

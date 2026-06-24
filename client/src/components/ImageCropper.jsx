@@ -166,10 +166,10 @@ export default function ImageCropper({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onCancel} aria-hidden="true" />
-      <div role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-          <button onClick={onCancel} className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">
+      <div role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-900">{title}</h3>
+          <button onClick={onCancel} className="p-1.5 rounded-full hover:bg-gray-100" aria-label="Close">
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
@@ -179,7 +179,7 @@ export default function ImageCropper({
           <div className="flex justify-center">
             <div
               ref={frameRef}
-              className="relative overflow-hidden bg-gray-100 dark:bg-gray-900 touch-none select-none cursor-move"
+              className="relative overflow-hidden bg-gray-100 touch-none select-none cursor-move"
               style={{ width: frameW, height: frameH, borderRadius: round ? '9999px' : '0.75rem' }}
               onMouseDown={onDown}
               onMouseMove={(e) => drag.current && onMove(e)}
@@ -212,11 +212,11 @@ export default function ImageCropper({
             </div>
           </div>
 
-          {hint && <p className="text-xs text-gray-500 dark:text-gray-400 text-center">{hint}</p>}
+          {hint && <p className="text-xs text-gray-500 text-center">{hint}</p>}
 
           {/* Zoom control */}
           <div className="flex items-center gap-3">
-            <button type="button" onClick={() => applyZoom(zoom - 0.2)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Zoom out">
+            <button type="button" onClick={() => applyZoom(zoom - 0.2)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Zoom out">
               <ZoomOut className="w-4 h-4" />
             </button>
             <input
@@ -229,13 +229,13 @@ export default function ImageCropper({
               className="flex-1 accent-indigo-600"
               aria-label="Zoom"
             />
-            <button type="button" onClick={() => applyZoom(zoom + 0.2)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Zoom in">
+            <button type="button" onClick={() => applyZoom(zoom + 0.2)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Zoom in">
               <ZoomIn className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 bg-gray-50 dark:bg-gray-900/40 border-t border-gray-100 dark:border-gray-700">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 bg-gray-50 border-t border-gray-100">
           <button onClick={onCancel} className="btn-secondary btn-sm">Cancel</button>
           <button onClick={confirm} disabled={!ready} className="btn-primary btn-sm disabled:opacity-50">
             <Check className="w-4 h-4" /> Use photo

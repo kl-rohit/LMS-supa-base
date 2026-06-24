@@ -276,7 +276,7 @@ export default function DataMigration() {
       <div className="rounded-lg border border-indigo-200 bg-indigo-50 dark:bg-indigo-950/30 dark:border-indigo-900 p-4">
         <div className="flex items-start gap-3">
           <Database className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-          <div className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
+          <div className="text-sm text-gray-700 space-y-1">
             <p className="font-semibold text-gray-900 dark:text-white">Backup &amp; migrate</p>
             <p>
               Export this academy to a file, then import it into another deployment.
@@ -320,7 +320,7 @@ export default function DataMigration() {
       </div>
 
       {/* Per-module list */}
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+      <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
         {modules.map((mod) => {
           const c = counts[mod.key];
           const r = results[mod.key];
@@ -331,7 +331,7 @@ export default function DataMigration() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-gray-900 dark:text-white">{mod.label}</span>
                   {typeof c === 'number' && (
-                    <span className="text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-0.5">
+                    <span className="text-xs rounded-full bg-gray-100 text-gray-600 px-2 py-0.5">
                       {c} {c === 1 ? 'row' : 'rows'}
                     </span>
                   )}
@@ -371,7 +371,7 @@ export default function DataMigration() {
                 <button
                   onClick={() => exportModule(mod, 'json')}
                   disabled={busy !== null}
-                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 dark:border-gray-600 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   title="Export as JSON"
                 >
                   {working ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileJson className="w-3.5 h-3.5" />}
@@ -380,7 +380,7 @@ export default function DataMigration() {
                 <button
                   onClick={() => exportModule(mod, 'csv')}
                   disabled={busy !== null}
-                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 dark:border-gray-600 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   title="Export as CSV"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" /> CSV
@@ -388,7 +388,7 @@ export default function DataMigration() {
                 <button
                   onClick={() => importModule(mod)}
                   disabled={busy !== null}
-                  className="inline-flex items-center gap-1 rounded-md bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-2.5 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md bg-gray-900 text-white px-2.5 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
                   title="Import JSON or CSV into this module"
                 >
                   <Upload className="w-3.5 h-3.5" /> Import
@@ -423,7 +423,7 @@ export default function DataMigration() {
             <div className="flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0 space-y-3">
-                <div className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
+                <div className="text-sm text-gray-700 space-y-1">
                   <p className="font-semibold text-red-700 dark:text-red-300">Delete all academy data</p>
                   <p>
                     Removes every student, class, attendance record, fee, lesson and
@@ -447,7 +447,7 @@ export default function DataMigration() {
                       value={confirmText}
                       onChange={(e) => setConfirmText(e.target.value)}
                       placeholder={orgName ? `Type "${orgName}" to confirm` : 'Type the academy name to confirm'}
-                      className="flex-1 rounded-md border border-red-300 dark:border-red-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                      className="flex-1 rounded-md border border-red-300 dark:border-red-800 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
                     />
                     <button
                       onClick={purgeAll}

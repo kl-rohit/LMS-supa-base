@@ -108,7 +108,7 @@ export default function NotificationBell({
     <div className="relative" ref={wrapRef}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+        className="relative p-2 rounded-md hover:bg-gray-100 text-gray-600 transition-colors"
         aria-label="Notifications"
       >
         <Icon className="w-5 h-5" />
@@ -120,16 +120,16 @@ export default function NotificationBell({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
+        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
             <div className="flex items-center gap-1">
               {unread > 0 && (
                 <button onClick={markAll} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1">
                   <CheckCheck className="w-3.5 h-3.5" /> Mark all read
                 </button>
               )}
-              <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400">
+              <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-gray-100 text-gray-400">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -140,7 +140,7 @@ export default function NotificationBell({
             <button
               onClick={subscribed ? unsubscribe : subscribe}
               disabled={busy}
-              className="w-full flex items-center gap-2 px-4 py-2.5 text-xs border-b border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-60"
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-xs border-b border-gray-100 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-60"
             >
               {subscribed ? <BellOff className="w-4 h-4" /> : <BellRing className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
               {subscribed ? 'Turn off push notifications' : 'Enable push notifications on this device'}
@@ -150,8 +150,8 @@ export default function NotificationBell({
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 ? (
               <div className="px-4 py-10 text-center">
-                <Bell className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600" />
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">No notifications yet</p>
+                <Bell className="w-8 h-8 mx-auto text-gray-300" />
+                <p className="text-sm text-gray-500 mt-2">No notifications yet</p>
               </div>
             ) : (
               items.map((n) => {
@@ -161,18 +161,18 @@ export default function NotificationBell({
                   <button
                     key={n.id}
                     onClick={() => openItem(n)}
-                    className={`w-full text-left flex items-start gap-3 px-4 py-3 border-b border-gray-50 dark:border-gray-700/60 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors ${n.read ? '' : 'bg-indigo-50/40 dark:bg-indigo-500/10'}`}
+                    className={`w-full text-left flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${n.read ? '' : 'bg-indigo-50/40 dark:bg-indigo-500/10'}`}
                   >
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.cls} dark:bg-opacity-20`}>
                       <MIcon className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start gap-2">
-                        <p className={`text-sm break-words ${n.read ? 'text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-gray-100'}`}>{n.title}</p>
+                        <p className={`text-sm break-words ${n.read ? 'text-gray-700' : 'font-semibold text-gray-900'}`}>{n.title}</p>
                         {!n.read && <span className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
                       </div>
-                      {n.body && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words whitespace-pre-wrap">{n.body}</p>}
-                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{timeAgo(n.created_at)}</p>
+                      {n.body && <p className="text-xs text-gray-500 mt-0.5 break-words whitespace-pre-wrap">{n.body}</p>}
+                      <p className="text-[11px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                     {!n.read && (
                       <span
@@ -180,7 +180,7 @@ export default function NotificationBell({
                         tabIndex={0}
                         onClick={(e) => { e.stopPropagation(); markRead(n); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); markRead(n); } }}
-                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 flex-shrink-0"
+                        className="p-1 rounded hover:bg-gray-200 text-gray-400 flex-shrink-0"
                         title="Mark read"
                       >
                         <Check className="w-3.5 h-3.5" />

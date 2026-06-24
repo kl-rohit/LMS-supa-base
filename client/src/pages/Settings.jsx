@@ -221,14 +221,14 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-gray-50 flex items-center justify-center">
         <Loader text="Loading settings..." />
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
       {/* Top bar — academy identity stays visible, plus a Close button. */}
       <header className="h-14 flex-shrink-0 flex items-center gap-2 px-3 sm:px-4 border-b border-gray-200 bg-white">
         {branding.logoUrl ? (

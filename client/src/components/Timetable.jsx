@@ -38,7 +38,7 @@ const TYPE_META = {
   offline_group: { Icon: UsersRound,bar: 'bg-purple-500',  tint: 'bg-purple-50 border-purple-200 text-purple-900 dark:bg-purple-500/15 dark:border-purple-500/30 dark:text-purple-100' },
   online_group:  { Icon: Wifi,      bar: 'bg-cyan-500',    tint: 'bg-cyan-50 border-cyan-200 text-cyan-900 dark:bg-cyan-500/15 dark:border-cyan-500/30 dark:text-cyan-100' },
 };
-const metaFor = (t) => TYPE_META[t] || { Icon: MapPin, bar: 'bg-gray-400', tint: 'bg-gray-50 border-gray-200 text-gray-900 dark:bg-gray-700/40 dark:border-gray-600 dark:text-gray-100' };
+const metaFor = (t) => TYPE_META[t] || { Icon: MapPin, bar: 'bg-gray-400', tint: 'bg-gray-50 border-gray-200 text-gray-900' };
 
 // ---- date / time helpers (all local-time; never round-trip through UTC) ----
 function fmtDateLocal(d) {
@@ -295,12 +295,12 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
       {/* Week navigator */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <button onClick={() => goWeek(-1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" title="Previous week">
-            <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+          <button onClick={() => goWeek(-1)} className="p-2 rounded-lg hover:bg-gray-100" title="Previous week">
+            <ChevronLeft className="w-4 h-4 text-gray-600" />
           </button>
-          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[170px] text-center">{monthLabel}</span>
-          <button onClick={() => goWeek(1)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" title="Next week">
-            <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+          <span className="text-sm font-semibold text-gray-900 min-w-[170px] text-center">{monthLabel}</span>
+          <button onClick={() => goWeek(1)} className="p-2 rounded-lg hover:bg-gray-100" title="Next week">
+            <ChevronRight className="w-4 h-4 text-gray-600" />
           </button>
           {!isThisWeek && (
             <button onClick={goToday} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:hover:bg-indigo-500/25">
@@ -318,14 +318,14 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
       {/* ===== Desktop / tablet: time-grid ===== */}
       <div className="hidden md:block card overflow-x-auto p-0">
         {/* Day headers */}
-        <div className="grid border-b border-gray-200 dark:border-gray-700" style={{ gridTemplateColumns: `48px repeat(7, minmax(0, 1fr))` }}>
+        <div className="grid border-b border-gray-200" style={{ gridTemplateColumns: `48px repeat(7, minmax(0, 1fr))` }}>
           <div />
           {weekDates.map((d, idx) => {
             const isToday = fmtDateLocal(d) === todayStr;
             return (
-              <div key={idx} className={`px-2 py-2 text-center border-l border-gray-100 dark:border-gray-700 ${isToday ? 'bg-indigo-50 dark:bg-indigo-500/15' : ''}`}>
-                <div className={`text-xs font-medium ${isToday ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}>{DAY_SHORT[idx]}</div>
-                <div className={`text-lg font-semibold leading-tight ${isToday ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-900 dark:text-gray-100'}`}>{d.getDate()}</div>
+              <div key={idx} className={`px-2 py-2 text-center border-l border-gray-100 ${isToday ? 'bg-indigo-50 dark:bg-indigo-500/15' : ''}`}>
+                <div className={`text-xs font-medium ${isToday ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-500'}`}>{DAY_SHORT[idx]}</div>
+                <div className={`text-lg font-semibold leading-tight ${isToday ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-900'}`}>{d.getDate()}</div>
               </div>
             );
           })}
@@ -335,7 +335,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
           {/* time gutter */}
           <div className="relative" style={{ height: gridHeight }}>
             {hours.map((h) => (
-              <div key={h} className="absolute right-1 text-[10px] text-gray-400 dark:text-gray-500 -translate-y-1/2 w-full text-right pr-1"
+              <div key={h} className="absolute right-1 text-[10px] text-gray-400 -translate-y-1/2 w-full text-right pr-1"
                 style={{ top: (h - startH) * HOUR_PX }}>
                 {hourLabel(h)}
               </div>
@@ -346,7 +346,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
             const isToday = fmtDateLocal(d) === todayStr;
             return (
               <div key={idx} onClick={(e) => handleColumnClick(idx, e)}
-                className={`relative border-l border-gray-100 dark:border-gray-700 cursor-copy ${isToday ? 'bg-indigo-50/40 dark:bg-indigo-500/10' : ''}`}
+                className={`relative border-l border-gray-100 cursor-copy ${isToday ? 'bg-indigo-50/40 dark:bg-indigo-500/10' : ''}`}
                 style={{ height: gridHeight }}
                 title="Click to add a class here">
                 {/* Non-working hours — shaded so the working window stands out */}
@@ -355,7 +355,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
                     style={{ top: b.top, height: b.height }} />
                 ))}
                 {hours.map((h) => (
-                  <div key={h} className="absolute left-0 right-0 border-t border-gray-100 dark:border-gray-700/60" style={{ top: (h - startH) * HOUR_PX }} />
+                  <div key={h} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: (h - startH) * HOUR_PX }} />
                 ))}
                 {byDay[idx].map((o) => {
                   const m = metaFor(o.cls.class_type);
@@ -389,7 +389,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
               <button key={idx} onClick={() => setMobileDay(idx)}
                 className={`flex-1 min-w-[44px] rounded-xl py-2 text-center border transition-colors ${
                   isSel ? 'bg-indigo-600 border-indigo-600 text-white'
-                    : isToday ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-500/15 dark:border-indigo-500/30 dark:text-indigo-300' : 'bg-white border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+                    : isToday ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-500/15 dark:border-indigo-500/30 dark:text-indigo-300' : 'bg-white border-gray-200 text-gray-600'
                 }`}>
                 <div className="text-[10px] font-medium">{DAY_SHORT[idx]}</div>
                 <div className="text-base font-bold leading-tight">{d.getDate()}</div>
@@ -412,9 +412,9 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
           className="space-y-2 min-h-[120px]"
         >
           {byDay[mobileDay].length === 0 ? (
-            <div className="text-center py-10 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-              <CalendarDays className="w-7 h-7 text-gray-300 dark:text-gray-600 mx-auto mb-1" />
-              <p className="text-sm text-gray-400 dark:text-gray-500">
+            <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl">
+              <CalendarDays className="w-7 h-7 text-gray-300 mx-auto mb-1" />
+              <p className="text-sm text-gray-400">
                 {wh[mobileDay]?.open ? 'No classes this day' : 'Closed on this day'}
               </p>
               {onAddSlot && (
@@ -448,15 +448,15 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
       <Modal isOpen={!!selected} onClose={() => setSelected(null)} title={selected ? labelFor(selected.cls) : ''} size="sm">
         {selected && (
           <div className="space-y-3">
-            <div className="rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm text-gray-600 dark:text-gray-300">
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
               <div className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                <CalendarDays className="w-4 h-4 text-gray-400" />
                 {new Date(selected.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <Clock className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                <Clock className="w-4 h-4 text-gray-400" />
                 {fmtTime(selected.start)} – {fmtTime(selected.end)}
-                <span className="text-xs text-gray-400 dark:text-gray-500">· {String(selected.cls.class_type || '').replace('_', ' ')}</span>
+                <span className="text-xs text-gray-400">· {String(selected.cls.class_type || '').replace('_', ' ')}</span>
               </div>
               {selected.moved && (
                 <div className="text-xs text-amber-600 mt-1">Moved from {selected.movedFrom}</div>
@@ -501,7 +501,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
                 )}
               </div>
             )}
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">
+            <p className="text-[11px] text-gray-400 text-center">
               Cancel / reschedule only affects this one date — the weekly class stays.
             </p>
           </div>
@@ -512,24 +512,24 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
       <Modal isOpen={!!resched} onClose={() => setResched(null)} title="Reschedule this class" size="sm">
         {resched && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Move just this occurrence of <span className="font-medium text-gray-700 dark:text-gray-200">{labelFor(resched.occ.cls)}</span> to a new date or time.
+            <p className="text-sm text-gray-500">
+              Move just this occurrence of <span className="font-medium text-gray-700">{labelFor(resched.occ.cls)}</span> to a new date or time.
             </p>
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">New date</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">New date</label>
               <input type="date" value={resched.new_date}
                 onChange={(e) => setResched({ ...resched, new_date: e.target.value })}
                 className="input-field" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Start</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Start</label>
                 <input type="time" value={resched.new_start_time}
                   onChange={(e) => setResched({ ...resched, new_start_time: e.target.value })}
                   className="input-field" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">End</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">End</label>
                 <input type="time" value={resched.new_end_time}
                   onChange={(e) => setResched({ ...resched, new_end_time: e.target.value })}
                   className="input-field" />

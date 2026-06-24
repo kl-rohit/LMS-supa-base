@@ -128,34 +128,39 @@ function buildUpiLink(payment, amount) {
   return q ? `upi://pay?${q}` : '';
 }
 
-// iPhone / iPad detection. On iOS there is no system UPI chooser, and other
-// apps (notably WhatsApp) register the generic `upi://` scheme — so tapping a
-// bare `upi://pay` link opens WhatsApp instead of a payment app. We therefore
-// route iOS users to the app-specific schemes (tez://, phonepe://, paytmmp://)
-// and hold back the generic link there. iPadOS reports as MacIntel with touch.
+// Platform detection. The bare `upi://pay` scheme only works as a real chooser
+// on Android. On iOS there is NO system UPI chooser, and other apps (notably
+// WhatsApp, via WhatsApp Pay) register the `upi://` scheme — so tapping a bare
+// `upi://pay` link on an iPhone opens WhatsApp instead of a payment app.
+//
+// We therefore only ever offer the generic link when we POSITIVELY detect
+// Android. We deliberately do NOT use "not iOS", because an iPhone can report a
+// non-iPhone user-agent (Safari's "Request Desktop Website" mode, or the page
+// opened inside WhatsApp's in-app browser) — in those cases a "not iOS" check
+// would wrongly show the generic button and reopen WhatsApp. With a positive
+// Android check, every iPhone falls back to the per-app buttons, which use each
+// app's own scheme and never hand off to WhatsApp.
+const UA = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+const IS_ANDROID = /Android/i.test(UA);
 const IS_IOS =
-  typeof navigator !== 'undefined' &&
-  (/iP(hone|ad|od)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+  /iP(hone|ad|od)/.test(UA) ||
+  (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-// Per-app deep links. Android shows a chooser for the generic upi:// link, but
-// iOS has no chooser and ignores upi://, so we also offer each common app's own
-// scheme. Same query (so the amount is prefilled). On a device where an app is
-// not installed its button simply does nothing, so showing all four is safe.
-// `iosSafe: false` marks the generic `upi://pay` entry that WhatsApp hijacks on
-// iOS, so it can be left out of the iOS list.
+// Per-app deep links — each common UPI app's OWN scheme (not the generic
+// upi://). Same query string, so the payee + amount arrive prefilled. These are
+// safe on every device: if the app is not installed the button simply does
+// nothing, and none of them hand off to WhatsApp. This is the chooser shown to
+// iPhone users (and offered as an alternative on Android).
 const UPI_APPS = [
-  { key: 'gpay',    label: 'Google Pay', scheme: 'tez://upi/pay', iosSafe: true },
-  { key: 'phonepe', label: 'PhonePe',    scheme: 'phonepe://pay', iosSafe: true },
-  { key: 'paytm',   label: 'Paytm',      scheme: 'paytmmp://pay', iosSafe: true },
-  { key: 'bhim',    label: 'BHIM / other', scheme: 'upi://pay', iosSafe: false },
+  { key: 'gpay',    label: 'Google Pay', scheme: 'tez://upi/pay'  },
+  { key: 'phonepe', label: 'PhonePe',    scheme: 'phonepe://pay'  },
+  { key: 'paytm',   label: 'Paytm',      scheme: 'paytmmp://pay'  },
+  { key: 'bhim',    label: 'BHIM',       scheme: 'bhim://upi/pay' },
 ];
 function buildAppLinks(payment, amount) {
   const q = buildUpiQuery(payment, amount);
   if (!q) return [];
-  return UPI_APPS
-    .filter((a) => !IS_IOS || a.iosSafe)
-    .map((a) => ({ ...a, href: `${a.scheme}?${q}` }));
+  return UPI_APPS.map((a) => ({ ...a, href: `${a.scheme}?${q}` }));
 }
 
 function PaymentCard({ payment, amount }) {
@@ -212,14 +217,14 @@ function PaymentCard({ payment, amount }) {
           </div>
         )}
 
-        {/* Mobile: a tap-to-pay deep link that opens the installed UPI app via
-            the generic upi:// scheme. Android shows its UPI chooser here. On
-            iOS the scheme is hijacked by other apps (e.g. WhatsApp), so this
-            generic button is held back and the per-app buttons below are used
-            instead. sm:hidden hides it on laptops/desktops, which have no UPI
-            app; only shown when a UPI id is set (an uploaded QR image alone
-            cannot produce a deep link). */}
-        {upiLink && !IS_IOS && (
+        {/* Mobile, ANDROID ONLY: a tap-to-pay deep link via the generic upi://
+            scheme, where Android shows its own UPI app chooser. We gate this on
+            a positive Android check — never "not iOS" — because the bare upi://
+            scheme is hijacked by WhatsApp on iPhones, so an iPhone with an
+            unusual user-agent must never reach this. sm:hidden hides it on
+            laptops/desktops; only shown when a UPI id is set (an uploaded QR
+            image alone cannot produce a deep link). */}
+        {upiLink && IS_ANDROID && (
           <a
             href={upiLink}
             className="sm:hidden w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
@@ -229,24 +234,26 @@ function PaymentCard({ payment, amount }) {
           </a>
         )}
 
-        {/* Per-app buttons: each common app's own scheme, with the amount
-            carried in the link so it arrives prefilled. On iOS these are the
-            primary way to pay (the generic upi:// link is unsafe there), so the
-            label leads; on Android they are an alternative to the chooser. */}
+        {/* Per-app chooser: each common UPI app's own scheme, with the amount
+            carried in the link so it arrives prefilled. On iPhone this IS the
+            chooser (iOS has no system UPI picker), so it leads; on Android it is
+            an alternative to the generic button above. Tapping an app that is
+            not installed simply does nothing — none of these open WhatsApp. */}
         {appLinks.length > 0 && (
           <div className="sm:hidden w-full">
-            <p className="text-xs text-gray-400 mb-2">{IS_IOS ? 'Pay with your app' : 'Or open a specific app'}</p>
+            <p className="text-xs text-gray-400 mb-2">{IS_ANDROID ? 'Or open a specific app' : 'Choose your UPI app'}</p>
             <div className="grid grid-cols-2 gap-2">
               {appLinks.map((a) => (
                 <a
                   key={a.key}
                   href={a.href}
-                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex items-center justify-center px-3 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 active:scale-95 transition-transform"
                 >
                   {a.label}
                 </a>
               ))}
             </div>
+            <p className="text-[11px] text-gray-400 mt-2">Tap your app to open it with the amount ready. Don't see your app? Scan the QR above with it.</p>
           </div>
         )}
 

@@ -16,6 +16,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import StatsCard from '../components/StatsCard';
+import CountUpAmount from '../components/CountUpAmount';
 import Loader from '../components/Loader';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
@@ -133,7 +134,7 @@ export default function Dashboard() {
           icon={IndianRupee}
           title="Fees Collected"
           value={amountReveal.revealed
-            ? `\u20B9${Number(feesCollectedThisMonth).toLocaleString('en-IN')}`
+            ? <CountUpAmount key="fees-collected" value={feesCollectedThisMonth} />
             : '\u20B9\u2022\u2022\u2022\u2022'}
           color="amber"
           subtitle="This month"

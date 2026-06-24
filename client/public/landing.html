@@ -173,6 +173,39 @@
       .card-hover::after { transition: none; }
       .count-pop { animation: none; }
     }
+    /* QR scan-line: a soft beam sweeps up and down the QR mock, like a real
+       UPI app focusing on the code. Lives inside the .qr-frame (overflow-hidden). */
+    .qr-frame .qr-scan {
+      position: absolute; left: 6%; right: 6%; top: 6%; height: 2px; border-radius: 2px;
+      background: linear-gradient(90deg, transparent, #4f46e5, transparent);
+      box-shadow: 0 0 10px 1px rgba(79,70,229,.7); animation: qrScan 2.4s ease-in-out infinite;
+    }
+    @keyframes qrScan { 0%, 100% { top: 6%; } 50% { top: 86%; } }
+    /* Hero aurora: two large, blurred gradient orbs drift slowly behind the hero
+       content for a living, premium backdrop. Pointer-events:none so they never
+       intercept clicks; they sit beneath the content (z-0, content is z-10). */
+    .aurora { position: absolute; border-radius: 9999px; filter: blur(60px); opacity: .55; pointer-events: none; }
+    .aurora-1 { width: 30rem; height: 30rem; top: -8rem; right: -6rem; background: radial-gradient(circle, rgba(202,161,75,.5), transparent 65%); animation: auroraA 18s ease-in-out infinite; }
+    .aurora-2 { width: 26rem; height: 26rem; bottom: -10rem; left: -8rem; background: radial-gradient(circle, rgba(99,102,241,.55), transparent 65%); animation: auroraB 22s ease-in-out infinite; }
+    @keyframes auroraA { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-40px,30px) scale(1.12); } }
+    @keyframes auroraB { 0%, 100% { transform: translate(0,0) scale(1); } 50% { transform: translate(50px,-24px) scale(1.08); } }
+    /* Shine sweep: a diagonal highlight glides across a button on hover. */
+    .shine { position: relative; overflow: hidden; }
+    .shine::before {
+      content: ''; position: absolute; top: 0; left: -120%; width: 60%; height: 100%; pointer-events: none;
+      background: linear-gradient(120deg, transparent, rgba(255,255,255,.45), transparent); transform: skewX(-20deg);
+    }
+    .shine:hover::before { animation: shineSweep .9s ease; }
+    @keyframes shineSweep { to { left: 140%; } }
+    /* Click ripple: a circle expands from the click point (JS appends the node). */
+    .ripple-ink { position: absolute; border-radius: 9999px; background: rgba(255,255,255,.5); transform: scale(0); pointer-events: none; animation: rippleOut .6s ease-out forwards; }
+    @keyframes rippleOut { to { transform: scale(2.6); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .qr-frame .qr-scan { animation: none; opacity: 0; }
+      .aurora { animation: none; }
+      .shine:hover::before { animation: none; }
+      .ripple-ink { display: none; }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
@@ -225,8 +258,11 @@
   </header>
 
   <!-- ============ HERO ============ -->
-  <section id="top" class="grad-hero text-white overflow-hidden">
-    <div class="max-w-6xl mx-auto px-4 py-16 md:py-24 grid lg:grid-cols-2 gap-12 items-center">
+  <section id="top" class="grad-hero text-white overflow-hidden relative">
+    <!-- Drifting aurora orbs behind the hero content (decorative, non-interactive) -->
+    <span class="aurora aurora-1" aria-hidden="true"></span>
+    <span class="aurora aurora-2" aria-hidden="true"></span>
+    <div class="relative z-10 max-w-6xl mx-auto px-4 py-16 md:py-24 grid lg:grid-cols-2 gap-12 items-center">
       <div>
         <span class="inline-flex items-center gap-2 text-xs font-semibold bg-white/10 border border-white/15 rounded-full px-3 py-1 text-gold-200">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> VidyaSetu: Bridging teachers and learners
@@ -255,10 +291,10 @@
           Parents stay updated in real time. You stay focused on teaching.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="tel:+919360390883" class="magnetic inline-flex items-center gap-2 bg-white text-slate-900 font-semibold px-5 py-3 rounded-xl hover:bg-slate-100">
+          <a href="tel:+919360390883" class="shine magnetic inline-flex items-center gap-2 bg-white text-slate-900 font-semibold px-5 py-3 rounded-xl hover:bg-slate-100">
             <i data-lucide="phone-call" class="w-5 h-5"></i> Call to enquire: +91 93603 90883
           </a>
-          <a href="#pricing" class="magnetic inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white font-semibold px-5 py-3 rounded-xl">
+          <a href="#pricing" class="shine magnetic inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white font-semibold px-5 py-3 rounded-xl">
             See pricing <i data-lucide="arrow-down" class="w-5 h-5"></i>
           </a>
         </div>
@@ -406,17 +442,17 @@
       <p class="mt-4 text-slate-600">VidyaSetu brings registers, fees and parent updates into one calm, organised system your whole academy actually enjoys using.</p>
     </div>
     <div class="mt-12 grid md:grid-cols-3 gap-6">
-      <div class="rounded-2xl p-6 ring-1 ring-slate-200 bg-white card-hover">
+      <div class="reveal rounded-2xl p-6 ring-1 ring-slate-200 bg-white card-hover">
         <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 grid place-items-center"><i data-lucide="clock" class="w-5 h-5"></i></div>
         <h3 class="mt-4 font-bold text-slate-900">Save hours every week</h3>
         <p class="mt-1.5 text-sm text-slate-600">Attendance in a few taps, fee reminders that send themselves, and a timetable that updates everyone at once. Spend time teaching, not on paperwork.</p>
       </div>
-      <div class="rounded-2xl p-6 ring-1 ring-slate-200 bg-white card-hover">
+      <div class="reveal rounded-2xl p-6 ring-1 ring-slate-200 bg-white card-hover">
         <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="wallet" class="w-5 h-5"></i></div>
         <h3 class="mt-4 font-bold text-slate-900">Get paid on time</h3>
         <p class="mt-1.5 text-sm text-slate-600">Automatic fee reminders and clear monthly statements mean fewer awkward follow-ups and far fewer missed payments.</p>
       </div>
-      <div class="rounded-2xl p-6 ring-1 ring-slate-200 bg-white card-hover">
+      <div class="reveal rounded-2xl p-6 ring-1 ring-slate-200 bg-white card-hover">
         <div class="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 grid place-items-center"><i data-lucide="heart-handshake" class="w-5 h-5"></i></div>
         <h3 class="mt-4 font-bold text-slate-900">Build parent trust</h3>
         <p class="mt-1.5 text-sm text-slate-600">Parents see their child's attendance, progress, lessons and dues in their own portal, and get notified the moment anything changes.</p>
@@ -470,7 +506,7 @@
       <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
         <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="calendar" class="w-5 h-5"></i></div>
         <h3 class="mt-4 font-bold text-slate-900">Classes &amp; Timetable</h3>
-        <p class="mt-1.5 text-sm text-slate-600">A week-at-a-glance timetable with online/offline &amp; group classes. Reschedule or cancel a single date without touching the recurring class.</p>
+        <p class="mt-1.5 text-sm text-slate-600">A week-at-a-glance timetable with online, in-person &amp; group classes, each online class carrying a one-tap join link. Reschedule or cancel a single date without touching the recurring class.</p>
       </div>
       <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
         <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="clipboard-check" class="w-5 h-5"></i></div>
@@ -481,6 +517,16 @@
         <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="indian-rupee" class="w-5 h-5"></i></div>
         <h3 class="mt-4 font-bold text-slate-900">Fees &amp; Payments</h3>
         <p class="mt-1.5 text-sm text-slate-600">Track monthly fees, additional charges and dues. Auto-generate fee reminders and end-of-month statements per student.</p>
+      </div>
+      <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
+        <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="qr-code" class="w-5 h-5"></i></div>
+        <h3 class="mt-4 font-bold text-slate-900">UPI &amp; QR Payments</h3>
+        <p class="mt-1.5 text-sm text-slate-600">Add your UPI ID and a pay-by-QR code appears in every parent's Fees tab, pre-filled with the exact amount due. Parents scan, pay and you stay in control of reconciliation.</p>
+      </div>
+      <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
+        <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="building-2" class="w-5 h-5"></i></div>
+        <h3 class="mt-4 font-bold text-slate-900">Multiple Academies</h3>
+        <p class="mt-1.5 text-sm text-slate-600">Run more than one branch or academy from a single login and switch between them in a tap, each with its own students, fees and timetable kept neatly apart.</p>
       </div>
       <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
         <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="message-square" class="w-5 h-5"></i></div>
@@ -522,23 +568,28 @@
         <h3 class="mt-4 font-bold text-slate-900">Reports &amp; Insights</h3>
         <p class="mt-1.5 text-sm text-slate-600">Attendance trends, fee collection and lesson activity at a glance, so you always know how the academy is doing.</p>
       </div>
+      <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
+        <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="tent" class="w-5 h-5"></i></div>
+        <h3 class="mt-4 font-bold text-slate-900">Workshops &amp; Camps</h3>
+        <p class="mt-1.5 text-sm text-slate-600">Run short-term summer camps, intensives and weekend workshops alongside regular classes, each with its own dates, roster and attendance, kept separate from your weekly timetable.</p>
+      </div>
     </div>
 
     <!-- platform niceties -->
     <div class="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
+      <div class="reveal flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
         <i data-lucide="palette" class="w-5 h-5 text-gold-300 mt-0.5"></i>
         <div><div class="font-semibold">Dark mode &amp; themes</div><div class="text-sm text-slate-300">Brand colours and a beautiful dark theme out of the box.</div></div>
       </div>
-      <div class="flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
+      <div class="reveal flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
         <i data-lucide="shield-check" class="w-5 h-5 text-gold-300 mt-0.5"></i>
         <div><div class="font-semibold">Secure &amp; private</div><div class="text-sm text-slate-300">Each academy's data is isolated; parents only see their own child.</div></div>
       </div>
-      <div class="flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
+      <div class="reveal flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
         <i data-lucide="wifi-off" class="w-5 h-5 text-gold-300 mt-0.5"></i>
         <div><div class="font-semibold">Installable PWA</div><div class="text-sm text-slate-300">Add to home screen on Android &amp; iPhone, straight from the browser.</div></div>
       </div>
-      <div class="flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
+      <div class="reveal flex items-start gap-3 bg-slate-900 text-white rounded-2xl p-5">
         <i data-lucide="zap" class="w-5 h-5 text-gold-300 mt-0.5"></i>
         <div><div class="font-semibold">Fast &amp; intuitive</div><div class="text-sm text-slate-300">Clean, mobile-first screens your staff can use on day one.</div></div>
       </div>
@@ -557,8 +608,34 @@
       </div>
       <div class="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
 
+        <!-- Dashboard -->
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+          <div class="mock p-3 bg-slate-50 h-56">
+            <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Dashboard</div><span class="text-[9px] text-slate-400">Mon, 16 Jun</span></div>
+            <div class="mt-2 grid grid-cols-2 gap-1.5">
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5"><div class="text-[8px] text-slate-400">Active students</div><div class="text-[13px] font-extrabold text-slate-900">128</div></div>
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5"><div class="text-[8px] text-slate-400">Classes today</div><div class="text-[13px] font-extrabold text-brand-700">6</div></div>
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5"><div class="text-[8px] text-slate-400">Collected</div><div class="text-[13px] font-extrabold text-emerald-600">₹46.5k</div></div>
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5"><div class="text-[8px] text-slate-400">Pending</div><div class="text-[13px] font-extrabold text-amber-600">₹14k</div></div>
+            </div>
+            <div class="mt-2 rounded-lg bg-white ring-1 ring-slate-200 p-2">
+              <div class="text-[8px] text-slate-400 mb-1">New students this week</div>
+              <div class="flex items-end gap-1 h-12">
+                <div class="flex-1 rounded-t bg-brand-200" style="height:35%"></div>
+                <div class="flex-1 rounded-t bg-brand-300" style="height:55%"></div>
+                <div class="flex-1 rounded-t bg-brand-400" style="height:45%"></div>
+                <div class="flex-1 rounded-t bg-brand-500" style="height:75%"></div>
+                <div class="flex-1 rounded-t bg-brand-600" style="height:60%"></div>
+                <div class="flex-1 rounded-t bg-brand-500" style="height:90%"></div>
+                <div class="flex-1 rounded-t bg-brand-400" style="height:50%"></div>
+              </div>
+            </div>
+          </div>
+          <figcaption class="px-4 py-3 text-sm font-medium text-slate-700 border-t border-slate-100">Your whole academy at a glance</figcaption>
+        </figure>
+
         <!-- Attendance -->
-        <figure class="bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
           <div class="mock p-3 bg-slate-50 h-56">
             <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Attendance</div><span class="text-[9px] text-slate-400">Beginner batch · 16 Jun</span></div>
             <div class="mt-2.5 space-y-1.5">
@@ -573,7 +650,7 @@
         </figure>
 
         <!-- Timetable -->
-        <figure class="bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
           <div class="mock p-3 bg-slate-50 h-56">
             <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Timetable</div><span class="text-[9px] text-slate-400">This week</span></div>
             <div class="mt-2 grid grid-cols-5 gap-1 text-center text-[8px] text-slate-400">
@@ -591,7 +668,7 @@
         </figure>
 
         <!-- Fees -->
-        <figure class="bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
           <div class="mock p-3 bg-slate-50 h-56">
             <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Fees</div><span class="text-[9px] text-slate-400">June 2026</span></div>
             <div class="mt-2 grid grid-cols-2 gap-2">
@@ -608,8 +685,25 @@
           <figcaption class="px-4 py-3 text-sm font-medium text-slate-700 border-t border-slate-100">Fees &amp; automatic reminders</figcaption>
         </figure>
 
+        <!-- UPI / QR payment -->
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+          <div class="mock p-3 bg-slate-50 h-56 flex flex-col">
+            <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Pay fees</div><span class="text-[9px] text-slate-400">UPI · GPay, PhonePe, Paytm</span></div>
+            <div class="mt-2 rounded-lg bg-white ring-1 ring-slate-200 p-3 flex-1 flex flex-col items-center justify-center">
+              <div class="qr-frame relative w-24 h-24 rounded-lg bg-white ring-1 ring-slate-200 grid place-items-center overflow-hidden">
+                <i data-lucide="qr-code" class="w-16 h-16 text-slate-800"></i>
+                <span class="qr-scan"></span>
+              </div>
+              <div class="mt-2 text-[11px] font-semibold text-slate-800">Amount due <span class="text-brand-700">₹500</span></div>
+              <div class="text-[9px] text-slate-400">Scan with any UPI app to pay</div>
+            </div>
+            <button class="mt-2 w-full rounded-lg bg-brand-600 text-white text-[11px] font-semibold py-1.5">Copy UPI ID</button>
+          </div>
+          <figcaption class="px-4 py-3 text-sm font-medium text-slate-700 border-t border-slate-100">UPI &amp; QR fee collection</figcaption>
+        </figure>
+
         <!-- Lessons -->
-        <figure class="bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
           <div class="mock p-3 bg-slate-50 h-56">
             <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Online lessons</div><span class="text-[9px] text-slate-400">3 courses</span></div>
             <div class="mt-2 space-y-2">
@@ -627,7 +721,7 @@
         </figure>
 
         <!-- Parent portal (phone) -->
-        <figure class="bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
           <div class="bg-slate-100 h-56 grid place-items-center p-3">
             <div class="mock w-32 rounded-[1.3rem] bg-slate-900 p-1 shadow-lg">
               <div class="rounded-[1.1rem] overflow-hidden bg-slate-50">
@@ -644,7 +738,7 @@
         </figure>
 
         <!-- Notifications -->
-        <figure class="bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
           <div class="mock p-3 bg-slate-50 h-56">
             <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Notifications</div><span class="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-semibold">3 new</span></div>
             <div class="mt-2 space-y-1.5">
@@ -654,6 +748,33 @@
             </div>
           </div>
           <figcaption class="px-4 py-3 text-sm font-medium text-slate-700 border-t border-slate-100">Push &amp; in-app notifications</figcaption>
+        </figure>
+
+        <!-- Reports & Insights -->
+        <figure class="reveal bg-white rounded-2xl ring-1 ring-slate-200 overflow-hidden card-hover">
+          <div class="mock p-3 bg-slate-50 h-56 flex flex-col">
+            <div class="flex items-center justify-between"><div class="text-[12px] font-bold text-slate-900">Reports</div><span class="text-[9px] text-slate-400">Last 6 months</span></div>
+            <div class="mt-2 rounded-lg bg-white ring-1 ring-slate-200 p-2">
+              <div class="flex items-center justify-between mb-1"><div class="text-[8px] text-slate-400">Fee collection</div><div class="text-[9px] font-bold text-emerald-600">↑ 18%</div></div>
+              <svg viewBox="0 0 120 44" class="w-full h-16" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="repFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0,34 L20,28 L40,30 L60,18 L80,20 L100,10 L120,6 L120,44 L0,44 Z" fill="url(#repFill)"/>
+                <polyline points="0,34 20,28 40,30 60,18 80,20 100,10 120,6" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="120" cy="6" r="2.4" fill="#6366f1"/>
+              </svg>
+            </div>
+            <div class="mt-2 grid grid-cols-3 gap-1.5">
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5 text-center"><div class="text-[8px] text-slate-400">Attendance</div><div class="text-[12px] font-extrabold text-emerald-600">92%</div></div>
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5 text-center"><div class="text-[8px] text-slate-400">Collection</div><div class="text-[12px] font-extrabold text-brand-700">87%</div></div>
+              <div class="rounded-lg bg-white ring-1 ring-slate-200 p-1.5 text-center"><div class="text-[8px] text-slate-400">Active</div><div class="text-[12px] font-extrabold text-slate-900">128</div></div>
+            </div>
+          </div>
+          <figcaption class="px-4 py-3 text-sm font-medium text-slate-700 border-t border-slate-100">Trends &amp; insights that guide decisions</figcaption>
         </figure>
 
       </div>
@@ -869,7 +990,7 @@
           <ul class="mt-5 space-y-2 text-sm text-slate-300">
             <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Students, groups &amp; classes</li>
             <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Attendance &amp; timetable</li>
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Fees &amp; reminders</li>
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Fees, UPI &amp; QR collection</li>
             <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Messaging &amp; notifications</li>
             <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Reports &amp; summaries</li>
             <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Parent portal</li>
@@ -1001,21 +1122,128 @@
 
   <!-- ============ CONTACT / CTA ============ -->
   <section id="contact" class="bg-gradient-to-br from-brand-600 to-brand-800 text-white">
-    <div class="max-w-4xl mx-auto px-4 py-16 md:py-20 text-center">
-      <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight">Ready to simplify your academy?</h2>
-      <p class="mt-4 text-brand-100 max-w-xl mx-auto">Get a guided walkthrough and a quote tailored to your student count. We'll create your account and have you set up in no time.</p>
-      <div class="mt-8 flex flex-wrap gap-3 justify-center">
-        <a href="tel:+919360390883" class="inline-flex items-center gap-2 bg-white text-brand-700 font-bold px-6 py-3.5 rounded-xl hover:bg-slate-100 text-lg transition-transform active:scale-95">
-          <i data-lucide="phone-call" class="w-5 h-5"></i> Call +91 93603 90883
-        </a>
-        <a href="/app/login" class="inline-flex items-center gap-2 bg-gold-400 hover:bg-gold-300 text-brand-900 font-bold px-6 py-3.5 rounded-xl text-lg shadow-sm transition-transform active:scale-95">
-          Sign in <i data-lucide="arrow-right" class="w-5 h-5"></i>
-        </a>
+    <div class="max-w-5xl mx-auto px-4 py-16 md:py-20">
+      <div class="text-center">
+        <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight">Ready to simplify your academy?</h2>
+        <p class="mt-4 text-brand-100 max-w-xl mx-auto">Tell us a little about your academy and we'll reach out with a guided walkthrough and a quote tailored to your student count.</p>
       </div>
-      <p class="mt-6 text-brand-100 text-sm">
-        New academy? Accounts are set up by our team, so <a href="tel:+919360390883" class="font-semibold underline">call +91 93603 90883</a> to create yours.
-        Already have a login? <a href="/app/login" class="font-semibold underline">Sign in here</a>.
-      </p>
+
+      <div class="mt-10 grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-start">
+        <!-- Contact form -->
+        <div class="reveal bg-white text-slate-800 rounded-2xl shadow-xl p-6 sm:p-8">
+          <h3 class="text-xl font-bold text-slate-900">Request a demo</h3>
+          <p class="mt-1 text-sm text-slate-500">We usually respond within one business day.</p>
+
+          <form id="lead-form" class="mt-6 space-y-4" novalidate>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label for="lf-name" class="block text-sm font-semibold text-slate-700 mb-1">Your name <span class="text-rose-500">*</span></label>
+                <input id="lf-name" name="name" type="text" required autocomplete="name"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. Anita Sharma">
+              </div>
+              <div>
+                <label for="lf-phone" class="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
+                <input id="lf-phone" name="phone" type="tel" autocomplete="tel"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. +91 98765 43210">
+              </div>
+            </div>
+
+            <div>
+              <label for="lf-email" class="block text-sm font-semibold text-slate-700 mb-1">Email</label>
+              <input id="lf-email" name="email" type="email" autocomplete="email"
+                     class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="you@example.com">
+              <p class="mt-1 text-xs text-slate-400">Share an email or a phone number so we can reach you.</p>
+            </div>
+
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label for="lf-type" class="block text-sm font-semibold text-slate-700 mb-1">Academy type</label>
+                <select id="lf-type" name="academy_type"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                  <option value="">Select one</option>
+                  <option>Music</option>
+                  <option>Dance</option>
+                  <option>Coaching</option>
+                  <option>Tuition</option>
+                  <option>Arts</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label for="lf-academy" class="block text-sm font-semibold text-slate-700 mb-1">Academy name</label>
+                <input id="lf-academy" name="academy_name" type="text"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. Swara Sangeet Vidyalaya">
+              </div>
+            </div>
+
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label for="lf-students" class="block text-sm font-semibold text-slate-700 mb-1">Approx. students</label>
+                <select id="lf-students" name="student_count"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                  <option value="">Select range</option>
+                  <option>1-25</option>
+                  <option>26-50</option>
+                  <option>51-100</option>
+                  <option>100+</option>
+                </select>
+              </div>
+              <div>
+                <label for="lf-city" class="block text-sm font-semibold text-slate-700 mb-1">City</label>
+                <input id="lf-city" name="city" type="text" autocomplete="address-level2"
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. Pune">
+              </div>
+            </div>
+
+            <div>
+              <label for="lf-message" class="block text-sm font-semibold text-slate-700 mb-1">Anything else?</label>
+              <textarea id="lf-message" name="message" rows="3"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="Tell us what you're looking for..."></textarea>
+            </div>
+
+            <button id="lf-submit" type="submit"
+                    class="shine w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-bold px-6 py-3.5 rounded-xl text-base transition-transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
+              <span class="lf-label inline-flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Request a demo</span>
+              <span class="lf-spinner hidden inline-flex items-center gap-2"><i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Sending...</span>
+            </button>
+
+            <!-- Inline status messages -->
+            <div id="lf-ok" class="hidden rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm flex items-start gap-2">
+              <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+              <span>Thanks! We've received your request and will reach out soon.</span>
+            </div>
+            <div id="lf-err" class="hidden rounded-lg bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 text-sm flex items-start gap-2">
+              <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+              <span class="lf-err-text">Something went wrong. Please try again.</span>
+            </div>
+          </form>
+        </div>
+
+        <!-- Reassurance / direct contact -->
+        <div class="reveal space-y-5 lg:pt-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/15 grid place-items-center flex-shrink-0"><i data-lucide="phone-call" class="w-5 h-5 text-white"></i></div>
+            <div>
+              <p class="font-semibold text-white">Prefer to talk?</p>
+              <p class="text-sm text-brand-100">Call <a href="tel:+919360390883" class="font-semibold underline">+91 93603 90883</a> and we'll set you up.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/15 grid place-items-center flex-shrink-0"><i data-lucide="log-in" class="w-5 h-5 text-white"></i></div>
+            <div>
+              <p class="font-semibold text-white">Already a member?</p>
+              <p class="text-sm text-brand-100"><a href="/app/login" class="font-semibold underline">Sign in here</a> to open your academy.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/15 grid place-items-center flex-shrink-0"><i data-lucide="shield-check" class="w-5 h-5 text-white"></i></div>
+            <div>
+              <p class="font-semibold text-white">No commitment</p>
+              <p class="text-sm text-brand-100">We'll walk you through everything before you decide. Introductory pricing applies while it lasts.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1187,6 +1415,85 @@
       count.addEventListener('input', recalc);
       plan.addEventListener('change', recalc);
       recalc();
+    })();
+
+    // Contact / "Request a demo" form — posts to the public /api/leads endpoint.
+    // The platform owner sees these under Platform Admin -> Requests.
+    (function () {
+      var form = document.getElementById('lead-form');
+      if (!form) return;
+      // Mirrors client/src/utils/api.js: the Catalyst deploy serves the API
+      // under /server/api/api. Keep these in sync if the mount ever changes.
+      var API_BASE = '/server/api/api';
+      var btn   = document.getElementById('lf-submit');
+      var label = form.querySelector('.lf-label');
+      var spin  = form.querySelector('.lf-spinner');
+      var okBox = document.getElementById('lf-ok');
+      var errBox = document.getElementById('lf-err');
+      var errText = form.querySelector('.lf-err-text');
+
+      function show(el, on) { if (el) el.classList[on ? 'remove' : 'add']('hidden'); }
+      function busy(on) {
+        btn.disabled = on;
+        show(label, !on);
+        show(spin, on);
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        show(okBox, false);
+        show(errBox, false);
+
+        var data = {
+          name:          (form.name.value || '').trim(),
+          email:         (form.email.value || '').trim(),
+          phone:         (form.phone.value || '').trim(),
+          academy_type:  form.academy_type.value || '',
+          academy_name:  (form.academy_name.value || '').trim(),
+          student_count: form.student_count.value || '',
+          city:          (form.city.value || '').trim(),
+          message:       (form.message.value || '').trim()
+        };
+
+        // Light client-side checks; the server validates again.
+        if (!data.name) {
+          if (errText) errText.textContent = 'Please share your name.';
+          show(errBox, true);
+          form.name.focus();
+          return;
+        }
+        if (!data.email && !data.phone) {
+          if (errText) errText.textContent = 'Please share an email or phone so we can reach you.';
+          show(errBox, true);
+          form.email.focus();
+          return;
+        }
+
+        busy(true);
+        fetch(API_BASE + '/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            return { ok: res.ok, body: body };
+          });
+        }).then(function (r) {
+          if (r.ok) {
+            form.reset();
+            show(okBox, true);
+            if (okBox && okBox.scrollIntoView) okBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else {
+            if (errText) errText.textContent = (r.body && r.body.error) || 'Something went wrong. Please try again.';
+            show(errBox, true);
+          }
+        }).catch(function () {
+          if (errText) errText.textContent = 'Network error. Please check your connection and try again.';
+          show(errBox, true);
+        }).then(function () {
+          busy(false);
+        });
+      });
     })();
 
     // ---- Lovable enhancements: reveal, count-up, live mock, nav, confetti ----
@@ -1415,6 +1722,24 @@
         }, { passive: true });
         window.addEventListener('resize', apply);
         apply();
+      })();
+
+      // 12) Click ripple on the primary CTAs (.shine already clips overflow)
+      (function () {
+        if (reduce) return;
+        document.querySelectorAll('.shine').forEach(function (el) {
+          el.addEventListener('pointerdown', function (e) {
+            var r = el.getBoundingClientRect();
+            var size = Math.max(r.width, r.height);
+            var ink = document.createElement('span');
+            ink.className = 'ripple-ink';
+            ink.style.width = ink.style.height = size + 'px';
+            ink.style.left = (e.clientX - r.left - size / 2) + 'px';
+            ink.style.top = (e.clientY - r.top - size / 2) + 'px';
+            el.appendChild(ink);
+            setTimeout(function () { ink.remove(); }, 650);
+          });
+        });
       })();
     })();
 

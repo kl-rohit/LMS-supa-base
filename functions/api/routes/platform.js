@@ -1048,6 +1048,79 @@ router.put('/invoices/:id', async (req, res) => {
 });
 
 // =============================================================================
+// Leads — platform-admin only. Inbound requests from the marketing landing
+// page's contact form (captured publicly via /api/leads). This is the sales
+// pipeline: each lead moves through statuses as the owner follows up. Backed by
+// a Leads table in the Catalyst console; if that table is absent every endpoint
+// degrades gracefully (GET returns available:false, writes return 503).
+//
+//   Leads columns (Data Store):
+//     name, email, phone, academy_type, academy_name, student_count,
+//     city, message, source, status, notes
+//
+// status pipeline (the "track"): new (form filled) -> called -> signed_up
+// -> invited -> trial -> won | lost.
+// =============================================================================
+const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 'lost'];
+
+router.get('/leads', async (req, res) => {
+  try {
+    const statusFilter = LEAD_STATUSES.includes(req.query.status) ? req.query.status : null;
+    const where = statusFilter ? ` WHERE Leads.status = '${statusFilter}'` : '';
+    let leads = [];
+    try {
+      const rows = await zcqlAll(req, `SELECT * FROM Leads${where}`, 'Leads');
+      leads = unwrap(rows, 'Leads').map(normalize);
+    } catch (e) {
+      return res.json({ leads: [], available: false });
+    }
+
+    // Newest first so fresh requests sit at the top of the inbox.
+    leads.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    // Pipeline counts so the UI can show how many sit in each stage.
+    const counts = {};
+    for (const s of LEAD_STATUSES) counts[s] = 0;
+    for (const l of leads) if (counts[l.status] !== undefined) counts[l.status] += 1;
+
+    res.json({ leads, counts, available: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load leads', detail: e.message });
+  }
+});
+
+router.put('/leads/:id', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid lead id' });
+    const existing = await zcql(req, `SELECT * FROM Leads WHERE ROWID = ${rowId}`);
+    const lead = unwrap(existing, 'Leads')[0];
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const patch = {};
+    if (req.body.status !== undefined) {
+      const s = String(req.body.status);
+      if (!LEAD_STATUSES.includes(s)) return res.status(400).json({ error: 'Invalid status' });
+      patch.status = s;
+    }
+    if (req.body.notes !== undefined) patch.notes = String(req.body.notes).slice(0, 1000);
+
+    if (!Object.keys(patch).length) return res.json({ lead: normalize(lead) });
+
+    const updated = await update(req, 'Leads', req.params.id, patch);
+    await writeAudit(req, {
+      action: 'lead.update',
+      orgId: 0,
+      orgName: lead.name || '',
+      detail: { status: patch.status, name: lead.name },
+    });
+    res.json({ lead: normalize(updated) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update lead', detail: e.message });
+  }
+});
+
+// =============================================================================
 // GET /api/platform/broadcasts — platform-admin only. Recent broadcasts you
 // have sent, read back from the audit log (action 'platform.broadcast'). Lets
 // the composer show a sent history without a separate table. Empty + available

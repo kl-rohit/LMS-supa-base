@@ -40,6 +40,10 @@ import {
   Receipt,
   CheckCircle2,
   Ban,
+  Inbox,
+  Phone,
+  AtSign,
+  MapPin,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -262,10 +266,58 @@ export default function Platform() {
     }
   };
 
+  // ----- Requests (leads) ----------------------------------------------------
+  const [leads, setLeads] = useState([]);
+  const [leadsAvailable, setLeadsAvailable] = useState(true);
+  const [leadsLoaded, setLeadsLoaded] = useState(false);
+  const [leadBusy, setLeadBusy] = useState('');
+
+  const fetchLeads = async () => {
+    try {
+      const res = await api.get('/platform/leads');
+      setLeads(res?.leads || []);
+      setLeadsAvailable(res?.available !== false);
+    } catch (e) {
+      toast.error('Could not load requests: ' + e.message);
+    } finally {
+      setLeadsLoaded(true);
+    }
+  };
+
+  const setLeadStatus = async (lead, status) => {
+    setLeadBusy(lead.id);
+    // Optimistic.
+    setLeads((list) => list.map((x) => (x.id === lead.id ? { ...x, status } : x)));
+    try {
+      await api.put(`/platform/leads/${lead.id}`, { status });
+      toast.success(`Marked ${LEAD_LABEL[status] || status}`);
+      fetchLeads();
+    } catch (e) {
+      toast.error('Could not update request: ' + e.message);
+      fetchLeads();
+    } finally {
+      setLeadBusy('');
+    }
+  };
+
+  const saveLeadNotes = async (lead, notes) => {
+    setLeadBusy(lead.id);
+    try {
+      await api.put(`/platform/leads/${lead.id}`, { notes });
+      setLeads((list) => list.map((x) => (x.id === lead.id ? { ...x, notes } : x)));
+      toast.success('Notes saved');
+    } catch (e) {
+      toast.error('Could not save notes: ' + e.message);
+    } finally {
+      setLeadBusy('');
+    }
+  };
+
   // Lazy-load section data the first time each tab is opened.
   useEffect(() => {
     if (section === 'billing' && !invoicesLoaded) fetchInvoices();
     if (section === 'broadcast' && !broadcastsLoaded) fetchBroadcasts();
+    if (section === 'requests' && !leadsLoaded) fetchLeads();
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setOrgStatus = async (org, nextStatus) => {
@@ -652,6 +704,7 @@ export default function Platform() {
 
   const NAV = [
     { key: 'overview',   label: 'Overview',   icon: LayoutDashboard, badge: 0 },
+    { key: 'requests',   label: 'Requests',   icon: Inbox,           badge: leads.filter((l) => l.status === 'new').length },
     { key: 'academies',  label: 'Academies',  icon: Building2,       badge: orgs.length },
     { key: 'search',     label: 'Search',     icon: Search,          badge: 0 },
     { key: 'billing',    label: 'Billing',    icon: Receipt,         badge: 0 },
@@ -759,6 +812,17 @@ export default function Platform() {
                 const o = orgs.find((x) => String(x.id) === String(orgId));
                 if (o) openDetail(o);
               }}
+            />
+          )}
+
+          {section === 'requests' && (
+            <LeadsSection
+              leads={leads}
+              available={leadsAvailable}
+              loaded={leadsLoaded}
+              leadBusy={leadBusy}
+              setLeadStatus={setLeadStatus}
+              saveLeadNotes={saveLeadNotes}
             />
           )}
 
@@ -1759,6 +1823,32 @@ function SearchSection({ searchQ, setSearchQ, runSearch, searchBusy, results, on
 }
 
 // ----------------------------------------------------------------------------
+// Requests (leads) section — inbound contact-form submissions from the public
+// landing page. Each request moves through a follow-up pipeline.
+// ----------------------------------------------------------------------------
+// The pipeline order. The "track" the owner asked for: form filled -> called
+// -> signed up -> invited -> under trial -> won | lost.
+const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 'lost'];
+const LEAD_LABEL = {
+  new: 'New',
+  called: 'Called',
+  signed_up: 'Signed up',
+  invited: 'Invited',
+  trial: 'On trial',
+  won: 'Won',
+  lost: 'Lost',
+};
+const LEAD_BADGE = {
+  new:       'bg-indigo-100 text-indigo-700',
+  called:    'bg-sky-100 text-sky-700',
+  signed_up: 'bg-violet-100 text-violet-700',
+  invited:   'bg-amber-100 text-amber-700',
+  trial:     'bg-teal-100 text-teal-700',
+  won:       'bg-green-100 text-green-700',
+  lost:      'bg-gray-100 text-gray-500',
+};
+
+// ----------------------------------------------------------------------------
 // Billing section — a lightweight invoice ledger per academy. Records what is
 // owed and lets you mark invoices paid; charging itself is not wired yet.
 // ----------------------------------------------------------------------------
@@ -1920,6 +2010,197 @@ function BillingSection({ orgs, invoices, available, loaded, invoiceForm, setIF,
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// One request row — header summary plus an expandable body with full contact
+// details, a status pipeline, and an internal notes field.
+// ----------------------------------------------------------------------------
+function LeadRow({ lead, leadBusy, setLeadStatus, saveLeadNotes }) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState(lead.notes || '');
+  const busy = leadBusy === lead.id;
+  const when = lead.created_at ? new Date(lead.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+
+  return (
+    <div className="card p-0 overflow-hidden">
+      {/* Header — always visible */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-900 truncate">{lead.name || 'Unnamed'}</span>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${LEAD_BADGE[lead.status] || LEAD_BADGE.new}`}>
+              {LEAD_LABEL[lead.status] || lead.status}
+            </span>
+            {lead.academy_type && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">{lead.academy_type}</span>
+            )}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5 truncate">
+            {[lead.email, lead.phone, lead.city].filter(Boolean).join(' · ') || 'No contact details'}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {when && <span className="hidden sm:inline text-xs text-gray-400">{when}</span>}
+          <ChevronLeft className={`w-4 h-4 text-gray-400 transition-transform ${open ? '-rotate-90' : 'rotate-180'}`} />
+        </div>
+      </button>
+
+      {/* Body — expandable */}
+      {open && (
+        <div className="border-t border-gray-100 px-4 py-3 space-y-4 bg-gray-50/60">
+          {/* Contact + meta grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            {lead.email && (
+              <div className="flex items-center gap-2 text-gray-700">
+                <AtSign className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <a href={`mailto:${lead.email}`} className="text-indigo-600 hover:underline truncate">{lead.email}</a>
+              </div>
+            )}
+            {lead.phone && (
+              <div className="flex items-center gap-2 text-gray-700">
+                <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <a href={`tel:${lead.phone}`} className="text-indigo-600 hover:underline truncate">{lead.phone}</a>
+              </div>
+            )}
+            {lead.academy_name && (
+              <div className="flex items-center gap-2 text-gray-700">
+                <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="truncate">{lead.academy_name}</span>
+              </div>
+            )}
+            {lead.city && (
+              <div className="flex items-center gap-2 text-gray-700">
+                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="truncate">{lead.city}</span>
+              </div>
+            )}
+            {lead.student_count && (
+              <div className="flex items-center gap-2 text-gray-700">
+                <UsersIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="truncate">{lead.student_count} students</span>
+              </div>
+            )}
+          </div>
+
+          {lead.message && (
+            <div className="text-sm text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-2 whitespace-pre-wrap">
+              {lead.message}
+            </div>
+          )}
+
+          {/* Status pipeline */}
+          <div>
+            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Track</div>
+            <div className="flex flex-wrap gap-1.5">
+              {LEAD_STATUSES.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => lead.status !== s && setLeadStatus(lead, s)}
+                  disabled={busy}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium border transition-colors disabled:opacity-50 ${
+                    lead.status === s
+                      ? `${LEAD_BADGE[s]} border-transparent ring-1 ring-current`
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {LEAD_LABEL[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Internal notes */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Follow-up notes</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="input-field text-sm"
+              placeholder="Private notes about this request..."
+            />
+            <div className="flex justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => saveLeadNotes(lead, notes)}
+                disabled={busy || notes === (lead.notes || '')}
+                className="btn-sm rounded-md px-3 py-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 disabled:opacity-50 flex items-center gap-1"
+              >
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Requests section — the lead inbox. Lists inbound contact-form submissions
+// with a pipeline tracker and follow-up notes per request.
+// ----------------------------------------------------------------------------
+function LeadsSection({ leads, available, loaded, leadBusy, setLeadStatus, saveLeadNotes }) {
+  const counts = {};
+  for (const s of LEAD_STATUSES) counts[s] = 0;
+  for (const l of leads) if (counts[l.status] !== undefined) counts[l.status] += 1;
+
+  if (!loaded) return <Loader text="Loading requests..." />;
+
+  if (!available) {
+    return (
+      <div className="card flex items-start gap-3">
+        <Inbox className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-gray-600">
+          <p className="font-medium text-gray-800">Requests inbox not set up yet</p>
+          <p className="mt-1">
+            Create a <code className="font-mono text-gray-700">Leads</code> table in the Catalyst console (Data Store)
+            with columns <code className="font-mono text-gray-700">name</code>, <code className="font-mono text-gray-700">email</code>,
+            {' '}<code className="font-mono text-gray-700">phone</code>, <code className="font-mono text-gray-700">academy_type</code>,
+            {' '}<code className="font-mono text-gray-700">academy_name</code>, <code className="font-mono text-gray-700">student_count</code>,
+            {' '}<code className="font-mono text-gray-700">city</code>, <code className="font-mono text-gray-700">message</code>,
+            {' '}<code className="font-mono text-gray-700">source</code>, <code className="font-mono text-gray-700">status</code>,
+            {' '}and <code className="font-mono text-gray-700">notes</code> (all varchar). The inbox turns on once it exists.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Pipeline counts */}
+      <div className="card p-3 flex flex-wrap gap-2">
+        {LEAD_STATUSES.map((s) => (
+          <span key={s} className={`text-xs px-2.5 py-1 rounded-full font-medium ${LEAD_BADGE[s]}`}>
+            {LEAD_LABEL[s]} · {counts[s]}
+          </span>
+        ))}
+      </div>
+
+      {leads.length === 0 ? (
+        <EmptyState icon={Inbox} title="No requests yet" message="Contact-form submissions from the landing page will land here." />
+      ) : (
+        <div className="space-y-2">
+          {leads.map((lead) => (
+            <LeadRow
+              key={lead.id}
+              lead={lead}
+              leadBusy={leadBusy}
+              setLeadStatus={setLeadStatus}
+              saveLeadNotes={saveLeadNotes}
+            />
+          ))}
         </div>
       )}
     </div>

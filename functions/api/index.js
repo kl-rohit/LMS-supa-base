@@ -27,6 +27,7 @@ app.get('/', (_req, res) => {
     routes: [
       '/api/health',
       '/api/auth',
+      '/api/leads (public — landing contact form)',
       '/api/students',
       '/api/groups',
       '/api/classes',
@@ -59,6 +60,12 @@ app.use('/api/auth', require('./routes/auth'));
 // HMAC code so it can't be used to enumerate students. Mounted before
 // requireAuth on purpose.
 app.use('/api/verify', require('./routes/verify'));
+
+// /api/leads — PUBLIC contact / demo-request capture from the marketing landing
+// page. A prospect has no account, so this takes a small clamped payload and
+// records it for the platform owner. Admin views live under /api/platform/leads.
+// Mounted before requireAuth on purpose.
+app.use('/api/leads', require('./routes/leads'));
 
 // /api/internal/* — unattended jobs (Catalyst cron). Protected by a shared
 // secret header (X-Cron-Secret), NOT by the user-session middleware below.

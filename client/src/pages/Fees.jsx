@@ -23,6 +23,7 @@ import Modal from '../components/Modal';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Select from '../components/Select';
+import CountUpAmount from '../components/CountUpAmount';
 import Pagination, { usePagination } from '../components/Pagination';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useRevealTimer } from '../hooks/useRevealTimer';
@@ -36,13 +37,13 @@ export default function Fees() {
   const confirm = useConfirm();
   // Bank-style mask for all monetary figures on this page.
   const amountReveal = useRevealTimer(20000);
-  // Render an amount as either "₹1,200" or "₹••••" based on reveal state.
+  // Render an amount as either a count-up "₹1,200" or "₹••••" based on reveal
+  // state. When revealed, the figure rolls up from 0 (CountUpAmount handles the
+  // animation + prefers-reduced-motion). Hidden, it stays masked.
   const showAmt = (value, opts = {}) => {
     const { signedNegative = false } = opts;
-    const num = Number(value) || 0;
     if (amountReveal.revealed) {
-      const abs = Math.abs(num).toLocaleString('en-IN');
-      return `${signedNegative && num < 0 ? '−' : ''}₹${abs}`;
+      return <CountUpAmount value={value} signedNegative={signedNegative} />;
     }
     return `₹••••`;
   };

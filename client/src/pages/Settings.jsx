@@ -291,7 +291,7 @@ export default function Settings() {
         {/* Content column — scrolls; the Save bar is pinned to its bottom. */}
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto p-4 lg:p-6 space-y-4">
+            <div className="max-w-3xl mr-auto p-4 lg:p-6 space-y-4">
               {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
               {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
               {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}

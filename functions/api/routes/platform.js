@@ -1066,10 +1066,14 @@ const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 
 router.get('/leads', async (req, res) => {
   try {
     const statusFilter = LEAD_STATUSES.includes(req.query.status) ? req.query.status : null;
-    const where = statusFilter ? ` WHERE Leads.status = '${statusFilter}'` : '';
+    // Fetch every lead, then filter by status in JS. We deliberately do NOT add
+    // `WHERE Leads.status = ...` to the ZCQL: a Leads table whose columns were
+    // created as TEXT (rather than Varchar) cannot be filtered in a WHERE clause
+    // in Catalyst, so a server-side filter would fail. Lead volume is small, so
+    // filtering in memory is cheap and works regardless of the column type.
     let leads = [];
     try {
-      const rows = await zcqlAll(req, `SELECT * FROM Leads${where}`, 'Leads');
+      const rows = await zcqlAll(req, `SELECT * FROM Leads`, 'Leads');
       leads = unwrap(rows, 'Leads').map(normalize);
     } catch (e) {
       return res.json({ leads: [], available: false });
@@ -1078,10 +1082,14 @@ router.get('/leads', async (req, res) => {
     // Newest first so fresh requests sit at the top of the inbox.
     leads.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
-    // Pipeline counts so the UI can show how many sit in each stage.
+    // Pipeline counts over ALL leads (so the stage chips show full totals even
+    // when a single stage is being viewed).
     const counts = {};
     for (const s of LEAD_STATUSES) counts[s] = 0;
     for (const l of leads) if (counts[l.status] !== undefined) counts[l.status] += 1;
+
+    // Apply the requested stage filter (if any) to the returned list only.
+    if (statusFilter) leads = leads.filter((l) => l.status === statusFilter);
 
     res.json({ leads, counts, available: true });
   } catch (e) {

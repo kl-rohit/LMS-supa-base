@@ -875,14 +875,27 @@ router.get('/search', async (req, res) => {
     const raw = String(req.query.q || '').trim();
     if (raw.length < 2) return res.json({ query: raw, academies: [], people: [] });
     const term = raw.replace(/'/g, "''").slice(0, 80);
-    const like = `'%${term}%'`;
+
+    // ZCQL LIKE is case-sensitive, so "varshita" would miss a stored "Varshita".
+    // Search a few case forms of the term (as typed, lower, upper, title) so a
+    // name typed in any case still matches. Escaping is applied before casing,
+    // and toLowerCase/UpperCase leave the doubled-quote escape intact.
+    const variants = Array.from(new Set([
+      term,
+      term.toLowerCase(),
+      term.toUpperCase(),
+      term.charAt(0).toUpperCase() + term.slice(1).toLowerCase(),
+    ].filter(Boolean)));
+    // OR-together `<col> LIKE '%variant%'` across the given columns.
+    const likeAny = (cols) =>
+      cols.flatMap((c) => variants.map((v) => `${c} LIKE '%${v}%'`)).join(' OR ');
 
     // Academies by name / slug.
     let academies = [];
     try {
       const rows = await zcql(
         req,
-        `SELECT ROWID, name, slug, status, plan FROM Organizations WHERE Organizations.name LIKE ${like} OR Organizations.slug LIKE ${like} LIMIT 50`
+        `SELECT ROWID, name, slug, status, plan FROM Organizations WHERE ${likeAny(['Organizations.name', 'Organizations.slug'])} LIMIT 50`
       );
       academies = unwrap(rows, 'Organizations').map((o) => ({
         id: o.ROWID, name: o.name || '', slug: o.slug || '', status: o.status || 'active', plan: o.plan || '',
@@ -894,7 +907,7 @@ router.get('/search', async (req, res) => {
     try {
       const rows = await zcql(
         req,
-        `SELECT ROWID, org_id, name, parent_name, mobile_number FROM Students WHERE Students.name LIKE ${like} OR Students.parent_name LIKE ${like} OR Students.mobile_number LIKE ${like} LIMIT 100`
+        `SELECT ROWID, org_id, name, parent_name, mobile_number FROM Students WHERE ${likeAny(['Students.name', 'Students.parent_name', 'Students.mobile_number'])} LIMIT 100`
       );
       people = unwrap(rows, 'Students').map((s) => ({
         id: s.ROWID, org_id: s.org_id, name: s.name || '', parent_name: s.parent_name || '', mobile_number: s.mobile_number || '',

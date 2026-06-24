@@ -38,6 +38,8 @@ import {
   UserCircle2,
   MessageSquare,
   Settings as SettingsIcon,
+  UsersRound,
+  Award,
 } from 'lucide-react';
 import { useOrgBranding } from '../hooks/useOrgBranding';
 import api from '../utils/api';
@@ -108,6 +110,10 @@ const MODULE_TOURS = {
       { icon: Users, title: 'Add a student', body: 'Use Add student to capture name, contact, fee and class mode. You can edit any detail later.', route: '/students', target: '[data-tour="students-add"]' },
       { icon: ClipboardCheck, title: 'Open a profile', body: 'Tap any student to see their attendance, fees and lessons together in one place.', route: '/students' },
     ],
+    groups: [
+      { icon: UsersRound, title: 'Groups', body: 'Build reusable groups of students — a batch or ensemble you teach together — so you don’t pick names one by one each time.', route: '/groups', target: '[data-tour="nav-groups"]' },
+      { icon: UsersRound, title: 'Create a group', body: 'Add a group, give it a name and pick its students. You can then start a class roster from a group and add a few extras on top.', route: '/groups' },
+    ],
     classes: [
       { icon: CalendarDays, title: 'Classes & timetable', body: 'Build your weekly timetable here so every session is ready to mark.', route: '/classes', target: '[data-tour="nav-classes"]' },
       { icon: CalendarDays, title: 'Add a class', body: 'Create a class with its day, time and students. It then appears on the timetable grid.', route: '/classes', target: '[data-tour="classes-add"]' },
@@ -123,6 +129,10 @@ const MODULE_TOURS = {
     lessons: [
       { icon: Video, title: 'Lessons, quizzes & certificates', body: 'Share video lessons, build quizzes, and let students earn a certificate when they finish a course.', route: '/lessons', target: '[data-tour="nav-lessons"]' },
       { icon: Video, title: 'Create a course', body: 'Start with New course, then add lessons. Add a quiz as a lesson to gate the certificate behind a pass.', route: '/lessons', target: '[data-tour="lessons-add"]' },
+    ],
+    certificate: [
+      { icon: Award, title: 'Certificates', body: 'Students earn a downloadable certificate when they finish a course. Open Settings from this gear to design it.', route: '/dashboard', target: '[data-tour="header-settings"]' },
+      { icon: Award, title: 'Make it yours', body: 'In the Certificate tab you set the wording, logo, signature, seal, brand colour and a verification mark. A live preview shows your changes.', route: '/settings', target: '[data-tour="settings-tabs"]' },
     ],
     assignments: [
       { icon: ClipboardList, title: 'Assignments', body: 'Set tasks for your students and keep track of what they hand in.', route: '/assignments', target: '[data-tour="nav-assignments"]' },

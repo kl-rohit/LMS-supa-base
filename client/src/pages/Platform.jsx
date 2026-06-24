@@ -1667,34 +1667,30 @@ function SearchSection({ searchQ, setSearchQ, runSearch, searchBusy, results, on
 
   return (
     <div className="space-y-4">
-      <form onSubmit={submit} className="card space-y-3">
-        <div className="flex items-start gap-2">
-          <Search className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-medium text-gray-900">Search across every academy</p>
-            <p className="text-sm text-gray-500">
-              Find an academy by name or slug, or a student or parent by name or mobile number. Handy when a support request comes in.
-            </p>
-          </div>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-semibold text-gray-800">Global search</h3>
+      </div>
+
+      <form onSubmit={submit} className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Academy, student, parent, or mobile number..."
+            className="input-field pl-9"
+            autoFocus
+          />
         </div>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="Name, slug, parent, or mobile..."
-              className="input-field pl-9"
-              autoFocus
-            />
-          </div>
-          <button type="submit" disabled={searchBusy || searchQ.trim().length < 2} className="btn-primary disabled:opacity-50">
-            {searchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            Search
-          </button>
-        </div>
+        <button type="submit" disabled={searchBusy || searchQ.trim().length < 2} className="btn-primary disabled:opacity-50">
+          {searchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          Search
+        </button>
       </form>
+      <p className="text-xs text-gray-500 px-1 -mt-1">
+        Find an academy by name or slug, or a student or parent by name or mobile number.
+      </p>
 
       {results && !searchBusy && (
         !hasResults ? (

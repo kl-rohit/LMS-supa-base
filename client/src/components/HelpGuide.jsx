@@ -18,7 +18,7 @@ import {
   Video, BarChart3, Calendar, KeyRound, LayoutDashboard, UserCircle2,
   ClipboardList, FileText, HelpCircle, ChevronRight, ChevronDown, ArrowRight,
   ArrowLeft, BookOpen, Lightbulb, Info, Settings as SettingsIcon, RotateCcw,
-  Compass, Footprints,
+  Compass, Footprints, UsersRound, Award,
 } from 'lucide-react';
 import usePwaInstall from '../hooks/usePwaInstall';
 import usePush from '../hooks/usePush';
@@ -371,6 +371,28 @@ const ADMIN_ARTICLES = [
     ],
   },
   {
+    slug: 'groups', category: 'Run your academy', icon: UsersRound, title: 'Groups',
+    summary: 'Named groups of students you can reuse across classes and attendance.',
+    blocks: [
+      { type: 'p', text: 'A group is a reusable set of students — a batch, an ensemble or any cohort you teach together. Build a group once and reuse it when you set up classes and take attendance, instead of picking students one by one each time.' },
+      { type: 'note', text: 'Don’t see Groups in the menu? Enable the module in **Settings → Modules**.' },
+      { type: 'h', text: 'Create a group' },
+      { type: 'steps', items: [
+        'Open **Groups** and add a new group.',
+        'Give it a clear name (e.g. “Beginners — Mon/Wed”) and an optional description.',
+        'Add the students who belong to it.',
+        'Save — the group is ready to use when you build a class roster.',
+      ] },
+      { type: 'h', text: 'Use a group in a class' },
+      { type: 'p', text: 'When you create a class you can start from a group’s members and add a few extra students on top, so the roster comes together in seconds.' },
+      { type: 'tip', text: 'Mark a group inactive when a batch finishes — its members and history stay, and you can filter it out of the active list.' },
+      { type: 'faq', items: [
+        { q: 'What’s the difference between a group and a class?', a: 'A group is just a named list of students you reuse. A class adds the schedule — a group can fill a class roster, and the class is what drives the timetable and attendance.' },
+      ] },
+      { type: 'actions', items: [{ label: 'Open Groups', to: '/groups' }] },
+    ],
+  },
+  {
     slug: 'classes', category: 'Run your academy', icon: Calendar, title: 'Classes & timetable',
     summary: 'Batches and a weekly timetable that prefills attendance.',
     blocks: [
@@ -429,12 +451,23 @@ const ADMIN_ARTICLES = [
       { type: 'h', text: 'Reminders' },
       { type: 'p', text: 'Send fee reminders to parents without leaving the app; upcoming and overdue amounts are highlighted.' },
       { type: 'h', text: 'Let parents pay by UPI / QR' },
-      { type: 'p', text: 'Add your payment details once and parents get a scannable QR plus a tap-to-pay button on their Fees tab.' },
+      { type: 'p', text: 'Add your payment details once and parents get a scannable QR plus a tap-to-pay button on their Fees tab. You can set this up in two ways:' },
+      { type: 'list', items: [
+        '**Enter a UPI ID** — {app} generates the QR for you and fills in the amount due automatically.',
+        '**Upload your own QR image** — use this if your bank or payment app gave you a ready-made QR.',
+      ] },
       { type: 'steps', items: [
         'Go to **Settings → Billing → Payment QR for parents**.',
-        'Enter your **UPI ID** and payee name (and an optional note), or upload your own **QR image**.',
-        'Save. Parents now see a QR to scan on a computer, and a “Pay now” button on a phone that opens their UPI app (GPay, PhonePe, Paytm) with the balance prefilled.',
+        'Enter your **UPI ID** and **payee name** (and an optional note), or upload your own **QR image**.',
+        'Save.',
       ] },
+      { type: 'h', text: 'What parents see' },
+      { type: 'list', items: [
+        'On a **computer** — a QR to scan with their phone.',
+        'On a **phone** — a “Pay now” button that opens their UPI app (GPay, PhonePe, Paytm) with the outstanding balance prefilled.',
+        'A button to **copy your UPI ID**, plus your payee name and note.',
+      ] },
+      { type: 'tip', text: 'A UPI ID is the cleaner choice — the amount is filled in for the parent and there is no image to keep up to date. Payment itself is handled by the parent’s own UPI app; {app} does not process the money.' },
       { type: 'tip', text: 'Set fee plans on students so dues can be generated consistently.' },
       { type: 'actions', items: [{ label: 'Open Fees', to: '/fees' }] },
     ],
@@ -463,6 +496,35 @@ const ADMIN_ARTICLES = [
         { q: 'Which video links work?', a: 'Standard video URLs are supported and play in a clean in-app player with sharing and external controls hidden.' },
       ] },
       { type: 'actions', items: [{ label: 'Open Lessons', to: '/lessons' }] },
+    ],
+  },
+  {
+    slug: 'certificate', category: 'Teach online', icon: Award, title: 'Certificates & branding',
+    summary: 'Design the completion certificate students earn — your wording, logo, seal and colours.',
+    blocks: [
+      { type: 'p', text: 'When a student finishes a course (including any required quizzes), {app} issues a downloadable completion certificate. You decide how it looks and reads from one place.' },
+      { type: 'h', text: 'Turn certificates on' },
+      { type: 'steps', items: [
+        'Go to **Settings → Certificate**.',
+        'Switch **Offer certificates** on.',
+        'A live preview updates as you change each option below.',
+      ] },
+      { type: 'h', text: 'What you can customise' },
+      { type: 'list', items: [
+        '**Title & body** — the heading (e.g. “Certificate of Completion”) and the line of wording under the student’s name.',
+        '**Signatory name** — who the certificate is signed by.',
+        '**Your logo** — upload it to brand the certificate.',
+        '**Signature image** — upload a signature to print above the signatory name.',
+        '**Student photo, seal and footer** — toggle each on or off.',
+        '**Brand colour** — use your academy accent colour on the certificate.',
+        '**Verification** — when on, a QR/verification mark is added so the certificate can be checked as genuine.',
+      ] },
+      { type: 'tip', text: 'Upload a transparent PNG for your logo and signature so they sit cleanly on the certificate background.' },
+      { type: 'faq', items: [
+        { q: 'When is a certificate issued?', a: 'Automatically, the moment a student completes every lesson in a course and passes any required quizzes.' },
+        { q: 'Can I change the design later?', a: 'Yes — update the options any time. New certificates use the latest design.' },
+      ] },
+      { type: 'actions', items: [{ label: 'Open Settings', to: '/settings' }] },
     ],
   },
   {

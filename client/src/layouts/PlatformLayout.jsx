@@ -23,21 +23,26 @@ export default function PlatformLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="h-16 bg-gray-900 text-white flex items-center px-4 lg:px-6 sticky top-0 z-20">
+      {/* The top bar is intentionally a dark slate in BOTH themes. The app's
+          dark mode inverts the gray ramp (gray-900 turns near-white), so a
+          `bg-gray-900` bar would flip to white-on-white and vanish. Pin the
+          background to a fixed hex and use white-opacity tints for the muted
+          text/hover so nothing depends on the themeable gray scale. */}
+      <header className="h-16 bg-[#111827] text-white flex items-center px-4 lg:px-6 sticky top-0 z-20">
         <div className="flex items-center gap-2 min-w-0">
           <Shield className="w-5 h-5 text-indigo-300 flex-shrink-0" />
           <span className="text-lg font-semibold truncate">Platform Admin</span>
-          <span className="hidden sm:inline text-sm text-gray-400 truncate">· {BRAND_NAME}</span>
+          <span className="hidden sm:inline text-sm text-white/50 truncate">· {BRAND_NAME}</span>
         </div>
         <div className="ml-auto flex items-center gap-3">
           {user && (
-            <span className="hidden sm:inline text-sm text-gray-300 truncate max-w-[14rem]">
+            <span className="hidden sm:inline text-sm text-white/70 truncate max-w-[14rem]">
               {user.first_name || user.email}
             </span>
           )}
           <button
             onClick={signOut}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-200 hover:bg-gray-800 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Sign out

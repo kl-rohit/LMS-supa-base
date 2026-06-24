@@ -337,8 +337,9 @@ function SchoolTab({ form, set }) {
       <div>
         <h3 className="text-base font-semibold text-gray-900">School identity</h3>
         <p className="text-xs text-gray-500 mt-0.5">
-          These flow into every auto-generated message via the <code>{'{school}'}</code> and
-          <code> {'{signature}'}</code> placeholders. Custom templates with hardcoded names
+          These flow into every auto-generated message via the{' '}
+          <code className="font-mono text-[11px] rounded bg-gray-100 text-gray-900 px-1 py-0.5">{'{school}'}</code> and{' '}
+          <code className="font-mono text-[11px] rounded bg-gray-100 text-gray-900 px-1 py-0.5">{'{signature}'}</code> placeholders. Custom templates with hardcoded names
           will keep working unchanged.
         </p>
       </div>
@@ -354,7 +355,7 @@ function SchoolTab({ form, set }) {
       <Field
         label="Signature"
         icon={PenLine}
-        hint="Multi-line closing for messages — gets substituted into {signature}. Often the academy name + teacher name."
+        hint="Multi-line closing for messages, substituted into {signature}. Often the academy name plus teacher name."
       >
         <textarea
           value={form['school.signature']}

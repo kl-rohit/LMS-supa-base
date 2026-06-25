@@ -14,6 +14,12 @@ const { publicVapidKey } = require('../lib/notify');
 const { parentKey, setFlag, isPending } = require('../lib/onboarding');
 const { loadAppSettings } = require('./settings');
 
+// Attendance counts by hours, not by sessions: a 2-hour class marked present
+// counts as 2 toward classes_attended. `duration_hours` is frozen on each
+// Attendance row at record time; legacy rows without it fall back to 1 hour.
+const hrs = (a) => Number(a.duration_hours) || 1;
+const sumHrs = (arr) => arr.reduce((s, a) => s + hrs(a), 0);
+
 // --- Quiz helpers (shared by the quiz endpoints + course/lesson decoration) ---
 
 // One QuizAttempts row per student × lesson. Returns the normalized row or null.
@@ -271,7 +277,7 @@ router.get('/fees', async (req, res) => {
       additional_fees: positiveAdditional,
       discount: Math.abs(discountTotal),
       total,
-      classes_attended: attendance.filter((a) => a.status === 'present' || a.status === 'late').length,
+      classes_attended: sumHrs(attendance.filter((a) => a.status === 'present' || a.status === 'late')),
       payment: {
         upi_id: upiId,
         payee_name: payeeName,

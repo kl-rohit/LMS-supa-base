@@ -8,6 +8,13 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+// Attendance is counted by hours, not by sessions: a 2-hour class marked
+// present counts as 2 toward present/absent/late totals and the attendance
+// rate. `duration_hours` is frozen on each Attendance row at record time;
+// legacy rows without it fall back to 1 hour.
+const hrs = (a) => Number(a.duration_hours) || 1;
+const sumHrs = (arr) => arr.reduce((s, a) => s + hrs(a), 0);
+
 // GET /api/reports/student/:id
 router.get('/student/:id', async (req, res) => {
   try {
@@ -23,10 +30,10 @@ router.get('/student/:id', async (req, res) => {
     const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const attendance = unwrap(aRows, 'Attendance').map(normalize);
 
-    const present = attendance.filter((a) => a.status === 'present').length;
-    const absent = attendance.filter((a) => a.status === 'absent').length;
-    const late = attendance.filter((a) => a.status === 'late').length;
-    const total = attendance.length;
+    const present = sumHrs(attendance.filter((a) => a.status === 'present'));
+    const absent = sumHrs(attendance.filter((a) => a.status === 'absent'));
+    const late = sumHrs(attendance.filter((a) => a.status === 'late'));
+    const total = sumHrs(attendance);
     const attendedSlots = present + absent + late;
     const attendance_rate = attendedSlots ? Math.round((present / attendedSlots) * 100) : 0;
     const class_fees_total = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
@@ -43,8 +50,8 @@ router.get('/student/:id', async (req, res) => {
       const key = `${y}-${m}`;
       if (!byMonth.has(key)) byMonth.set(key, { month: m, year: y, month_name: MONTH_NAMES[m - 1], total_classes: 0, present: 0, total_fees: 0 });
       const slot = byMonth.get(key);
-      slot.total_classes++;
-      if (a.status === 'present') slot.present++;
+      slot.total_classes += hrs(a);
+      if (a.status === 'present') slot.present += hrs(a);
       slot.total_fees += Number(a.fee_charged) || 0;
     }
     const monthly_breakdown = Array.from(byMonth.values())
@@ -110,9 +117,9 @@ router.get('/monthly/:year/:month', async (req, res) => {
     for (const s of students) {
       const sid = String(s.ROWID);
       const attendance = attendanceByStudent[sid] || [];
-      const present = attendance.filter((a) => a.status === 'present').length;
-      const absent = attendance.filter((a) => a.status === 'absent').length;
-      const late = attendance.filter((a) => a.status === 'late').length;
+      const present = sumHrs(attendance.filter((a) => a.status === 'present'));
+      const absent = sumHrs(attendance.filter((a) => a.status === 'absent'));
+      const late = sumHrs(attendance.filter((a) => a.status === 'late'));
       const tot = present + absent + late;
       const fees = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
       const additional = additionalTotalByStudent[sid] || 0;

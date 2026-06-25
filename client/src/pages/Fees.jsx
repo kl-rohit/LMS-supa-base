@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Check,
   X,
+  Clock,
   Minus,
   Sliders,
   Edit2,
@@ -32,6 +33,31 @@ const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+
+// Attendance status pill for the class breakdown, so absent classes are easy to
+// spot at a glance. Present/late count as attended (a fee was charged); absent
+// is the one we want to stand out, hence the red treatment.
+function StatusPill({ status }) {
+  if (status === 'absent') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+        <X className="w-3 h-3" /> Absent
+      </span>
+    );
+  }
+  if (status === 'late') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
+        <Clock className="w-3 h-3" /> Late
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+      <Check className="w-3 h-3" /> Present
+    </span>
+  );
+}
 
 export default function Fees() {
   const confirm = useConfirm();
@@ -717,6 +743,7 @@ export default function Fees() {
                                     <tr className="text-xs text-gray-500 border-b">
                                       <th className="pb-2 text-left font-medium">Date</th>
                                       <th className="pb-2 text-left font-medium">Class</th>
+                                      <th className="pb-2 text-left font-medium">Status</th>
                                       <th className="pb-2 text-left font-medium">Type</th>
                                       <th className="pb-2 text-left font-medium">Duration</th>
                                       <th className="pb-2 text-left font-medium">Topic</th>
@@ -725,7 +752,7 @@ export default function Fees() {
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
                                     {studentBreakdown.map((row, idx) => (
-                                      <tr key={idx}>
+                                      <tr key={idx} className={row.status === 'absent' ? 'bg-red-50/40' : ''}>
                                         <td className="py-2 text-gray-600 whitespace-nowrap">
                                           {row.date
                                             ? new Date(row.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' })
@@ -733,6 +760,9 @@ export default function Fees() {
                                         </td>
                                         <td className="py-2 text-gray-700">
                                           {row.class_name || (row.camp_id ? 'Camp' : 'Ad-hoc')}
+                                        </td>
+                                        <td className="py-2">
+                                          <StatusPill status={row.status} />
                                         </td>
                                         <td className="py-2">
                                           <span className={
@@ -755,7 +785,7 @@ export default function Fees() {
                               {/* Mobile: stacked cards instead of a side-scrolling table */}
                               <div className="md:hidden space-y-2">
                                 {studentBreakdown.map((row, idx) => (
-                                  <div key={idx} className="rounded-lg border border-gray-200 p-3">
+                                  <div key={idx} className={`rounded-lg border p-3 ${row.status === 'absent' ? 'border-red-100 bg-red-50/40' : 'border-gray-200'}`}>
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="text-sm font-medium text-gray-900">
                                         {row.class_name || (row.camp_id ? 'Camp' : 'Ad-hoc')}
@@ -765,6 +795,7 @@ export default function Fees() {
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      <StatusPill status={row.status} />
                                       <span className="text-xs text-gray-500">
                                         {row.date
                                           ? new Date(row.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' })

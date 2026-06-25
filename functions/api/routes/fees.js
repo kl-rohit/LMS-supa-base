@@ -5,6 +5,13 @@ const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
 const { loadAppSettings } = require('./settings');
 
+// Attendance counts by hours, not by sessions: a 2-hour class marked present
+// counts as 2 toward present/late/absent totals and the min-classes threshold.
+// `duration_hours` is frozen on each Attendance row at record time; legacy rows
+// without it fall back to 1 hour.
+const hrs = (a) => Number(a.duration_hours) || 1;
+const sumHrs = (arr) => arr.reduce((s, a) => s + hrs(a), 0);
+
 // GET /api/fees/monthly/:year/:month
 router.get('/monthly/:year/:month', async (req, res) => {
   try {
@@ -54,9 +61,9 @@ router.get('/monthly/:year/:month', async (req, res) => {
     for (const s of students) {
       const sid = String(s.ROWID);
       const attendance = attendanceByStudent[sid] || [];
-      const presentCount = attendance.filter((a) => a.status === 'present').length;
-      const lateCount    = attendance.filter((a) => a.status === 'late').length;
-      const absentCount  = attendance.filter((a) => a.status === 'absent').length;
+      const presentCount = sumHrs(attendance.filter((a) => a.status === 'present'));
+      const lateCount    = sumHrs(attendance.filter((a) => a.status === 'late'));
+      const absentCount  = sumHrs(attendance.filter((a) => a.status === 'absent'));
       const attended = attendance.filter((a) => a.status === 'present' || a.status === 'late');
       const additional = additionalByStudent[sid] || [];
       const additionalTotal = additional.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
@@ -94,7 +101,7 @@ router.get('/monthly/:year/:month', async (req, res) => {
         shortfall_classes: shortfallClasses,
         shortfall_amount: shortfallAmount,
         class_fees: {
-          total_classes: attended.length,
+          total_classes: sumHrs(attended),
           present: presentCount,
           late: lateCount,
           absent: absentCount,

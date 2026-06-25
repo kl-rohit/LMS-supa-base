@@ -764,6 +764,17 @@ export default function Attendance() {
             <h2 className="text-lg font-semibold text-gray-900">Mark Attendance</h2>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Today sits at the left of the controls so the next/prev arrows keep
+                a stable position when it appears or disappears. */}
+            {selectedDate !== formatDateLocal(new Date()) && (
+              <button
+                onClick={() => setSelectedDate(formatDateLocal(new Date()))}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors flex-shrink-0"
+                aria-label="Jump to today"
+              >
+                Today
+              </button>
+            )}
             <button onClick={() => changeDate(-1)} className="p-2 rounded-lg hover:bg-gray-100 flex-shrink-0">
               <ChevronLeft className="w-4 h-4 text-gray-600" />
             </button>
@@ -781,15 +792,6 @@ export default function Attendance() {
             <button onClick={() => changeDate(1)} className="p-2 rounded-lg hover:bg-gray-100 flex-shrink-0">
               <ChevronRight className="w-4 h-4 text-gray-600" />
             </button>
-            {selectedDate !== formatDateLocal(new Date()) && (
-              <button
-                onClick={() => setSelectedDate(formatDateLocal(new Date()))}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors flex-shrink-0"
-                title="Jump to today"
-              >
-                Today
-              </button>
-            )}
           </div>
         </div>
         <p className="text-sm text-gray-500 mt-1 sm:ml-8">{dayName}</p>

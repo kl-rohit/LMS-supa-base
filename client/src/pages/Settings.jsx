@@ -1040,7 +1040,11 @@ function SetupGuideCard() {
       await api.put('/settings/app', { settings: { 'onboarding.setup_pending': 'true' } });
       try { localStorage.removeItem('setup_wizard_done'); } catch {}
       toast.success('Opening the setup guide…');
-      setTimeout(() => window.location.assign('/dashboard'), 500);
+      // Hard reload (not router navigate) so the wizard remounts fresh. Prepend
+      // PUBLIC_URL because location.assign bypasses the router basename — under
+      // Catalyst the app lives at /app/, so a bare '/dashboard' 404s.
+      const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
+      setTimeout(() => window.location.assign(`${base}/dashboard`), 500);
     } catch (e) {
       toast.error('Could not start the setup guide: ' + e.message);
       setBusy(false);

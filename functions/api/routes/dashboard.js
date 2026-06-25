@@ -3,6 +3,13 @@
 const router = require('express').Router();
 const { getById, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 
+// Attendance counts by hours, not by sessions: a 2-hour class marked present
+// counts as 2 toward the present/absent totals behind the attendance rate.
+// `duration_hours` is frozen on each Attendance row at record time; legacy rows
+// without it fall back to 1 hour.
+const hrs = (a) => Number(a.duration_hours) || 1;
+const sumHrs = (arr) => arr.reduce((s, a) => s + hrs(a), 0);
+
 router.get('/', async (req, res) => {
   try {
     const today = new Date();
@@ -51,8 +58,8 @@ router.get('/', async (req, res) => {
       const d = a.class_date || a.date;
       return d && d >= dateFrom && d <= dateTo;
     });
-    const presentCount = thisMonth.filter((a) => a.status === 'present').length;
-    const absentCount = thisMonth.filter((a) => a.status === 'absent').length;
+    const presentCount = sumHrs(thisMonth.filter((a) => a.status === 'present'));
+    const absentCount = sumHrs(thisMonth.filter((a) => a.status === 'absent'));
     const attended = presentCount + absentCount;
     const attendanceRate = attended ? Math.round((presentCount / attended) * 100) : 0;
     const feesCollected = thisMonth.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);

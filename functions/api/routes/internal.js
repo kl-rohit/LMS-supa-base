@@ -12,7 +12,7 @@
 
 const router = require('express').Router();
 const { generateFeeReminders } = require('../lib/feeReminder');
-const { zcql, zcqlAll, unwrap, normalize, insert } = require('../db/catalystDb');
+const { zcql, zcqlAll, unwrap, normalize, insert, remove } = require('../db/catalystDb');
 const { createNotifications, createAdminNotifications } = require('../lib/notify');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
@@ -220,6 +220,29 @@ async function alreadySent(req, whereClause) {
   }
 }
 
+// Self-healing dedup for digests. The morning-digest cron can be delivered more
+// than once in quick succession (webhook retry on a slow run, or a duplicate
+// schedule). When that happens the check-then-insert `alreadySent` guard races:
+// two runs both read "not sent" before either commits, so both insert and the
+// bell shows the same digest twice or thrice. After building a digest we prune
+// any extras matching the same link, keeping only the earliest ROWID. Every
+// concurrent run agrees to keep the min ROWID, so the result converges to one
+// row even under simultaneous fires — and a later run cleans up duplicates a
+// prior run already left behind. Best-effort: failures leave rows untouched.
+async function pruneDuplicateDigests(req, whereClause) {
+  try {
+    const rows = await zcqlAll(
+      req,
+      `SELECT ROWID FROM Notifications WHERE ${whereClause} ORDER BY Notifications.ROWID ASC`,
+      'Notifications'
+    );
+    const ids = unwrap(rows, 'Notifications').map((r) => r.ROWID).filter(Boolean);
+    for (const id of ids.slice(1)) {
+      await remove(req, 'Notifications', id).catch(() => {});
+    }
+  } catch { /* best-effort */ }
+}
+
 function minToTime(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -274,8 +297,9 @@ async function morningDigestHandler(req, res) {
 
         // 1) Admin/teacher digest — all of today's classes. Skip if today's
         // digest is already in the bell (idempotent on repeat runs).
+        const adminWhere = `Notifications.org_id = ${orgId} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${adminLink}'`;
         let adminRes = { created: 0, pushed: 0 };
-        if (await alreadySent(req, `Notifications.org_id = ${orgId} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${adminLink}'`)) {
+        if (await alreadySent(req, adminWhere)) {
           adminRes = { created: 0, pushed: 0, skipped: true };
         } else {
           const adminLines = classes.map((c) => `${c.name || 'Class'} at ${minToTime(c._min)}`);
@@ -287,6 +311,8 @@ async function morningDigestHandler(req, res) {
             link: adminLink,
           });
         }
+        // Heal any duplicate admin digests for today (from a prior racing run).
+        await pruneDuplicateDigests(req, adminWhere);
 
         // 2) Per-student digests — each parent sees only their classes.
         const perStudent = new Map(); // studentId → [{ min, name }]
@@ -299,24 +325,26 @@ async function morningDigestHandler(req, res) {
         }
         let studentsNotified = 0;
         for (const [sid, list] of perStudent.entries()) {
+          const studentWhere = `Notifications.student_id = ${Number(sid)} AND Notifications.recipient_role = 'parent' AND Notifications.link = '${portalLink}'`;
           // Skip if this student already has today's digest in their bell.
-          if (await alreadySent(req, `Notifications.student_id = ${Number(sid)} AND Notifications.recipient_role = 'parent' AND Notifications.link = '${portalLink}'`)) {
-            continue;
+          if (!(await alreadySent(req, studentWhere))) {
+            list.sort((a, b) => a.min - b.min);
+            const title = list.length === 1 ? 'Class today' : `${list.length} classes today`;
+            const body = list.length === 1
+              ? `“${list[0].name}” at ${minToTime(list[0].min)}.`
+              : list.map((x) => `${x.name} at ${minToTime(x.min)}`).join('\n');
+            await createNotifications(req, {
+              orgId,
+              studentIds: [sid],
+              type: 'class',
+              title,
+              body,
+              link: portalLink,
+            });
+            studentsNotified++;
           }
-          list.sort((a, b) => a.min - b.min);
-          const title = list.length === 1 ? 'Class today' : `${list.length} classes today`;
-          const body = list.length === 1
-            ? `“${list[0].name}” at ${minToTime(list[0].min)}.`
-            : list.map((x) => `${x.name} at ${minToTime(x.min)}`).join('\n');
-          await createNotifications(req, {
-            orgId,
-            studentIds: [sid],
-            type: 'class',
-            title,
-            body,
-            link: portalLink,
-          });
-          studentsNotified++;
+          // Heal any duplicate parent digests for this student today.
+          await pruneDuplicateDigests(req, studentWhere);
         }
 
         summary.push({

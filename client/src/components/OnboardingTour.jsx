@@ -132,7 +132,7 @@ const MODULE_TOURS = {
     ],
     certificate: [
       { icon: Award, title: 'Certificates', body: 'Students earn a downloadable certificate when they finish a course. Open Settings from this gear to design it.', route: '/dashboard', target: '[data-tour="header-settings"]' },
-      { icon: Award, title: 'Make it yours', body: 'In the Certificate tab you set the wording, logo, signature, seal, brand colour and a verification mark. A live preview shows your changes.', route: '/settings', target: '[data-tour="settings-tabs"]' },
+      { icon: Award, title: 'Make it yours', body: 'In the Certificate tab you set the wording, logo, signature, seal, brand colour and a verification mark. A live preview shows your changes.', route: '/settings?tab=certificate', target: '[data-tour="settings-tabs"]' },
     ],
     assignments: [
       { icon: ClipboardList, title: 'Assignments', body: 'Set tasks for your students and keep track of what they hand in.', route: '/assignments', target: '[data-tour="nav-assignments"]' },

@@ -50,7 +50,7 @@ import { invalidateOrgBranding, useOrgBranding } from '../hooks/useOrgBranding';
 import { PRESETS, presetSwatch, applyTheme, saveTheme } from '../utils/theme';
 import { DAY_NAMES, parseWorkingHours, serializeWorkingHours } from '../utils/workingHours';
 import { SUPPORT_PHONE_TEL, BRAND_NAME } from '../config';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -134,6 +134,7 @@ const TABS = [
 
 export default function Settings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const branding = useOrgBranding();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -172,6 +173,14 @@ export default function Settings() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Honor a `?tab=` query param so links can deep-link to a specific tab. The
+  // onboarding tour uses this to open the Certificate tab while its "Make it
+  // yours" step is showing, instead of landing on the default School tab.
+  useEffect(() => {
+    const wanted = new URLSearchParams(location.search).get('tab');
+    if (wanted && TABS.some((t) => t.id === wanted)) setActiveTab(wanted);
+  }, [location.search]);
 
   const set = (key) => (e) => {
     const v = e?.target?.value ?? e;

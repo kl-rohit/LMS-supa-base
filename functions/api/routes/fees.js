@@ -12,6 +12,17 @@ const { loadAppSettings } = require('./settings');
 const hrs = (a) => Number(a.duration_hours) || 1;
 const sumHrs = (arr) => arr.reduce((s, a) => s + hrs(a), 0);
 
+// One org-scoped pull of student names → Map(ROWID → name) so list endpoints
+// can decorate rows in memory instead of firing a getById per row (N+1).
+async function studentNameMap(req) {
+  try {
+    const rows = await zcqlAll(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students');
+    return new Map(unwrap(rows, 'Students').map((s) => [String(s.ROWID), s.name]));
+  } catch {
+    return new Map();
+  }
+}
+
 // GET /api/fees/monthly/:year/:month
 router.get('/monthly/:year/:month', async (req, res) => {
   try {
@@ -132,11 +143,12 @@ router.get('/payments', async (req, res) => {
     if (psid) where.push(`Payments.student_id = ${psid}`);
     const sql = `SELECT * FROM Payments WHERE ${where.join(' AND ')} ORDER BY Payments.payment_date DESC`;
     const rows = unwrap(await zcqlAll(req, sql, 'Payments'), 'Payments').map(normalize);
-    const decorated = await Promise.all(rows.map(async (r) => {
-      try { const s = await getById(req, 'Students', r.student_id); if (s && Number(s.org_id) === Number(req.orgId)) r.student_name = s.name; } catch {}
-      return r;
-    }));
-    res.json({ payments: decorated });
+    const names = await studentNameMap(req);
+    for (const r of rows) {
+      const n = names.get(String(r.student_id));
+      if (n) r.student_name = n;
+    }
+    res.json({ payments: rows });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch payments', detail: e.message });
   }
@@ -237,13 +249,13 @@ router.get('/additional', async (req, res) => {
     const asid = safeId(student_id);
     if (asid) where.push(`AdditionalFees.student_id = ${asid}`);
     const sql = `SELECT * FROM AdditionalFees WHERE ${where.join(' AND ')} ORDER BY AdditionalFees.fee_date DESC`;
-    const rows = unwrap(await zcqlAll(req, sql, 'AdditionalFees'), 'AdditionalFees');
-    const decorated = await Promise.all(rows.map(async (r) => {
-      const out = normalize(r);
-      try { const s = await getById(req, 'Students', r.student_id); if (s && Number(s.org_id) === Number(req.orgId)) out.student_name = s.name; } catch {}
-      return out;
-    }));
-    res.json({ additional_fees: decorated });
+    const rows = unwrap(await zcqlAll(req, sql, 'AdditionalFees'), 'AdditionalFees').map(normalize);
+    const names = await studentNameMap(req);
+    for (const r of rows) {
+      const n = names.get(String(r.student_id));
+      if (n) r.student_name = n;
+    }
+    res.json({ additional_fees: rows });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch additional fees', detail: e.message });
   }

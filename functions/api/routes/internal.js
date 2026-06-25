@@ -12,8 +12,8 @@
 
 const router = require('express').Router();
 const { generateFeeReminders } = require('../lib/feeReminder');
-const { zcql, zcqlAll, unwrap, normalize, insert, remove } = require('../db/catalystDb');
-const { createNotifications, createAdminNotifications } = require('../lib/notify');
+const { zcql, zcqlAll, unwrap, normalize, remove } = require('../db/catalystDb');
+const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
 // matches the CRON_SECRET env var. If CRON_SECRET is unset (e.g. local
@@ -91,13 +91,16 @@ async function feeReminderHandler(req, res) {
 router.get('/cron-fee-reminder', feeReminderHandler);
 router.post('/cron-fee-reminder', feeReminderHandler);
 
-// ---------- Class reminders ----------
-// POST /api/internal/cron-class-reminder
-// Schedule this to run every 15 minutes. For each active org it finds classes
-// whose start time (IST) falls in the band [lead, lead+window) minutes from
-// now and notifies that class's roster. The cron cadence == `window` so each
-// class occurrence crosses the band exactly once (no duplicate reminders).
-//   Query params (optional): lead (default 30), window (default 15).
+// ---------- Class reminders (retired) ----------
+// The every-15-minutes per-class reminder has been retired in favour of the
+// once-a-day morning digest below: one notification per day instead of a cron
+// firing 96×/day (each run scanning every org's classes). The
+// `/cron-class-reminder` path is kept as an ALIAS to the morning-digest handler
+// so any existing Catalyst schedule still pointed at it simply runs the
+// idempotent daily digest. ACTION: in the Catalyst console, change that
+// schedule to fire ONCE per day (~8:00 AM IST), not every 15 minutes.
+//
+// timeToMinInternal + classRoster below are still used by the morning digest.
 
 function timeToMinInternal(t) {
   if (!t || typeof t !== 'string') return null;
@@ -131,66 +134,12 @@ async function classRoster(req, orgId, cls) {
   return [...ids];
 }
 
-async function classReminderHandler(req, res) {
-  try {
-    const lead = Number(req.query.lead) || 30;
-    const windowMin = Number(req.query.window) || 15;
-
-    const now = new Date();
-    const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
-    const dow = ist.getUTCDay();
-    const nowMin = ist.getUTCHours() * 60 + ist.getUTCMinutes();
-    const bandStart = nowMin + lead;
-    const bandEnd = nowMin + lead + windowMin;
-
-    let orgs = [];
-    try {
-      const orgRows = await zcql(req, `SELECT * FROM Organizations WHERE Organizations.status = 'active'`);
-      orgs = unwrap(orgRows, 'Organizations').map(normalize);
-    } catch (e) {
-      return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
-    }
-
-    const summary = [];
-    for (const org of orgs) {
-      const orgId = Number(org.id);
-      let notified = 0;
-      try {
-        const rows = await zcqlAll(
-          req,
-          `SELECT * FROM Classes WHERE Classes.is_active = 1 AND Classes.day_of_week = ${dow} AND Classes.org_id = ${orgId}`,
-          'Classes'
-        );
-        const classes = unwrap(rows, 'Classes');
-        for (const c of classes) {
-          const startMin = timeToMinInternal(c.start_time);
-          if (startMin === null) continue;
-          if (startMin < bandStart || startMin >= bandEnd) continue; // not in reminder band
-          const roster = await classRoster(req, orgId, c);
-          if (!roster.length) continue;
-          await createNotifications(req, {
-            orgId,
-            studentIds: roster,
-            type: 'class',
-            title: 'Upcoming class',
-            body: `“${c.name || 'Your class'}” starts at ${c.start_time}.`,
-            link: '/portal',
-          });
-          notified += roster.length;
-        }
-        summary.push({ org_id: org.id, org_name: org.name, ok: true, notified });
-      } catch (e) {
-        summary.push({ org_id: org.id, org_name: org.name, ok: false, error: e.message });
-      }
-    }
-    res.json({ ok: true, ist_time: `${String(ist.getUTCHours()).padStart(2, '0')}:${String(ist.getUTCMinutes()).padStart(2, '0')}`, lead, window: windowMin, orgs_processed: summary.length, summary });
-  } catch (e) {
-    res.status(500).json({ error: 'Cron class-reminder failed', detail: e.message });
-  }
-}
-
-router.get('/cron-class-reminder', classReminderHandler);
-router.post('/cron-class-reminder', classReminderHandler);
+// Alias: any schedule still hitting /cron-class-reminder now runs the
+// once-a-day morning digest (defined below; hoisted). Idempotent, so even if
+// the old 15-minute cadence is still configured it sends at most one digest
+// per day until the console schedule is changed to daily.
+router.get('/cron-class-reminder', (req, res) => morningDigestHandler(req, res));
+router.post('/cron-class-reminder', (req, res) => morningDigestHandler(req, res));
 
 // ---------- Morning class digest (parents + admin) ----------
 // POST /api/internal/cron-morning-digest
@@ -220,15 +169,23 @@ async function alreadySent(req, whereClause) {
   }
 }
 
-// Self-healing dedup for digests. The morning-digest cron can be delivered more
-// than once in quick succession (webhook retry on a slow run, or a duplicate
-// schedule). When that happens the check-then-insert `alreadySent` guard races:
-// two runs both read "not sent" before either commits, so both insert and the
-// bell shows the same digest twice or thrice. After building a digest we prune
-// any extras matching the same link, keeping only the earliest ROWID. Every
-// concurrent run agrees to keep the min ROWID, so the result converges to one
-// row even under simultaneous fires — and a later run cleans up duplicates a
-// prior run already left behind. Best-effort: failures leave rows untouched.
+// Self-healing dedup + push-ownership for digests. The morning-digest cron can
+// be delivered more than once in quick succession (webhook retry on a slow or
+// timed-out run, where the original invocation is still executing when the
+// retry starts). When that happens the check-then-insert `alreadySent` guard
+// races: two runs both read "not sent" before either commits, so both insert.
+//
+// After building a digest we prune any extras matching the same link, keeping
+// only the earliest ROWID. Every concurrent run agrees to keep the min ROWID,
+// so the bell converges to one row even under overlapping fires — and a later
+// run cleans up duplicates a prior run already left behind.
+//
+// Returns the surviving (earliest) ROWID as a string, or null. Callers fire the
+// web push ONLY when this survivor matches the row they just inserted: that
+// makes exactly one invocation the push owner, so the parent/admin sees a
+// single pop-up no matter how many times the cron is delivered. Best-effort:
+// on any error we return null and leave rows untouched (the caller then skips
+// the push rather than risk a duplicate).
 async function pruneDuplicateDigests(req, whereClause) {
   try {
     const rows = await zcqlAll(
@@ -240,7 +197,10 @@ async function pruneDuplicateDigests(req, whereClause) {
     for (const id of ids.slice(1)) {
       await remove(req, 'Notifications', id).catch(() => {});
     }
-  } catch { /* best-effort */ }
+    return ids.length ? String(ids[0]) : null;
+  } catch {
+    return null; // best-effort — caller skips push on null
+  }
 }
 
 function minToTime(min) {
@@ -295,24 +255,41 @@ async function morningDigestHandler(req, res) {
           continue;
         }
 
-        // 1) Admin/teacher digest — all of today's classes. Skip if today's
-        // digest is already in the bell (idempotent on repeat runs).
+        // 1) Admin/teacher digest — all of today's classes. Idempotent on
+        // repeat/overlapping cron deliveries: if today's digest is already in
+        // the bell we neither re-insert nor re-push (its owner handled the
+        // push). Otherwise we insert WITHOUT pushing, prune to the earliest
+        // row, then push only if that survivor is the row we just wrote — so a
+        // racing twin that also inserted defers the push to the single owner.
         const adminWhere = `Notifications.org_id = ${orgId} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${adminLink}'`;
         let adminRes = { created: 0, pushed: 0 };
         if (await alreadySent(req, adminWhere)) {
+          await pruneDuplicateDigests(req, adminWhere);
           adminRes = { created: 0, pushed: 0, skipped: true };
         } else {
           const adminLines = classes.map((c) => `${c.name || 'Class'} at ${minToTime(c._min)}`);
-          adminRes = await createAdminNotifications(req, {
+          const adminTitle = `Today's classes (${classes.length})`;
+          const adminBody = adminLines.join('\n');
+          const ins = await createAdminNotifications(req, {
             orgId,
             type: 'class',
-            title: `Today's classes (${classes.length})`,
-            body: adminLines.join('\n'),
+            title: adminTitle,
+            body: adminBody,
             link: adminLink,
+            push: false,
           });
+          const survivor = await pruneDuplicateDigests(req, adminWhere);
+          let adminPushed = 0;
+          if (ins.rowid && survivor && String(survivor) === String(ins.rowid)) {
+            adminPushed = await pushToAdmins(req, orgId, {
+              type: 'class',
+              title: adminTitle,
+              body: adminBody,
+              link: adminLink,
+            });
+          }
+          adminRes = { created: ins.created, pushed: adminPushed };
         }
-        // Heal any duplicate admin digests for today (from a prior racing run).
-        await pruneDuplicateDigests(req, adminWhere);
 
         // 2) Per-student digests — each parent sees only their classes.
         const perStudent = new Map(); // studentId → [{ min, name }]
@@ -326,25 +303,33 @@ async function morningDigestHandler(req, res) {
         let studentsNotified = 0;
         for (const [sid, list] of perStudent.entries()) {
           const studentWhere = `Notifications.student_id = ${Number(sid)} AND Notifications.recipient_role = 'parent' AND Notifications.link = '${portalLink}'`;
-          // Skip if this student already has today's digest in their bell.
-          if (!(await alreadySent(req, studentWhere))) {
-            list.sort((a, b) => a.min - b.min);
-            const title = list.length === 1 ? 'Class today' : `${list.length} classes today`;
-            const body = list.length === 1
-              ? `“${list[0].name}” at ${minToTime(list[0].min)}.`
-              : list.map((x) => `${x.name} at ${minToTime(x.min)}`).join('\n');
-            await createNotifications(req, {
-              orgId,
-              studentIds: [sid],
-              type: 'class',
-              title,
-              body,
-              link: portalLink,
-            });
-            studentsNotified++;
+          // Same insert-first / push-by-ownership rule as the admin digest, so
+          // each parent gets exactly one pop-up even if the cron is delivered
+          // more than once.
+          if (await alreadySent(req, studentWhere)) {
+            await pruneDuplicateDigests(req, studentWhere);
+            continue;
           }
-          // Heal any duplicate parent digests for this student today.
-          await pruneDuplicateDigests(req, studentWhere);
+          list.sort((a, b) => a.min - b.min);
+          const title = list.length === 1 ? 'Class today' : `${list.length} classes today`;
+          const body = list.length === 1
+            ? `“${list[0].name}” at ${minToTime(list[0].min)}.`
+            : list.map((x) => `${x.name} at ${minToTime(x.min)}`).join('\n');
+          const ins = await createNotifications(req, {
+            orgId,
+            studentIds: [sid],
+            type: 'class',
+            title,
+            body,
+            link: portalLink,
+            push: false,
+          });
+          studentsNotified++;
+          const myRowid = ins.rowids && ins.rowids[0];
+          const survivor = await pruneDuplicateDigests(req, studentWhere);
+          if (myRowid && survivor && String(survivor) === String(myRowid)) {
+            await pushToStudents(req, orgId, [sid], { type: 'class', title, body, link: portalLink });
+          }
         }
 
         summary.push({
@@ -367,79 +352,5 @@ async function morningDigestHandler(req, res) {
 
 router.get('/cron-morning-digest', morningDigestHandler);
 router.post('/cron-morning-digest', morningDigestHandler);
-
-// ---------- TEMPORARY: notifications diagnostics ----------
-// GET /api/internal/debug-notifications?org_id=123
-// Confirms (a) the Notifications table exists, (b) whether the
-// `recipient_role` column exists, (c) writes a test admin row, and (d) reads
-// back the admin inbox for that org. Cron-secret protected. REMOVE after the
-// schema is verified.
-async function debugNotificationsHandler(req, res) {
-  const orgId = Number(req.query.org_id);
-  const out = { org_id: orgId, steps: {} };
-
-  if (!Number.isFinite(orgId)) {
-    return res.status(400).json({ error: 'Pass ?org_id=<number>' });
-  }
-
-  // (a) Does the table exist at all?
-  try {
-    await zcqlAll(req, `SELECT ROWID FROM Notifications LIMIT 1`, 'Notifications');
-    out.steps.table_exists = true;
-  } catch (e) {
-    out.steps.table_exists = false;
-    out.steps.table_error = e.message;
-    return res.json(out); // nothing else will work
-  }
-
-  // (b) Does the recipient_role column exist?
-  try {
-    await zcqlAll(req, `SELECT recipient_role FROM Notifications LIMIT 1`, 'Notifications');
-    out.steps.recipient_role_column = true;
-  } catch (e) {
-    out.steps.recipient_role_column = false;
-    out.steps.recipient_role_error = e.message;
-  }
-
-  // (c) Try a full insert (with recipient_role). Reports whether the column
-  // accepts the value.
-  try {
-    const row = await insert(req, 'Notifications', {
-      student_id: 0,
-      org_id: orgId,
-      recipient_role: 'admin',
-      type: 'debug',
-      title: 'Debug test notification',
-      body: 'If you can see this in the admin bell, the inbox works. Safe to delete.',
-      link: '/dashboard',
-      is_read: false,
-    });
-    out.steps.insert_with_recipient_role = true;
-    out.steps.inserted_rowid = row && row.ROWID;
-  } catch (e) {
-    out.steps.insert_with_recipient_role = false;
-    out.steps.insert_error = e.message;
-  }
-
-  // (d) Read back the admin inbox exactly as the bell route does.
-  try {
-    const rows = await zcqlAll(
-      req,
-      `SELECT * FROM Notifications WHERE Notifications.org_id = ${orgId} AND Notifications.recipient_role = 'admin' ORDER BY Notifications.CREATEDTIME DESC`,
-      'Notifications'
-    );
-    const items = unwrap(rows, 'Notifications').map(normalize);
-    out.steps.admin_read_ok = true;
-    out.steps.admin_row_count = items.length;
-    out.steps.admin_sample = items.slice(0, 3).map((r) => ({ id: r.id, title: r.title, role: r.recipient_role }));
-  } catch (e) {
-    out.steps.admin_read_ok = false;
-    out.steps.admin_read_error = e.message;
-  }
-
-  res.json(out);
-}
-router.get('/debug-notifications', debugNotificationsHandler);
-router.post('/debug-notifications', debugNotificationsHandler);
 
 module.exports = router;

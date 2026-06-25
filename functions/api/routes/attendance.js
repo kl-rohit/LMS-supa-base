@@ -40,6 +40,8 @@ function calcFee(student, classType, durationHours) {
   return perHour * (durationHours || 1);
 }
 
+// Single-row decoration (still used by the record/update paths that work on
+// one attendance row).
 async function decorate(req, att) {
   const out = { ...normalize(att) };
   if (att.student_id) {
@@ -57,6 +59,32 @@ async function decorate(req, att) {
   return out;
 }
 
+// Batched decoration for a list of attendance rows. Pulls the org's Students
+// and Classes ONCE into in-memory maps, then decorates with zero per-row
+// reads — replacing the old 2N getById fan-out (one Students + one Classes
+// lookup per attendance row) with at most two org-scoped SELECTs total.
+async function decorateList(req, list) {
+  if (!list.length) return [];
+  const needStudents = list.some((a) => a.student_id);
+  const needClasses  = list.some((a) => a.class_id);
+  const [studentRows, classRows] = await Promise.all([
+    needStudents
+      ? zcqlAll(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => [])
+      : Promise.resolve([]),
+    needClasses
+      ? zcqlAll(req, `SELECT ROWID, name FROM Classes WHERE Classes.org_id = ${Number(req.orgId)}`, 'Classes').catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  const studentName = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), s.name]));
+  const className   = new Map(unwrap(classRows, 'Classes').map((c) => [String(c.ROWID), c.name]));
+  return list.map((att) => {
+    const out = { ...normalize(att) };
+    if (att.student_id && studentName.has(String(att.student_id))) out.student_name = studentName.get(String(att.student_id));
+    if (att.class_id && className.has(String(att.class_id)))       out.class_name   = className.get(String(att.class_id));
+    return out;
+  });
+}
+
 // GET /api/attendance
 router.get('/', async (req, res) => {
   try {
@@ -72,7 +100,7 @@ router.get('/', async (req, res) => {
     const whereSql = `WHERE ${where.join(' AND ')}`;
     const rows = await zcqlAll(req, `SELECT * FROM Attendance ${whereSql} ORDER BY Attendance.class_date DESC`, 'Attendance');
     const list = unwrap(rows, 'Attendance');
-    const decorated = await Promise.all(list.map((a) => decorate(req, a)));
+    const decorated = await decorateList(req, list);
     res.json({ attendance: decorated });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch attendance', detail: e.message });
@@ -83,7 +111,7 @@ router.get('/', async (req, res) => {
 router.get('/by-date/:date', async (req, res) => {
   try {
     const rows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date = ${q(req.params.date)} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
-    const decorated = await Promise.all(unwrap(rows, 'Attendance').map((a) => decorate(req, a)));
+    const decorated = await decorateList(req, unwrap(rows, 'Attendance'));
     res.json({ attendance: decorated });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch attendance by date', detail: e.message });
@@ -96,7 +124,7 @@ router.get('/by-student/:studentId', async (req, res) => {
     const sid = safeId(req.params.studentId);
     if (!sid) return res.status(400).json({ error: 'Invalid student id' });
     const rows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
-    const decorated = await Promise.all(unwrap(rows, 'Attendance').map((a) => decorate(req, a)));
+    const decorated = await decorateList(req, unwrap(rows, 'Attendance'));
     res.json({ attendance: decorated });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch attendance for student', detail: e.message });

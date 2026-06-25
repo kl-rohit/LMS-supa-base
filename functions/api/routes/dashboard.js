@@ -1,7 +1,7 @@
 // /api/dashboard — aggregated stats for the home screen. Org-scoped.
 
 const router = require('express').Router();
-const { getById, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
+const { zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 
 // Attendance counts by hours, not by sessions: a 2-hour class marked present
 // counts as 2 toward the present/absent totals behind the attendance rate.
@@ -10,8 +10,22 @@ const { getById, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb'
 const hrs = (a) => Number(a.duration_hours) || 1;
 const sumHrs = (arr) => arr.reduce((s, a) => s + hrs(a), 0);
 
+// Short per-org cache for the dashboard payload. The home screen loads on every
+// login and refresh, and each load fans out to a full Students + Classes +
+// Attendance pull (Attendance is paginated). A 30s window collapses the rapid
+// repeat loads (open app, switch tab, refresh) into one scan, while staying
+// fresh enough that a just-recorded attendance shows up within half a minute.
+// Lives only in a warm container; cold starts clear it. Keyed by orgId.
+const DASHBOARD_CACHE_TTL_MS = 30 * 1000;
+const dashboardCache = new Map();
+
 router.get('/', async (req, res) => {
   try {
+    const cacheKey = String(req.orgId);
+    const cached = dashboardCache.get(cacheKey);
+    if (cached && cached.exp > Date.now()) return res.json(cached.value);
+    if (cached) dashboardCache.delete(cacheKey);
+
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
     const dow = today.getDay();
@@ -34,22 +48,30 @@ router.get('/', async (req, res) => {
 
     const activeStudents = students.filter((s) => s.status === 'active' || !s.status);
 
+    // In-memory lookup map so student-name decoration costs zero extra queries
+    // (students were already pulled above, org-scoped).
+    const studentById = new Map(students.map((s) => [String(s.ROWID), s]));
+
     const todayClasses = classes
       .filter((c) => Number(c.day_of_week) === dow && (c.is_active === undefined || Number(c.is_active) === 1))
       .map(normalize);
 
+    // Group names for today's classes: ONE org-scoped pull (only when a group
+    // class is on today), not a getById per class.
+    const needGroups = todayClasses.some((c) => c.group_id);
+    let groupById = new Map();
+    if (needGroups) {
+      const gRows = await zcql(req, `SELECT * FROM Groups WHERE Groups.org_id = ${Number(req.orgId)}`).catch(() => []);
+      groupById = new Map(unwrap(gRows, 'Groups').map((g) => [String(g.ROWID), g]));
+    }
     for (const c of todayClasses) {
       if (c.student_id) {
-        try {
-          const s = await getById(req, 'Students', c.student_id);
-          if (s && Number(s.org_id) === Number(req.orgId)) c.student_name = s.name;
-        } catch {}
+        const s = studentById.get(String(c.student_id));
+        if (s) c.student_name = s.name;
       }
       if (c.group_id) {
-        try {
-          const g = await getById(req, 'Groups', c.group_id);
-          if (g && Number(g.org_id) === Number(req.orgId)) c.group_name = g.name;
-        } catch {}
+        const g = groupById.get(String(c.group_id));
+        if (g) c.group_name = g.name;
       }
     }
     todayClasses.sort((a, b) => String(a.start_time || '').localeCompare(b.start_time || ''));
@@ -64,15 +86,23 @@ router.get('/', async (req, res) => {
     const attendanceRate = attended ? Math.round((presentCount / attended) * 100) : 0;
     const feesCollected = thisMonth.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
 
+    // Absent-streak alerts computed from the attendance already in memory:
+    // group by student, walk each student's records newest-first. Replaces an
+    // N+1 (one Attendance query per active student) with zero extra queries.
+    const attendanceByStudent = new Map();
+    for (const a of attendanceAll) {
+      const k = String(a.student_id);
+      if (!attendanceByStudent.has(k)) attendanceByStudent.set(k, []);
+      attendanceByStudent.get(k).push(a);
+    }
     const alerts = [];
     for (const s of activeStudents) {
-      try {
-        const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${s.ROWID} AND Attendance.org_id = ${Number(req.orgId)} ORDER BY Attendance.class_date DESC`, 'Attendance');
-        const recs = unwrap(aRows, 'Attendance');
-        let streak = 0;
-        for (const r of recs) { if (r.status === 'absent') streak++; else break; }
-        if (streak >= 2) alerts.push({ student_id: s.ROWID, student_name: s.name, consecutive_absences: streak });
-      } catch {}
+      const recs = (attendanceByStudent.get(String(s.ROWID)) || [])
+        .slice()
+        .sort((x, y) => String(y.class_date || y.date || '').localeCompare(String(x.class_date || x.date || '')));
+      let streak = 0;
+      for (const r of recs) { if (r.status === 'absent') streak++; else break; }
+      if (streak >= 2) alerts.push({ student_id: s.ROWID, student_name: s.name, consecutive_absences: streak });
     }
 
     const recent = [...attendanceAll]
@@ -80,13 +110,11 @@ router.get('/', async (req, res) => {
       .slice(0, 5)
       .map(normalize);
     for (const r of recent) {
-      try {
-        const s = await getById(req, 'Students', r.student_id);
-        if (s && Number(s.org_id) === Number(req.orgId)) r.student_name = s.name;
-      } catch {}
+      const s = studentById.get(String(r.student_id));
+      if (s) r.student_name = s.name;
     }
 
-    res.json({
+    const payload = {
       stats: {
         total_active_students:        activeStudents.length,
         total_students:               students.length,
@@ -100,7 +128,9 @@ router.get('/', async (req, res) => {
       absent_alerts:          alerts,
       alerts,
       date:                   todayStr,
-    });
+    };
+    dashboardCache.set(cacheKey, { value: payload, exp: Date.now() + DASHBOARD_CACHE_TTL_MS });
+    res.json(payload);
   } catch (e) {
     res.status(500).json({ error: 'Failed to load dashboard', detail: e.message });
   }

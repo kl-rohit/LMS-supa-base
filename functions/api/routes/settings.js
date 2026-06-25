@@ -52,11 +52,32 @@ const DEFAULT_TEMPLATES = {
 
 const TEMPLATE_TYPES = Object.keys(DEFAULT_TEMPLATES);
 
+// Short-TTL cache for the folded templates map, keyed by org. Same rationale as
+// the AppSettings cache below: templates change rarely but are re-read on every
+// message-send and the daily reminder cron, so a brief cache removes those
+// repeated reads. Invalidated on PUT /templates.
+const TEMPLATES_CACHE_TTL_MS = 30 * 1000;
+const templatesCache = new Map(); // orgId → { value, exp }
+
+function templatesCacheGet(orgId) {
+  const hit = templatesCache.get(String(orgId));
+  if (hit && hit.exp > Date.now()) return hit.value;
+  if (hit) templatesCache.delete(String(orgId));
+  return undefined;
+}
+function templatesCacheSet(orgId, value) {
+  templatesCache.set(String(orgId), { value, exp: Date.now() + TEMPLATES_CACHE_TTL_MS });
+}
+
 async function loadTemplates(req) {
   // req.orgId is set by middleware/org.resolveOrg on tenant routes; the
   // shared cron driver and fee-reminder lib also set it explicitly before
   // calling. Anything calling loadTemplates without orgId returns defaults.
   if (!req.orgId) return { ...DEFAULT_TEMPLATES };
+
+  const cached = templatesCacheGet(req.orgId);
+  if (cached) return { ...cached };
+
   const rows = await zcql(req, `SELECT * FROM ${TEMPLATES_TABLE} WHERE ${TEMPLATES_TABLE}.org_id = ${Number(req.orgId)}`);
   const all = unwrap(rows, TEMPLATES_TABLE).map(normalize);
   const byType = new Map(all.map((r) => [r.type, r.body]));
@@ -64,7 +85,8 @@ async function loadTemplates(req) {
   for (const t of TEMPLATE_TYPES) {
     out[t] = byType.has(t) ? byType.get(t) : DEFAULT_TEMPLATES[t];
   }
-  return out;
+  templatesCacheSet(req.orgId, out);
+  return { ...out };
 }
 
 router.get('/templates', async (req, res) => {
@@ -97,6 +119,7 @@ router.put('/templates', async (req, res) => {
       }
     }
 
+    templatesCache.delete(String(req.orgId)); // serve the just-saved bodies
     const templates = await loadTemplates(req);
     res.json({ updated, templates });
   } catch (e) {
@@ -114,6 +137,30 @@ router.put('/templates', async (req, res) => {
 const APP_TABLE = 'AppSettings';
 const APP_KEY_COL = 'setting_key';
 const APP_VAL_COL = 'setting_value';
+
+// Short-TTL in-process cache for the folded settings object, keyed by org.
+// loadAppSettings() is called on most admin/portal requests (14 call sites,
+// some endpoints twice), and each uncached call is an AppSettings SELECT plus
+// an Organizations SELECT for the school-name backfill. A new org clicking
+// around fires many requests in a few seconds, so a short cache collapses
+// almost all of those reads to zero. The cache lives only in the warm function
+// container and is invalidated immediately on any settings write, so an edit
+// takes effect on the next request (and within the TTL elsewhere).
+const APP_SETTINGS_CACHE_TTL_MS = 30 * 1000;
+const appSettingsCache = new Map(); // orgId → { value, exp }
+
+function appCacheGet(orgId) {
+  const hit = appSettingsCache.get(String(orgId));
+  if (hit && hit.exp > Date.now()) return hit.value;
+  if (hit) appSettingsCache.delete(String(orgId));
+  return undefined;
+}
+function appCacheSet(orgId, value) {
+  appSettingsCache.set(String(orgId), { value, exp: Date.now() + APP_SETTINGS_CACHE_TTL_MS });
+}
+function invalidateAppSettings(orgId) {
+  appSettingsCache.delete(String(orgId));
+}
 
 // Whitelist of recognised keys. Anything not in this map is rejected on PUT
 // to prevent the table getting littered with typos. To add a new setting,
@@ -251,6 +298,12 @@ async function loadAppSettings(req) {
   // Same orgId precondition as loadTemplates — callers without org context
   // (e.g. cron driver before it picks an org) get defaults.
   if (!req.orgId) return { ...APP_SETTINGS_DEFAULTS };
+
+  // Cache hit → hand back a shallow copy so callers can mutate their result
+  // without poisoning the shared cached object.
+  const cached = appCacheGet(req.orgId);
+  if (cached) return { ...cached };
+
   let rows;
   try {
     rows = await zcql(req, `SELECT * FROM ${APP_TABLE} WHERE ${APP_TABLE}.org_id = ${Number(req.orgId)}`);
@@ -275,7 +328,9 @@ async function loadAppSettings(req) {
   if (!String(out['school.signature'] || '').trim()) {
     out['school.signature'] = out['school.name'] || '';
   }
-  return out;
+
+  appCacheSet(req.orgId, out);
+  return { ...out };
 }
 
 // Look up the calling org's display name. Cached on req so repeated
@@ -396,6 +451,9 @@ router.put('/app', async (req, res) => {
       }
     }
 
+    // Drop the cached snapshot so the reload below (and the next request) sees
+    // the values we just wrote rather than a stale copy.
+    invalidateAppSettings(req.orgId);
     const settings = await loadAppSettings(req);
     res.json({ upserted, settings, ...(await entitlementBlock(req)) });
   } catch (e) {
@@ -424,6 +482,7 @@ async function setAppSetting(req, key, value) {
   } else {
     await insert(req, APP_TABLE, { [APP_KEY_COL]: key, [APP_VAL_COL]: v, org_id: Number(req.orgId) });
   }
+  invalidateAppSettings(req.orgId); // asset-key writes must not serve stale settings
 }
 
 // kind → the AppSettings key that stores its object key.
@@ -478,8 +537,9 @@ router.delete('/app/certificate-asset', async (req, res) => {
 // Exports
 // =============================================================================
 
-router.loadTemplates       = loadTemplates;
-router.DEFAULT_TEMPLATES   = DEFAULT_TEMPLATES;
-router.loadAppSettings     = loadAppSettings;
-router.APP_SETTINGS_KEYS   = APP_SETTINGS_KEYS;
+router.loadTemplates        = loadTemplates;
+router.DEFAULT_TEMPLATES    = DEFAULT_TEMPLATES;
+router.loadAppSettings      = loadAppSettings;
+router.APP_SETTINGS_KEYS    = APP_SETTINGS_KEYS;
+router.invalidateAppSettings = invalidateAppSettings;
 module.exports = router;

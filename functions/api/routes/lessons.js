@@ -116,10 +116,23 @@ router.get('/activity', async (req, res) => {
     const cidFilter = safeId(req.query.course_id);
     const orgFilter = `org_id = ${Number(req.orgId)}`;
 
+    // Push the drill-down filters into the queries instead of pulling the whole
+    // org and discarding rows in memory. A per-student or per-course view is the
+    // common case, and scoping the three growable tables (enrollments, lessons,
+    // progress) there turns a full-org scan into a handful of rows. The
+    // unfiltered org-wide report still pulls everything (it has to).
+    const enrollWhere  = [`CourseEnrollments.${orgFilter}`];
+    if (sidFilter) enrollWhere.push(`CourseEnrollments.student_id = ${sidFilter}`);
+    if (cidFilter) enrollWhere.push(`CourseEnrollments.course_id = ${cidFilter}`);
+    const lessonWhere  = [`Lessons.${orgFilter}`];
+    if (cidFilter) lessonWhere.push(`Lessons.course_id = ${cidFilter}`);
+    const progressWhere = [`LessonProgress.${orgFilter}`];
+    if (sidFilter) progressWhere.push(`LessonProgress.student_id = ${sidFilter}`);
+
     const [enrollRows, lessonRows, progressRows, courseRows, studentRows] = await Promise.all([
-      zcqlAll(req, `SELECT * FROM CourseEnrollments WHERE CourseEnrollments.${orgFilter}`, 'CourseEnrollments'),
-      zcqlAll(req, `SELECT * FROM Lessons WHERE Lessons.${orgFilter}`, 'Lessons'),
-      zcqlAll(req, `SELECT * FROM LessonProgress WHERE LessonProgress.${orgFilter}`, 'LessonProgress'),
+      zcqlAll(req, `SELECT * FROM CourseEnrollments WHERE ${enrollWhere.join(' AND ')}`, 'CourseEnrollments'),
+      zcqlAll(req, `SELECT * FROM Lessons WHERE ${lessonWhere.join(' AND ')}`, 'Lessons'),
+      zcqlAll(req, `SELECT * FROM LessonProgress WHERE ${progressWhere.join(' AND ')}`, 'LessonProgress'),
       zcql(req, `SELECT * FROM Courses WHERE Courses.${orgFilter}`),
       zcql(req, `SELECT * FROM Students WHERE Students.${orgFilter}`),
     ]);

@@ -1179,6 +1179,9 @@ async function upsertOrgSetting(req, orgId, key, value) {
     } else {
       await insert(req, 'AppSettings', { setting_key: key, setting_value: value, org_id: Number(orgId) });
     }
+    // Drop any cached settings snapshot for this org so a platform-admin change
+    // (plan metadata, feature flags) is not masked by a warm-container copy.
+    try { require('./settings').invalidateAppSettings(orgId); } catch { /* non-fatal */ }
   } catch (e) {
     console.error('upsertOrgSetting failed for', key, e.message); // non-fatal
   }

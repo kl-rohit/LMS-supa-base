@@ -196,14 +196,22 @@ router.get('/attendance', async (req, res) => {
     // Paginate — when no month filter, this returns the student's entire
     // attendance history which can exceed 300 rows over years.
     const rows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where} ORDER BY Attendance.class_date DESC`, 'Attendance');
-    // Decorate with class_name
-    const records = await Promise.all(unwrap(rows, 'Attendance').map(async (a) => {
+    const attList = unwrap(rows, 'Attendance');
+    // Decorate with class_name. Pull the org's class names ONCE into a map
+    // instead of a getById per attendance row (the old fan-out repeated reads
+    // for the handful of distinct classes a student's history references).
+    let className = new Map();
+    if (attList.some((a) => a.class_id)) {
+      try {
+        const cRows = await zcqlAll(req, `SELECT ROWID, name FROM Classes WHERE Classes.org_id = ${Number(req.orgId)}`, 'Classes');
+        className = new Map(unwrap(cRows, 'Classes').map((c) => [String(c.ROWID), c.name]));
+      } catch {}
+    }
+    const records = attList.map((a) => {
       const out = normalize(a);
-      if (a.class_id) {
-        try { const c = await getById(req, 'Classes', a.class_id); if (c) out.class_name = c.name; } catch {}
-      }
+      if (a.class_id && className.has(String(a.class_id))) out.class_name = className.get(String(a.class_id));
       return out;
-    }));
+    });
     res.json({ attendance: records });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch attendance', detail: e.message });
@@ -354,17 +362,28 @@ router.get('/courses', async (req, res) => {
       completedIds = new Set(unwrap(progressRows, 'LessonProgress').map((p) => String(p.lesson_id)));
     } catch {}
 
+    // Resolve the courses and their lessons in bulk: one Courses pull and one
+    // Lessons pull (grouped by course) replace the old getById Courses + per
+    // enrollment Lessons query, so the summary costs two SELECTs regardless of
+    // how many courses the student is enrolled in.
+    const [courseRows, lessonRows] = await Promise.all([
+      zcqlAll(req, `SELECT * FROM Courses WHERE Courses.org_id = ${Number(req.orgId)}`, 'Courses').catch(() => []),
+      zcqlAll(req, `SELECT * FROM Lessons WHERE Lessons.org_id = ${Number(req.orgId)}`, 'Lessons').catch(() => []),
+    ]);
+    const courseById = new Map(unwrap(courseRows, 'Courses').map((c) => [String(c.ROWID), c]));
+    const lessonsByCourse = new Map();
+    for (const l of unwrap(lessonRows, 'Lessons')) {
+      const k = String(l.course_id);
+      if (!lessonsByCourse.has(k)) lessonsByCourse.set(k, []);
+      lessonsByCourse.get(k).push(l);
+    }
+
     // Fetch courses + progress summary for each enrollment
-    const results = await Promise.all(enrollments.map(async (en) => {
-      let course = null;
-      try { course = await getById(req, 'Courses', en.course_id); } catch {}
+    const results = enrollments.map((en) => {
+      const course = courseById.get(String(en.course_id));
       if (!course || (course.status && course.status !== 'active') || Number(course.org_id) !== Number(req.orgId)) return null;
 
-      let lessons = [];
-      try {
-        const rows = await zcql(req, `SELECT * FROM Lessons WHERE Lessons.course_id = ${safeId(en.course_id)} AND Lessons.org_id = ${Number(req.orgId)}`);
-        lessons = unwrap(rows, 'Lessons');
-      } catch {}
+      const lessons = lessonsByCourse.get(String(en.course_id)) || [];
 
       // Quiz lessons are first-class: a required quiz only counts once passed;
       // optional/empty quizzes don't hold back the percentage.
@@ -392,7 +411,7 @@ router.get('/courses', async (req, res) => {
         progress_percent: lessons.length > 0 ? Math.round((completed / lessons.length) * 100) : 0,
         total_duration_seconds: totalSeconds,
       };
-    }));
+    });
     res.json({ courses: results.filter(Boolean) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch courses', detail: e.message });

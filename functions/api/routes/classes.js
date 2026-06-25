@@ -2,7 +2,7 @@
 // Org-scoped via middleware/org.resolveOrg (req.orgId).
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 
 const VALID_TYPES = ['online', 'offline', 'offline_group', 'online_group'];
 const VALID_EXCEPTION_STATUS = ['cancelled', 'moved'];
@@ -71,12 +71,42 @@ async function decorate(req, cls) {
   return out;
 }
 
+// Batched decoration for a list of classes. The single-row decorate() fires
+// three reads per class (Students + Groups + ClassStudents links). Here we
+// pull each of those tables ONCE for the org and resolve in memory, turning
+// 3N reads into three org-scoped SELECTs regardless of class count.
+async function decorateList(req, list) {
+  if (!list.length) return [];
+  const [studentRows, groupRows, linkRows] = await Promise.all([
+    zcqlAll(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []),
+    zcqlAll(req, `SELECT ROWID, name FROM Groups WHERE Groups.org_id = ${Number(req.orgId)}`, 'Groups').catch(() => []),
+    zcqlAll(req, `SELECT class_id, student_id FROM ClassStudents WHERE ClassStudents.org_id = ${Number(req.orgId)}`, 'ClassStudents').catch(() => []),
+  ]);
+  const studentName = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), s.name]));
+  const groupName   = new Map(unwrap(groupRows, 'Groups').map((g) => [String(g.ROWID), g.name]));
+  const studentIdsByClass = new Map();
+  for (const l of unwrap(linkRows, 'ClassStudents')) {
+    if (!l.student_id) continue;
+    const k = String(l.class_id);
+    if (!studentIdsByClass.has(k)) studentIdsByClass.set(k, []);
+    studentIdsByClass.get(k).push(l.student_id);
+  }
+  return list.map((cls) => {
+    const out = { ...normalize(cls) };
+    if (cls.student_id && studentName.has(String(cls.student_id))) out.student_name = studentName.get(String(cls.student_id));
+    if (cls.group_id && groupName.has(String(cls.group_id)))       out.group_name   = groupName.get(String(cls.group_id));
+    out.student_ids = studentIdsByClass.get(String(cls.ROWID)) || [];
+    out.exceptions = parseExceptions(cls.exceptions);
+    return out;
+  });
+}
+
 // GET /api/classes/today
 router.get('/today', async (req, res) => {
   try {
     const today = new Date().getDay();
     const rows = await zcql(req, `SELECT * FROM Classes WHERE Classes.day_of_week = ${today} AND Classes.is_active = 1 AND Classes.org_id = ${Number(req.orgId)} ORDER BY Classes.start_time ASC`);
-    const decorated = await Promise.all(unwrap(rows, 'Classes').map((c) => decorate(req, c)));
+    const decorated = await decorateList(req, unwrap(rows, 'Classes'));
     res.json({ classes: decorated, day_of_week: today });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch today\'s classes', detail: e.message });
@@ -155,7 +185,7 @@ router.get('/', async (req, res) => {
     const whereSql = `WHERE ${where.join(' AND ')}`;
     const rows = await zcql(req, `SELECT * FROM Classes ${whereSql} ORDER BY Classes.day_of_week, Classes.start_time ASC`);
     const list = unwrap(rows, 'Classes');
-    const decorated = await Promise.all(list.map((c) => decorate(req, c)));
+    const decorated = await decorateList(req, list);
     res.json({ classes: decorated });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch classes', detail: e.message });

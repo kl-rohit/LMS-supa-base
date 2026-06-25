@@ -1,7 +1,7 @@
 // /api/enrollments — Admin CRUD for CourseEnrollments. Org-scoped.
 
 const router = require('express').Router();
-const { insert, getById, remove, zcql, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { insert, getById, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { createNotifications } = require('../lib/notify');
 
 // GET /api/enrollments?course_id=X
@@ -24,21 +24,38 @@ router.get('/', async (req, res) => {
     } catch {}
     const lessonCount = courseLessonIds.size;
 
-    const decorated = await Promise.all(list.map(async (en) => {
-      let student_name = null;
-      try {
-        const s = await getById(req, 'Students', en.student_id);
-        if (s && Number(s.org_id) === Number(req.orgId)) student_name = s.name;
-      } catch {}
-      let completed = 0;
-      try {
-        const progressRows = await zcql(req,
-          `SELECT * FROM LessonProgress WHERE LessonProgress.student_id = ${safeId(en.student_id)} AND LessonProgress.completed = true AND LessonProgress.org_id = ${Number(req.orgId)}`
-        );
-        completed = unwrap(progressRows, 'LessonProgress')
-          .filter((p) => courseLessonIds.has(String(p.lesson_id)))
-          .length;
-      } catch {}
+    // Resolve student names and completed-lesson counts in bulk instead of two
+    // reads per enrollment. One Students pull (name map) plus one completed
+    // LessonProgress pull replace the old 2N getById + per-student fan-out.
+    //
+    // The progress pull is scoped to THIS course's lessons (lesson_id IN ...),
+    // not the whole org. LessonProgress grows as students x lessons-watched —
+    // it is the fastest-growing table in the app — so an org-wide pull would
+    // silently balloon into many 300-row pages as the academy matures. Bounding
+    // it to the course's lessons keeps the read proportional to this course.
+    const lessonIdList = [...courseLessonIds];
+    const progressQuery = lessonIdList.length
+      ? zcqlAll(
+          req,
+          `SELECT student_id, lesson_id FROM LessonProgress WHERE LessonProgress.completed = true AND LessonProgress.lesson_id IN (${lessonIdList.join(',')}) AND LessonProgress.org_id = ${Number(req.orgId)}`,
+          'LessonProgress'
+        ).catch(() => [])
+      : Promise.resolve([]);
+    const [studentRows, progressRows] = await Promise.all([
+      zcqlAll(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []),
+      progressQuery,
+    ]);
+    const studentName = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), s.name]));
+    const completedByStudent = new Map();
+    for (const p of unwrap(progressRows, 'LessonProgress')) {
+      if (!courseLessonIds.has(String(p.lesson_id))) continue; // defensive
+      const k = String(p.student_id);
+      completedByStudent.set(k, (completedByStudent.get(k) || 0) + 1);
+    }
+
+    const decorated = list.map((en) => {
+      const student_name = studentName.has(String(en.student_id)) ? studentName.get(String(en.student_id)) : null;
+      const completed = completedByStudent.get(String(en.student_id)) || 0;
       return {
         ...en,
         student_name,
@@ -46,7 +63,7 @@ router.get('/', async (req, res) => {
         lessons_total: lessonCount,
         progress_percent: lessonCount > 0 ? Math.round((completed / lessonCount) * 100) : 0,
       };
-    }));
+    });
     decorated.sort((a, b) => String(a.student_name || '').localeCompare(String(b.student_name || '')));
     res.json({ enrollments: decorated });
   } catch (e) {

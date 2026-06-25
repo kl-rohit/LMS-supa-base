@@ -48,6 +48,54 @@ async function decorate(req, camp) {
   return out;
 }
 
+// Build the org's group rosters ONCE: group-name map plus a members-by-group
+// map (each group's student rows). Lets list endpoints decorate many camps
+// without a Groups + GroupStudents + Students read per camp.
+async function orgGroupRosters(req) {
+  const [groupRows, linkRows, studentRows] = await Promise.all([
+    zcqlAll(req, `SELECT ROWID, name FROM Groups WHERE Groups.org_id = ${Number(req.orgId)}`, 'Groups').catch(() => []),
+    zcqlAll(req, `SELECT group_id, student_id FROM GroupStudents WHERE GroupStudents.org_id = ${Number(req.orgId)}`, 'GroupStudents').catch(() => []),
+    zcqlAll(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []),
+  ]);
+  const groupName = new Map(unwrap(groupRows, 'Groups').map((g) => [String(g.ROWID), g.name]));
+  const studentById = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), normalize(s)]));
+  const membersByGroup = new Map();
+  for (const l of unwrap(linkRows, 'GroupStudents')) {
+    if (!l.student_id) continue;
+    const k = String(l.group_id);
+    if (!membersByGroup.has(k)) membersByGroup.set(k, []);
+    const s = studentById.get(String(l.student_id));
+    if (s) membersByGroup.get(k).push(s);
+  }
+  return { groupName, membersByGroup };
+}
+
+// Batched counterpart of decorate() for a list of camps. Pulls group rosters
+// and all CampDays for the org once, then assembles in memory — turning the
+// old up-to-4-reads-per-camp fan-out into a fixed handful of SELECTs.
+async function decorateCampsList(req, camps) {
+  if (!camps.length) return [];
+  const [{ groupName, membersByGroup }, dayRows] = await Promise.all([
+    orgGroupRosters(req),
+    zcqlAll(req, `SELECT * FROM CampDays WHERE CampDays.org_id = ${Number(req.orgId)} ORDER BY CampDays.day_date ASC`, 'CampDays').catch(() => []),
+  ]);
+  const daysByCamp = new Map();
+  for (const d of unwrap(dayRows, 'CampDays').map(normalize)) {
+    const k = String(d.camp_id);
+    if (!daysByCamp.has(k)) daysByCamp.set(k, []);
+    daysByCamp.get(k).push(d);
+  }
+  return camps.map((camp) => {
+    const out = normalize(camp);
+    if (camp.group_id && groupName.has(String(camp.group_id))) {
+      out.group_name = groupName.get(String(camp.group_id));
+      out.members = membersByGroup.get(String(camp.group_id)) || [];
+    }
+    out.days = daysByCamp.get(String(camp.ROWID)) || [];
+    return out;
+  });
+}
+
 // GET /api/camps/by-date/:date
 router.get('/by-date/:date', async (req, res) => {
   try {
@@ -56,7 +104,7 @@ router.get('/by-date/:date', async (req, res) => {
       req,
       `SELECT * FROM Camps WHERE Camps.start_date <= ${q(date)} AND Camps.end_date >= ${q(date)} AND Camps.status = 'active' AND Camps.org_id = ${Number(req.orgId)}`
     );
-    const camps = await Promise.all(unwrap(rows, 'Camps').map((c) => decorate(req, c)));
+    const camps = await decorateCampsList(req, unwrap(rows, 'Camps'));
     res.json({ camps });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch camps by date', detail: e.message });
@@ -72,30 +120,27 @@ router.get('/days/by-date/:date', async (req, res) => {
       `SELECT * FROM CampDays WHERE CampDays.day_date = ${q(date)} AND CampDays.org_id = ${Number(req.orgId)}`
     );
     const days = unwrap(dayRows, 'CampDays').map(normalize);
-    const out = await Promise.all(days.map(async (d) => {
-      try {
-        const camp = await getById(req, 'Camps', d.camp_id);
-        if (camp && camp.status === 'active' && Number(camp.org_id) === Number(req.orgId)) {
-          d.camp_name = camp.name;
-          d.camp_status = camp.status;
-          d.group_id = camp.group_id;
-          d.daily_fee = camp.daily_fee || 0;
-          const links = await zcql(req, `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${camp.group_id} AND GroupStudents.org_id = ${Number(req.orgId)}`);
-          const sids = unwrap(links, 'GroupStudents').map((l) => l.student_id).filter(Boolean);
-          if (sids.length) {
-            const sRows = await zcql(req, `SELECT * FROM Students WHERE ROWID IN (${sids.join(',')}) AND Students.org_id = ${Number(req.orgId)}`);
-            d.members = unwrap(sRows, 'Students').map(normalize);
-          } else {
-            d.members = [];
-          }
-          return d;
-        }
-        return null;
-      } catch {
-        return null;
+    // Resolve parent camps and group rosters in bulk rather than per day: one
+    // Camps pull (by ROWID) + the shared group-roster maps replace the old
+    // getById Camps + GroupStudents + Students reads per camp day.
+    const [campRows, { membersByGroup }] = await Promise.all([
+      zcqlAll(req, `SELECT * FROM Camps WHERE Camps.org_id = ${Number(req.orgId)}`, 'Camps').catch(() => []),
+      orgGroupRosters(req),
+    ]);
+    const campById = new Map(unwrap(campRows, 'Camps').map((c) => [String(c.ROWID), c]));
+    const out = days.map((d) => {
+      const camp = campById.get(String(d.camp_id));
+      if (camp && camp.status === 'active' && Number(camp.org_id) === Number(req.orgId)) {
+        d.camp_name = camp.name;
+        d.camp_status = camp.status;
+        d.group_id = camp.group_id;
+        d.daily_fee = camp.daily_fee || 0;
+        d.members = membersByGroup.get(String(camp.group_id)) || [];
+        return d;
       }
-    }));
-    res.json({ days: out.filter(Boolean) });
+      return null;
+    }).filter(Boolean);
+    res.json({ days: out });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch camp days by date', detail: e.message });
   }
@@ -184,7 +229,7 @@ router.get('/', async (req, res) => {
     const where = [`Camps.org_id = ${Number(req.orgId)}`];
     if (status) where.push(`Camps.status = ${q(status)}`);
     const rows = await zcql(req, `SELECT * FROM Camps WHERE ${where.join(' AND ')} ORDER BY Camps.start_date DESC`);
-    const camps = await Promise.all(unwrap(rows, 'Camps').map((c) => decorate(req, c)));
+    const camps = await decorateCampsList(req, unwrap(rows, 'Camps'));
     res.json({ camps });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch camps', detail: e.message });

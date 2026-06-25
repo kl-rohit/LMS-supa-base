@@ -116,6 +116,43 @@ async function sendOne(sub, payload) {
   }
 }
 
+// Web push to a set of students (best-effort; skipped silently if VAPID
+// unconfigured). Separated from the in-app insert so callers that need
+// idempotency can insert first, decide ownership, then push exactly once.
+async function pushToStudents(req, orgId, studentIds, { type, title, body, link }) {
+  if (!pushReady) return 0;
+  const ids = [...new Set((studentIds || []).map((s) => String(s)).filter(Boolean))];
+  if (!ids.length) return 0;
+  try {
+    const subs = await loadSubscriptions(req, Number(orgId), ids);
+    const payload = {
+      title: String(title),
+      body: body ? String(body) : '',
+      // SW prefixes with /app basename for the in-app route.
+      url: link || '/portal',
+      type: type || 'general',
+    };
+    return await pushToSubscriptions(req, subs, payload);
+  } catch (err) {
+    console.error('[notify] push phase failed:', err.message);
+    return 0;
+  }
+}
+
+// Web push to an org's admin/teacher devices (best-effort). Counterpart of
+// pushToStudents for the admin recipient_role.
+async function pushToAdmins(req, orgId, { type, title, body, link }) {
+  if (!pushReady) return 0;
+  try {
+    const subs = await loadAdminSubscriptions(req, Number(orgId));
+    const payload = { title: String(title), body: body ? String(body) : '', url: link || '/dashboard', type: type || 'general' };
+    return await pushToSubscriptions(req, subs, payload);
+  } catch (err) {
+    console.error('[notify] admin push phase failed:', err.message);
+    return 0;
+  }
+}
+
 /**
  * Create notifications for a set of students.
  *
@@ -127,18 +164,20 @@ async function sendOne(sub, payload) {
  * @param {string} opts.title
  * @param {string} opts.body
  * @param {string} [opts.link]       — in-app deep link (portal-relative, e.g. '/portal/assignments')
- * @returns {Promise<{created:number, pushed:number}>}
+ * @param {boolean} [opts.push=true] — when false, only write in-app rows (caller fires push itself)
+ * @returns {Promise<{created:number, pushed:number, rowids:string[]}>}
  */
-async function createNotifications(req, { orgId, studentIds, type, title, body, link }) {
+async function createNotifications(req, { orgId, studentIds, type, title, body, link, push = true }) {
   const org = Number(orgId);
   const ids = [...new Set((studentIds || []).map((s) => String(s)).filter(Boolean))];
-  if (!Number.isFinite(org) || !ids.length || !title) return { created: 0, pushed: 0 };
+  if (!Number.isFinite(org) || !ids.length || !title) return { created: 0, pushed: 0, rowids: [] };
 
   // 1) In-app rows (best-effort per row; never throw).
   let created = 0;
+  const rowids = [];
   for (const sid of ids) {
     try {
-      await insertNotificationRow(req, {
+      const row = await insertNotificationRow(req, {
         student_id: sid,
         org_id: org,
         recipient_role: 'parent',
@@ -148,31 +187,17 @@ async function createNotifications(req, { orgId, studentIds, type, title, body, 
         link: link || '',
         is_read: false,
       });
+      if (row && row.ROWID) rowids.push(String(row.ROWID));
       created++;
     } catch (err) {
       console.error('[notify] insert failed for', sid, err.message);
     }
   }
 
-  // 2) Web push (skipped silently if VAPID unconfigured).
-  let pushed = 0;
-  if (pushReady) {
-    try {
-      const subs = await loadSubscriptions(req, org, ids);
-      const payload = {
-        title: String(title),
-        body: body ? String(body) : '',
-        // SW prefixes with /app basename for the in-app route.
-        url: link || '/portal',
-        type: type || 'general',
-      };
-      pushed = await pushToSubscriptions(req, subs, payload);
-    } catch (err) {
-      console.error('[notify] push phase failed:', err.message);
-    }
-  }
+  // 2) Web push (skipped silently if VAPID unconfigured or push opted out).
+  const pushed = push ? await pushToStudents(req, org, ids, { type, title, body, link }) : 0;
 
-  return { created, pushed };
+  return { created, pushed, rowids };
 }
 
 /**
@@ -180,13 +205,14 @@ async function createNotifications(req, { orgId, studentIds, type, title, body, 
  * (the parent bell is per-student; this is per-org, recipient_role='admin').
  * Used by the morning class-digest cron and any future admin alerts.
  */
-async function createAdminNotifications(req, { orgId, type, title, body, link }) {
+async function createAdminNotifications(req, { orgId, type, title, body, link, push = true }) {
   const org = Number(orgId);
-  if (!Number.isFinite(org) || !title) return { created: 0, pushed: 0 };
+  if (!Number.isFinite(org) || !title) return { created: 0, pushed: 0, rowid: null };
 
   let created = 0;
+  let rowid = null;
   try {
-    await insertNotificationRow(req, {
+    const row = await insertNotificationRow(req, {
       student_id: 0,             // org-level — not tied to a student. Must be a
                                  // number: the student_id column is bigint, so
                                  // '' is rejected. 0 never matches a real
@@ -200,27 +226,22 @@ async function createAdminNotifications(req, { orgId, type, title, body, link })
       link: link || '',
       is_read: false,
     });
+    if (row && row.ROWID) rowid = String(row.ROWID);
     created = 1;
   } catch (err) {
     console.error('[notify] admin insert failed:', err.message);
   }
 
-  let pushed = 0;
-  if (pushReady) {
-    try {
-      const subs = await loadAdminSubscriptions(req, org);
-      const payload = { title: String(title), body: body ? String(body) : '', url: link || '/dashboard', type: type || 'general' };
-      pushed = await pushToSubscriptions(req, subs, payload);
-    } catch (err) {
-      console.error('[notify] admin push phase failed:', err.message);
-    }
-  }
-  return { created, pushed };
+  // Web push (skipped silently if VAPID unconfigured or push opted out).
+  const pushed = push ? await pushToAdmins(req, org, { type, title, body, link }) : 0;
+  return { created, pushed, rowid };
 }
 
 module.exports = {
   createNotifications,
   createAdminNotifications,
+  pushToStudents,
+  pushToAdmins,
   publicVapidKey,
   loadSubscriptions,
   loadAdminSubscriptions,

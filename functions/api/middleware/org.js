@@ -23,6 +23,26 @@
 const { zcql, unwrap, normalize } = require('../db/catalystDb');
 const { normalizePlan, effectivePlan, planMaxStudents, trialInfo } = require('../lib/plans');
 
+// Short-TTL in-process caches to cut the per-request Data Store tax. resolveOrg
+// runs on EVERY admin API call; uncached it fires 3 SELECTs (memberships + org
+// row + plan settings) per request. A user clicking around fires many requests
+// in a few seconds, so a 60s cache collapses almost all of them to zero reads.
+// Caches live in the warm function container and expire quickly, so a
+// membership / plan / suspension change takes effect within ~60s.
+const ORG_CACHE_TTL_MS = 60 * 1000;
+const membershipsCache = new Map(); // userId → { value, exp }
+const orgMetaCache = new Map();     // orgId  → { value, exp }
+
+function cacheGet(map, key) {
+  const hit = map.get(key);
+  if (hit && hit.exp > Date.now()) return hit.value;
+  if (hit) map.delete(key);
+  return undefined;
+}
+function cacheSet(map, key, value) {
+  map.set(key, { value, exp: Date.now() + ORG_CACHE_TTL_MS });
+}
+
 async function resolveOrg(req, res, next) {
   const userId = req.user?.user_id;
   const role = req.user?.role_details?.role_name || req.user?.role || '';
@@ -47,20 +67,23 @@ async function resolveOrg(req, res, next) {
     return next();
   }
 
-  // Look up memberships for this user.
-  let memberships = [];
-  try {
-    const rows = await zcql(
-      req,
-      `SELECT * FROM OrgMemberships WHERE OrgMemberships.user_id = '${String(userId).replace(/'/g, "''")}'`
-    );
-    memberships = unwrap(rows, 'OrgMemberships').map(normalize);
-  } catch (e) {
-    return res.status(503).json({
-      error: 'Multi-tenancy not initialized',
-      detail: e.message,
-      hint: 'Create the OrgMemberships table in Catalyst console and run POST /api/platform/bootstrap.',
-    });
+  // Look up memberships for this user (cached ~60s; rarely change).
+  let memberships = cacheGet(membershipsCache, String(userId));
+  if (!memberships) {
+    try {
+      const rows = await zcql(
+        req,
+        `SELECT * FROM OrgMemberships WHERE OrgMemberships.user_id = '${String(userId).replace(/'/g, "''")}'`
+      );
+      memberships = unwrap(rows, 'OrgMemberships').map(normalize);
+      cacheSet(membershipsCache, String(userId), memberships);
+    } catch (e) {
+      return res.status(503).json({
+        error: 'Multi-tenancy not initialized',
+        detail: e.message,
+        hint: 'Create the OrgMemberships table in Catalyst console and run POST /api/platform/bootstrap.',
+      });
+    }
   }
 
   const active = memberships.filter((m) => m.status === 'active');
@@ -75,6 +98,15 @@ async function resolveOrg(req, res, next) {
   // investigate). Function declaration so it's hoisted for the platform-admin
   // branch above.
   async function loadOrgMeta(orgId) {
+    // Cache hit → replay the resolved plan/trial/active fields, no DB reads.
+    const cached = cacheGet(orgMetaCache, String(orgId));
+    if (cached) {
+      req.orgPlanRaw     = cached.orgPlanRaw;
+      req.orgPlan        = cached.orgPlan;
+      req.orgMaxStudents = cached.orgMaxStudents;
+      req.orgTrial       = cached.orgTrial;
+      return { active: cached.active };
+    }
     try {
       const rows = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${Number(orgId)}`);
       const o = unwrap(rows, 'Organizations')[0] || null;
@@ -106,11 +138,19 @@ async function resolveOrg(req, res, next) {
         if (Number.isFinite(n) && n >= 0) maxStudents = n; // per-org override wins
       }
 
-      req.orgPlanRaw     = rawPlan;
-      req.orgPlan        = eff;
-      req.orgMaxStudents = maxStudents;
-      req.orgTrial       = trialInfo(rawPlan, { trialEndsAt, createdAt });
-      return { active: !o || (o.status || 'active') === 'active' };
+      const meta = {
+        orgPlanRaw:     rawPlan,
+        orgPlan:        eff,
+        orgMaxStudents: maxStudents,
+        orgTrial:       trialInfo(rawPlan, { trialEndsAt, createdAt }),
+        active:         !o || (o.status || 'active') === 'active',
+      };
+      cacheSet(orgMetaCache, String(orgId), meta);
+      req.orgPlanRaw     = meta.orgPlanRaw;
+      req.orgPlan        = meta.orgPlan;
+      req.orgMaxStudents = meta.orgMaxStudents;
+      req.orgTrial       = meta.orgTrial;
+      return { active: meta.active };
     } catch {
       req.orgPlan = req.orgPlan || 'complete'; // fail open on entitlements
       return { active: true }; // fail open — don't lock the app if the lookup hiccups

@@ -2,7 +2,7 @@
 // All queries are scoped to req.orgId set by middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 const { overCapBlock } = require('../lib/studentLimit');
 
 // Helper: fetch member students for a group (org-scoped on both ends).
@@ -21,13 +21,31 @@ async function fetchMembers(req, groupId) {
 // GET /api/groups
 router.get('/', async (req, res) => {
   try {
-    const rows = await zcql(req, `SELECT * FROM Groups WHERE Groups.org_id = ${Number(req.orgId)} ORDER BY Groups.name ASC`);
-    const groups = unwrap(rows, 'Groups');
-    // Attach member_count for each
-    const withCounts = await Promise.all(groups.map(async (g) => {
-      const members = await fetchMembers(req, g.ROWID);
+    // Pull groups, all member links, and all students for the org ONCE, then
+    // assemble each group's roster in memory. The old per-group fetchMembers
+    // fan-out fired 2 reads per group (links + students); this caps the whole
+    // list at three org-scoped SELECTs regardless of group count.
+    const [groupRows, linkRows, studentRows] = await Promise.all([
+      zcql(req, `SELECT * FROM Groups WHERE Groups.org_id = ${Number(req.orgId)} ORDER BY Groups.name ASC`),
+      zcqlAll(req, `SELECT group_id, student_id FROM GroupStudents WHERE GroupStudents.org_id = ${Number(req.orgId)}`, 'GroupStudents').catch(() => []),
+      zcqlAll(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []),
+    ]);
+    const groups = unwrap(groupRows, 'Groups');
+    const studentById = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), normalize(s)]));
+    const memberIdsByGroup = new Map();
+    for (const l of unwrap(linkRows, 'GroupStudents')) {
+      if (!l.student_id) continue;
+      const k = String(l.group_id);
+      if (!memberIdsByGroup.has(k)) memberIdsByGroup.set(k, []);
+      memberIdsByGroup.get(k).push(String(l.student_id));
+    }
+    const withCounts = groups.map((g) => {
+      const members = (memberIdsByGroup.get(String(g.ROWID)) || [])
+        .map((sid) => studentById.get(sid))
+        .filter(Boolean)
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
       return { ...normalize(g), member_count: members.length, members };
-    }));
+    });
     res.json({ groups: withCounts });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch groups', detail: e.message });

@@ -13,12 +13,17 @@
  * Bump CACHE to force old caches to be discarded on the next activate.
  */
 
-const CACHE = 'veena-shell-v2';
+const CACHE = 'veena-shell-v3';
 const SHELL_URL = new URL('./', self.registration.scope).href; // e.g. https://host/app/
 
-// Precache the shell AND the hashed assets it references (bundle + css), so a
-// cold offline launch can actually boot — caching only the HTML leaves it
-// requesting a bundle that isn't cached, which renders a blank page.
+// Precache the shell AND every emitted chunk, so a cold offline launch can
+// actually boot. The app is route-split into many lazy chunks that webpack
+// loads at runtime via import(); index.html references only the entry bundle.
+// Caching just the HTML's <script> tags leaves those route chunks uncached, so
+// offline the shell + main.js boot, then the first dynamic import fails and the
+// app renders a blank themed page. asset-manifest.json (written at build time)
+// lists every chunk so we precache the whole app here. Bare filenames are
+// resolved against the SW scope, so this stays correct whatever PUBLIC_URL is.
 async function precacheShell(cache) {
   const res = await fetch(SHELL_URL, { cache: 'reload' });
   await cache.put(SHELL_URL, res.clone());
@@ -26,6 +31,22 @@ async function precacheShell(cache) {
   const urls = new Set();
   for (const m of html.matchAll(/<script[^>]+src="([^"]+)"/g)) urls.add(m[1]);
   for (const m of html.matchAll(/<link[^>]+href="([^"]+\.css)"/g)) urls.add(m[1]);
+
+  // Pull the full chunk list. If the manifest is missing for any reason, the
+  // HTML-referenced assets above are still cached as a fallback.
+  try {
+    const manifestUrl = new URL('asset-manifest.json', self.registration.scope).href;
+    const mres = await fetch(manifestUrl, { cache: 'reload' });
+    if (mres && mres.ok) {
+      const data = await mres.json();
+      for (const name of data.assets || []) {
+        urls.add(new URL(name, self.registration.scope).href);
+      }
+    }
+  } catch (_e) { /* no manifest → fall back to the HTML-referenced assets */ }
+
+  // Cache each asset individually (not addAll) so one failed request can't
+  // abort the whole precache and leave offline launch broken.
   await Promise.all(
     [...urls].map((u) => cache.add(new Request(u, { cache: 'reload' })).catch(() => {}))
   );
@@ -38,7 +59,10 @@ self.addEventListener('install', (event) => {
       try {
         await precacheShell(cache);
       } catch (_e) { /* offline at install — shell caches on first online nav */ }
-      await self.skipWaiting();
+      // No unconditional skipWaiting: a fresh build installs but waits until the
+      // user accepts the in-app refresh (UpdatePrompt → SKIP_WAITING message),
+      // so we never swap the running app out from under them. A first install
+      // (no existing controller) still activates immediately.
     })()
   );
 });

@@ -717,6 +717,23 @@ router.post('/lessons/:id/progress', async (req, res) => {
       row = await insert(req, 'LessonProgress', payload);
     }
 
+    // Keep the enrollment's precomputed completed_count in step. Only a fresh
+    // not-completed → completed transition bumps it (completion never regresses
+    // here). Wrapped so it is a safe no-op until the completed_count column
+    // exists on CourseEnrollments. Lets the admin enrollments list read a stored
+    // count instead of scanning LessonProgress on every load.
+    const wasCompletedBefore = existing?.completed === true || existing?.completed === 1;
+    if (!wasCompletedBefore && payload.completed === true) {
+      try {
+        const enId = unwrap(enrollRows, 'CourseEnrollments')[0]?.ROWID;
+        if (enId) {
+          const cur = await getById(req, 'CourseEnrollments', enId);
+          const n = Number(cur && cur.completed_count) || 0;
+          await update(req, 'CourseEnrollments', enId, { completed_count: n + 1 });
+        }
+      } catch { /* column may not exist yet; safe no-op */ }
+    }
+
     // If this save just finished the course, lock the completion date now so
     // the certificate reflects the day they actually completed it.
     let completedAt = '';

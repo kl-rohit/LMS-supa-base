@@ -6,6 +6,7 @@ import { Calendar, CalendarClock, Check, IndianRupee, PlayCircle, ChevronRight, 
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import InstallAppButton from '../../components/InstallAppButton';
+import PortalBadges from '../../components/PortalBadges';
 import { useAuth } from '../../contexts/AuthContext';
 import { extractYouTubeId, ytThumbnail, formatDuration } from '../../utils/youtube';
 
@@ -17,6 +18,7 @@ export default function PortalDashboard() {
   const [student, setStudent] = useState(null);
   const [fees, setFees] = useState(null);
   const [recentClasses, setRecentClasses] = useState([]);
+  const [attendanceAll, setAttendanceAll] = useState([]);
   const [continueWatching, setContinueWatching] = useState(null);
   const [upcoming, setUpcoming] = useState(null);
 
@@ -28,9 +30,9 @@ export default function PortalDashboard() {
     (async () => {
       try {
         const [me, monthFees, att, cw, up] = await Promise.all([
-          api.get('/portal/me'),
-          api.get(`/portal/fees?month=${ym}`),
-          api.get('/portal/attendance'),
+          api.getCached('/portal/me', 'portal_me'),
+          api.getCached(`/portal/fees?month=${ym}`, 'portal_fees'),
+          api.getCached('/portal/attendance', 'portal_attendance'),
           api.get('/portal/continue-watching').catch(() => ({ course: null })),
           api.get('/portal/upcoming-class').catch(() => ({ upcoming: null })),
         ]);
@@ -39,6 +41,7 @@ export default function PortalDashboard() {
         setFees(monthFees);
         const attendance = att.attendance || [];
         setRecentClasses(attendance.slice(0, 5));
+        setAttendanceAll(attendance);
         setContinueWatching(cw?.course ? cw : null);
         setUpcoming(up?.upcoming || null);
       } catch (e) {
@@ -97,6 +100,9 @@ export default function PortalDashboard() {
           Here's a snapshot of {student.name}'s {monthLabel} so far.
         </p>
       </div>
+
+      {/* Encouragement badges, computed from data already loaded. */}
+      <PortalBadges attendance={attendanceAll} continueWatching={continueWatching} />
 
       {/* Upcoming class — next scheduled occurrence from the timetable */}
       {upcoming && (

@@ -92,8 +92,10 @@ export function AuthProvider({ children }) {
   // CDN blocked) we still hard-navigate to /login as a best effort.
   const signOut = useCallback(async () => {
     // Drop the active-academy pin so it doesn't carry over to the next person
-    // who signs in on this device.
+    // who signs in on this device. Also wipe the offline portal read-cache so
+    // no child's cached summary lingers on a shared phone.
     try { localStorage.removeItem(ACTIVE_ORG_KEY); } catch { /* ignore */ }
+    try { api.clearCache(); } catch { /* ignore */ }
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     const redirectURL = `${window.location.origin}${base}/login`;
     // IMPORTANT: do NOT setUser(null) before the SDK call. Nulling the user

@@ -12,8 +12,9 @@
 
 const router = require('express').Router();
 const { generateFeeReminders } = require('../lib/feeReminder');
-const { zcql, zcqlAll, unwrap, normalize, remove } = require('../db/catalystDb');
+const { zcql, zcqlAll, unwrap, normalize, remove, appFor } = require('../db/catalystDb');
 const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
+const config = require('../config');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
 // matches the CRON_SECRET env var. If CRON_SECRET is unset (e.g. local
@@ -352,5 +353,137 @@ async function morningDigestHandler(req, res) {
 
 router.get('/cron-morning-digest', morningDigestHandler);
 router.post('/cron-morning-digest', morningDigestHandler);
+
+// ---------- Weekly parent digest ----------
+// A once-a-week engagement nudge to parents: how many classes their child
+// attended this week, plus any new lessons added. Idempotent per student per
+// week via a week-stamped link (same insert-first / push-by-ownership rule as
+// the morning digest). Schedule this once a week in the Catalyst console
+// pointed at /api/internal/cron-weekly-digest with the X-Cron-Secret header.
+async function weeklyDigestHandler(req, res) {
+  try {
+    const now = new Date();
+    const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
+    const istDate = ist.toISOString().slice(0, 10);
+    const since = new Date(ist.getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const link = `/portal?w=${istDate}`;
+
+    let orgs = [];
+    try {
+      const orgRows = await zcql(req, `SELECT * FROM Organizations WHERE Organizations.status = 'active'`);
+      orgs = unwrap(orgRows, 'Organizations').map(normalize);
+    } catch (e) {
+      return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
+    }
+
+    const summary = [];
+    for (const org of orgs) {
+      const orgId = Number(org.id);
+      try {
+        // Present-attendance counts for the last 7 days, grouped per student.
+        const attRows = await zcqlAll(req, `SELECT student_id, status, class_date FROM Attendance WHERE Attendance.status = 'present' AND Attendance.org_id = ${orgId}`, 'Attendance');
+        const byStudent = new Map();
+        for (const a of unwrap(attRows, 'Attendance')) {
+          const d = a.class_date || a.date;
+          if (d && String(d).slice(0, 10) >= since) {
+            const k = String(a.student_id);
+            byStudent.set(k, (byStudent.get(k) || 0) + 1);
+          }
+        }
+
+        // New lessons added this week (org-wide count).
+        let newLessons = 0;
+        try {
+          const lr = await zcqlAll(req, `SELECT ROWID, CREATEDTIME FROM Lessons WHERE Lessons.org_id = ${orgId}`, 'Lessons');
+          newLessons = unwrap(lr, 'Lessons').filter((l) => String(l.CREATEDTIME || '').slice(0, 10) >= since).length;
+        } catch { /* Lessons table may not exist for this org */ }
+
+        let notified = 0;
+        for (const [sid, count] of byStudent.entries()) {
+          const where = `Notifications.student_id = ${Number(sid)} AND Notifications.recipient_role = 'parent' AND Notifications.link = '${link}'`;
+          if (await alreadySent(req, where)) { await pruneDuplicateDigests(req, where); continue; }
+          const title = 'Your weekly update';
+          const parts = [`${count} ${count === 1 ? 'class' : 'classes'} attended this week`];
+          if (newLessons > 0) parts.push(`${newLessons} new ${newLessons === 1 ? 'lesson' : 'lessons'} added`);
+          const body = `${parts.join(' · ')}.`;
+          const ins = await createNotifications(req, { orgId, studentIds: [sid], type: 'digest', title, body, link, push: false });
+          notified++;
+          const myRowid = ins.rowids && ins.rowids[0];
+          const survivor = await pruneDuplicateDigests(req, where);
+          if (myRowid && survivor && String(survivor) === String(myRowid)) {
+            await pushToStudents(req, orgId, [sid], { type: 'digest', title, body, link });
+          }
+        }
+        summary.push({ org_id: org.id, org_name: org.name, students_notified: notified, new_lessons: newLessons });
+      } catch (e) {
+        summary.push({ org_id: org.id, org_name: org.name, ok: false, error: e.message });
+      }
+    }
+    res.json({ ok: true, ist_date: istDate, since, orgs_processed: summary.length, summary });
+  } catch (e) {
+    res.status(500).json({ error: 'Cron weekly-digest failed', detail: e.message });
+  }
+}
+
+router.get('/cron-weekly-digest', weeklyDigestHandler);
+router.post('/cron-weekly-digest', weeklyDigestHandler);
+
+// ---------- Per-org data backup to Stratus ----------
+// Dumps each active org's core tables to a JSON object in the existing Stratus
+// bucket under backups/org-<id>-<YYYY-MM-DD>.json. Schedule in the Catalyst
+// console pointed at /api/internal/cron-backup with the X-Cron-Secret header.
+//
+// COST NOTE: this scans full tables (incl. Attendance + LessonProgress) per
+// run. On the free Data Store SELECT tier prefer a WEEKLY cadence; nightly is
+// best once on a paid plan. The cron schedule decides cadence; the code is the
+// same either way.
+const BACKUP_TABLES = ['Students', 'Classes', 'Attendance', 'Groups', 'GroupStudents', 'ClassStudents', 'CourseEnrollments', 'LessonProgress', 'Fees', 'AppSettings'];
+async function backupHandler(req, res) {
+  try {
+    const now = new Date();
+    const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
+    const dateStr = ist.toISOString().slice(0, 10);
+
+    let orgs = [];
+    try {
+      const orgRows = await zcql(req, `SELECT * FROM Organizations WHERE Organizations.status = 'active'`);
+      orgs = unwrap(orgRows, 'Organizations').map(normalize);
+    } catch (e) {
+      return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
+    }
+
+    let bucket;
+    try {
+      bucket = appFor(req).stratus().bucket(config.PHOTO_BUCKET);
+    } catch (e) {
+      return res.status(503).json({ error: 'Stratus bucket unavailable', detail: e.message });
+    }
+
+    const summary = [];
+    for (const org of orgs) {
+      const orgId = Number(org.id);
+      const dump = { org_id: orgId, org_name: org.name, exported_at: new Date().toISOString(), tables: {} };
+      for (const t of BACKUP_TABLES) {
+        try {
+          const rows = await zcqlAll(req, `SELECT * FROM ${t} WHERE ${t}.org_id = ${orgId}`, t);
+          dump.tables[t] = unwrap(rows, t).map(normalize);
+        } catch { dump.tables[t] = []; }
+      }
+      const key = `backups/org-${orgId}-${dateStr}.json`;
+      try {
+        await bucket.putObject(key, Buffer.from(JSON.stringify(dump)), { contentType: 'application/json', overwrite: true });
+        summary.push({ org_id: orgId, ok: true, key, tables: Object.keys(dump.tables).length });
+      } catch (e) {
+        summary.push({ org_id: orgId, ok: false, error: e.message });
+      }
+    }
+    res.json({ ok: true, date: dateStr, orgs_processed: summary.length, summary });
+  } catch (e) {
+    res.status(500).json({ error: 'Cron backup failed', detail: e.message });
+  }
+}
+
+router.get('/cron-backup', backupHandler);
+router.post('/cron-backup', backupHandler);
 
 module.exports = router;

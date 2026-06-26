@@ -30,6 +30,8 @@ import ParentLayout from './layouts/ParentLayout';
 import PlatformLayout from './layouts/PlatformLayout';
 import NotificationBell from './components/NotificationBell';
 import OrgSwitcher from './components/OrgSwitcher';
+import OfflineGame from './components/OfflineGame';
+import UpdatePrompt from './components/UpdatePrompt';
 
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
 const Students       = lazy(() => import('./pages/Students'));
@@ -334,6 +336,11 @@ export default function App() {
           style: { borderRadius: '10px', background: '#333', color: '#fff' },
         }}
       />
+      {/* Pops up a quick game when the device goes offline; closes itself once
+          the connection returns. Self-contained, no network or auth needed. */}
+      <OfflineGame />
+      {/* Offers a refresh when a new build is downloaded and waiting. */}
+      <UpdatePrompt />
       <Routes>
         <Route path="/login" element={<Login />} />
         {/* Academy creation is invite-only (platform admin creates them from

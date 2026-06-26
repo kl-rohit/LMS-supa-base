@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
+import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 import { bootTheme } from './utils/theme';
 
@@ -17,9 +18,11 @@ const container = document.getElementById('root');
 const root = createRoot(container);
 root.render(
   <React.StrictMode>
-    <BrowserRouter basename={basename}>
-      <App />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter basename={basename}>
+        <App />
+      </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 );
 
@@ -29,6 +32,30 @@ if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${basename}sw.js`, { scope: basename })
+      .then((reg) => {
+        // When a new worker finishes installing while an old one still controls
+        // the page, it sits "waiting". Tell the app so it can offer a refresh
+        // (handled by UpdatePrompt) instead of silently serving a stale build.
+        const notifyIfWaiting = (worker) => {
+          if (worker && worker.state === 'installed' && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent('veena:sw-waiting', { detail: reg }));
+          }
+        };
+        if (reg.waiting) notifyIfWaiting(reg.waiting);
+        reg.addEventListener('updatefound', () => {
+          const installing = reg.installing;
+          if (installing) installing.addEventListener('statechange', () => notifyIfWaiting(installing));
+        });
+      })
       .catch((err) => console.warn('SW registration failed:', err));
+
+    // Once the new worker takes control (after the user accepts the refresh),
+    // reload once so the fresh build renders.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
   });
 }

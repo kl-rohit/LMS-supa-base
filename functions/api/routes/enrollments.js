@@ -1,7 +1,7 @@
 // /api/enrollments — Admin CRUD for CourseEnrollments. Org-scoped.
 
 const router = require('express').Router();
-const { insert, getById, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { createNotifications } = require('../lib/notify');
 
 // GET /api/enrollments?course_id=X
@@ -24,38 +24,39 @@ router.get('/', async (req, res) => {
     } catch {}
     const lessonCount = courseLessonIds.size;
 
-    // Resolve student names and completed-lesson counts in bulk instead of two
-    // reads per enrollment. One Students pull (name map) plus one completed
-    // LessonProgress pull replace the old 2N getById + per-student fan-out.
-    //
-    // The progress pull is scoped to THIS course's lessons (lesson_id IN ...),
-    // not the whole org. LessonProgress grows as students x lessons-watched —
-    // it is the fastest-growing table in the app — so an org-wide pull would
-    // silently balloon into many 300-row pages as the academy matures. Bounding
-    // it to the course's lessons keeps the read proportional to this course.
-    const lessonIdList = [...courseLessonIds];
-    const progressQuery = lessonIdList.length
-      ? zcqlAll(
-          req,
-          `SELECT student_id, lesson_id FROM LessonProgress WHERE LessonProgress.completed = true AND LessonProgress.lesson_id IN (${lessonIdList.join(',')}) AND LessonProgress.org_id = ${Number(req.orgId)}`,
-          'LessonProgress'
-        ).catch(() => [])
-      : Promise.resolve([]);
-    const [studentRows, progressRows] = await Promise.all([
-      zcqlAll(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []),
-      progressQuery,
-    ]);
+    // Student names: one org Students pull → name map (replaces 2N getById).
+    const studentRows = await zcqlAll(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []);
     const studentName = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), s.name]));
+
+    // Completed-lesson counts. Prefer the precomputed `completed_count` stored
+    // on each enrollment row (bumped at completion time in the portal, and
+    // reconciled by POST /recompute). Only when that column is absent do we
+    // fall back to the live LessonProgress scan, scoped to this course's
+    // lessons. Reading the stored count turns this page's cost from "scan the
+    // fastest-growing table in the app" into zero extra reads.
+    const columnPresent = list.length > 0 && Object.prototype.hasOwnProperty.call(list[0], 'completed_count');
     const completedByStudent = new Map();
-    for (const p of unwrap(progressRows, 'LessonProgress')) {
-      if (!courseLessonIds.has(String(p.lesson_id))) continue; // defensive
-      const k = String(p.student_id);
-      completedByStudent.set(k, (completedByStudent.get(k) || 0) + 1);
+    if (!columnPresent) {
+      const lessonIdList = [...courseLessonIds];
+      const progressRows = lessonIdList.length
+        ? await zcqlAll(
+            req,
+            `SELECT student_id, lesson_id FROM LessonProgress WHERE LessonProgress.completed = true AND LessonProgress.lesson_id IN (${lessonIdList.join(',')}) AND LessonProgress.org_id = ${Number(req.orgId)}`,
+            'LessonProgress'
+          ).catch(() => [])
+        : [];
+      for (const p of unwrap(progressRows, 'LessonProgress')) {
+        if (!courseLessonIds.has(String(p.lesson_id))) continue; // defensive
+        const k = String(p.student_id);
+        completedByStudent.set(k, (completedByStudent.get(k) || 0) + 1);
+      }
     }
 
     const decorated = list.map((en) => {
       const student_name = studentName.has(String(en.student_id)) ? studentName.get(String(en.student_id)) : null;
-      const completed = completedByStudent.get(String(en.student_id)) || 0;
+      const completed = columnPresent
+        ? (Number(en.completed_count) || 0)
+        : (completedByStudent.get(String(en.student_id)) || 0);
       return {
         ...en,
         student_name,
@@ -140,6 +141,49 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Unenrolled' });
   } catch (e) {
     res.status(500).json({ error: 'Failed to unenroll', detail: e.message });
+  }
+});
+
+// POST /api/enrollments/recompute — backfill / reconcile completed_count for
+// every enrollment in the caller's org. Run once after adding the
+// completed_count column, and any time you want the precomputed counts
+// reconciled with the live LessonProgress data. This does the heavy org-wide
+// scan ONCE here, instead of on every enrollments page load.
+router.post('/recompute', async (req, res) => {
+  try {
+    const enrollRows = await zcqlAll(req, `SELECT ROWID, student_id, course_id, completed_count FROM CourseEnrollments WHERE CourseEnrollments.org_id = ${Number(req.orgId)}`, 'CourseEnrollments').catch(() => []);
+    const enrollments = unwrap(enrollRows, 'CourseEnrollments');
+    if (!enrollments.length) return res.json({ updated: 0, failed: 0, total: 0, message: 'No enrollments' });
+
+    const lessonRows = await zcqlAll(req, `SELECT ROWID, course_id FROM Lessons WHERE Lessons.org_id = ${Number(req.orgId)}`, 'Lessons').catch(() => []);
+    const lessonsByCourse = new Map();
+    for (const l of unwrap(lessonRows, 'Lessons')) {
+      const c = String(l.course_id);
+      if (!lessonsByCourse.has(c)) lessonsByCourse.set(c, new Set());
+      lessonsByCourse.get(c).add(String(l.ROWID));
+    }
+
+    const progRows = await zcqlAll(req, `SELECT student_id, lesson_id FROM LessonProgress WHERE LessonProgress.completed = true AND LessonProgress.org_id = ${Number(req.orgId)}`, 'LessonProgress').catch(() => []);
+    const byStudent = new Map(); // studentId → Set(lessonId)
+    for (const p of unwrap(progRows, 'LessonProgress')) {
+      const s = String(p.student_id);
+      if (!byStudent.has(s)) byStudent.set(s, new Set());
+      byStudent.get(s).add(String(p.lesson_id));
+    }
+
+    let updated = 0, failed = 0;
+    for (const en of enrollments) {
+      const lessons = lessonsByCourse.get(String(en.course_id)) || new Set();
+      const done = byStudent.get(String(en.student_id)) || new Set();
+      let count = 0;
+      for (const lid of done) if (lessons.has(lid)) count++;
+      if (Number(en.completed_count) === count) continue; // already correct
+      try { await update(req, 'CourseEnrollments', en.ROWID, { completed_count: count }); updated++; }
+      catch { failed++; }
+    }
+    res.json({ updated, failed, total: enrollments.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Recompute failed', detail: e.message });
   }
 });
 

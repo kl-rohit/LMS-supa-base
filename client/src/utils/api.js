@@ -43,10 +43,27 @@ async function request(url, options = {}) {
   }
 
   const finalUrl = withActiveOrg(url);
-  const response = await fetch(`${BASE_URL}${finalUrl}`, {
-    credentials: 'include', // include Catalyst session cookies
-    ...config,
-  });
+
+  // Offline-aware: if the device reports no connection, fail fast with a
+  // friendly message rather than a raw network error. Callers already toast
+  // the thrown message, so this surfaces a clear "you're offline" notice.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error("You're offline. We'll retry once your connection returns.");
+  }
+
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${finalUrl}`, {
+      credentials: 'include', // include Catalyst session cookies
+      ...config,
+    });
+  } catch (networkErr) {
+    // A rejected fetch is almost always a dropped/again-offline connection.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new Error("You're offline. We'll retry once your connection returns.");
+    }
+    throw new Error('Network trouble reaching the server. Please try again.');
+  }
 
   if (response.status === 401) {
     // Session expired or never existed. Bounce to login unless we're already
@@ -83,8 +100,50 @@ async function request(url, options = {}) {
   return response.json();
 }
 
+// Offline read-cache for the parent portal. Stores the last successful GET for
+// a screen in localStorage so the parent can still glance at their child's
+// summary with no signal. Keyed by the active org so a multi-academy parent on
+// one device never sees another academy's cached data, and cleared on sign-out
+// (api.clearCache) so nothing lingers on a shared phone. This is a deliberate,
+// scoped trade-off: only the small portal summaries opt in via getCached.
+const CACHE_PREFIX = 'veena_cache_';
+
+function cacheKeyFor(name) {
+  let org = '0';
+  try { org = localStorage.getItem(IMPERSONATE_KEY) || localStorage.getItem(ACTIVE_ORG_KEY) || '0'; } catch {}
+  return `${CACHE_PREFIX}${org}_${name}`;
+}
+
 const api = {
   get: (url) => request(url, { method: 'GET' }),
+
+  // GET that falls back to the last cached response when the network is down.
+  getCached: async (url, name) => {
+    const key = cacheKeyFor(name || url);
+    try {
+      const data = await request(url, { method: 'GET' });
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+      return data;
+    } catch (err) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      throw err;
+    }
+  },
+
+  // Drop every cached portal response. Call on sign-out.
+  clearCache: () => {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(CACHE_PREFIX)) keys.push(k);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+    } catch {}
+  },
 
   post: (url, data) => request(url, {
     method: 'POST',

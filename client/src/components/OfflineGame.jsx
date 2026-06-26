@@ -22,13 +22,16 @@ function randomKey() {
 }
 
 export default function OfflineGame() {
-  const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [dismissed, setDismissed] = useState(false);
+  // Surface the game only when the connection DROPS during use, keyed off the
+  // 'offline' event — not the initial navigator.onLine. On a cold offline
+  // launch we let the cached app render normally instead of slamming a
+  // full-screen overlay over the UI the user is trying to reach.
+  const [visible, setVisible] = useState(false);
   const [activeKey, setActiveKey] = useState(randomKey);
 
   useEffect(() => {
-    const goOnline = () => { setOnline(true); setDismissed(false); };
-    const goOffline = () => { setOnline(false); setActiveKey(randomKey()); };
+    const goOnline = () => setVisible(false);
+    const goOffline = () => { setActiveKey(randomKey()); setVisible(true); };
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
     return () => {
@@ -37,7 +40,7 @@ export default function OfflineGame() {
     };
   }, []);
 
-  if (online || dismissed) return null;
+  if (!visible) return null;
 
   const active = GAMES.find((g) => g.key === activeKey) || GAMES[0];
   const ActiveGame = active.Comp;
@@ -55,7 +58,7 @@ export default function OfflineGame() {
           </div>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={() => setVisible(false)}
             aria-label="Back to app"
             title="Back to app"
             className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"

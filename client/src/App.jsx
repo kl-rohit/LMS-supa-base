@@ -44,8 +44,13 @@ function lazyWithReload(factory) {
     factory()
       .then((m) => { try { sessionStorage.removeItem(KEY); } catch { /* ignore */ } return m; })
       .catch((err) => {
+        // Only a fresh-build fetch can fix a missing chunk, so reload ONLY when
+        // online (the stale-build-after-deploy case). Offline a reload cannot
+        // help and just flashes the screen, so we surface the error boundary
+        // instead. Guarded against a reload loop.
         try {
-          if (!sessionStorage.getItem(KEY)) {
+          const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+          if (online && !sessionStorage.getItem(KEY)) {
             sessionStorage.setItem(KEY, '1');
             window.location.reload();
             return new Promise(() => {}); // hold render until the reload happens

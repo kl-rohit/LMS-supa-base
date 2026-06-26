@@ -33,21 +33,44 @@ import OrgSwitcher from './components/OrgSwitcher';
 import OfflineGame from './components/OfflineGame';
 import UpdatePrompt from './components/UpdatePrompt';
 
-const Dashboard      = lazy(() => import('./pages/Dashboard'));
-const Students       = lazy(() => import('./pages/Students'));
-const Groups         = lazy(() => import('./pages/Groups'));
-const Classes        = lazy(() => import('./pages/Classes'));
-const Attendance     = lazy(() => import('./pages/Attendance'));
-const Fees           = lazy(() => import('./pages/Fees'));
-const Messages       = lazy(() => import('./pages/Messages'));
-const Reports        = lazy(() => import('./pages/Reports'));
-const Settings       = lazy(() => import('./pages/Settings'));
-const StudentLogins  = lazy(() => import('./pages/StudentLogins'));
-const Lessons        = lazy(() => import('./pages/Lessons'));
-const Assignments    = lazy(() => import('./pages/Assignments'));
-const QuestionPapers = lazy(() => import('./pages/QuestionPapers'));
-const Help           = lazy(() => import('./pages/Help'));
-const VerifyCertificate = lazy(() => import('./pages/VerifyCertificate'));
+// Wrap React.lazy so a failed chunk load self-heals. After a deploy, chunk
+// filenames change; a long-open session (especially an installed PWA) can hold
+// an index that points at an old hash, so the dynamic import 404s and the route
+// renders blank. On the first such failure we reload once to fetch the fresh
+// build (guarded against a reload loop); a successful load clears the guard.
+function lazyWithReload(factory) {
+  const KEY = 'veena_chunk_reload';
+  return lazy(() =>
+    factory()
+      .then((m) => { try { sessionStorage.removeItem(KEY); } catch { /* ignore */ } return m; })
+      .catch((err) => {
+        try {
+          if (!sessionStorage.getItem(KEY)) {
+            sessionStorage.setItem(KEY, '1');
+            window.location.reload();
+            return new Promise(() => {}); // hold render until the reload happens
+          }
+        } catch { /* sessionStorage unavailable — fall through to rethrow */ }
+        throw err;
+      })
+  );
+}
+
+const Dashboard      = lazyWithReload(() => import('./pages/Dashboard'));
+const Students       = lazyWithReload(() => import('./pages/Students'));
+const Groups         = lazyWithReload(() => import('./pages/Groups'));
+const Classes        = lazyWithReload(() => import('./pages/Classes'));
+const Attendance     = lazyWithReload(() => import('./pages/Attendance'));
+const Fees           = lazyWithReload(() => import('./pages/Fees'));
+const Messages       = lazyWithReload(() => import('./pages/Messages'));
+const Reports        = lazyWithReload(() => import('./pages/Reports'));
+const Settings       = lazyWithReload(() => import('./pages/Settings'));
+const StudentLogins  = lazyWithReload(() => import('./pages/StudentLogins'));
+const Lessons        = lazyWithReload(() => import('./pages/Lessons'));
+const Assignments    = lazyWithReload(() => import('./pages/Assignments'));
+const QuestionPapers = lazyWithReload(() => import('./pages/QuestionPapers'));
+const Help           = lazyWithReload(() => import('./pages/Help'));
+const VerifyCertificate = lazyWithReload(() => import('./pages/VerifyCertificate'));
 
 import Loader from './components/Loader';
 import OnboardingTour from './components/OnboardingTour';

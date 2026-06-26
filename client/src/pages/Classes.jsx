@@ -16,6 +16,7 @@ import {
   Archive,
   CalendarRange,
   List,
+  Video,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -25,6 +26,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Timetable from '../components/Timetable';
+import ShareMeetingLinkDialog from '../components/ShareMeetingLinkDialog';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -58,6 +60,7 @@ export default function Classes() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, cls: null });
+  const [shareDialog, setShareDialog] = useState({ open: false, cls: null });
   const [typeFilter, setTypeFilter] = useState('all');
   const [studentSearch, setStudentSearch] = useState('');
   // Schedule sub-view: 'timetable' (date-aware time-grid) | 'list' (day cards)
@@ -668,6 +671,16 @@ export default function Classes() {
                           )}
                         </div>
                         <div className="flex items-center gap-0.5 ml-2">
+                          {isOnlineType(cls.class_type) && (
+                            <button
+                              onClick={() => setShareDialog({ open: true, cls })}
+                              title="Send meeting link"
+                              aria-label="Send meeting link"
+                              className="p-1 rounded hover:bg-white/70 text-gray-400 hover:text-indigo-600"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => openEdit(cls)}
                             className="p-1 rounded hover:bg-white/70 text-gray-400 hover:text-indigo-600"
@@ -1277,6 +1290,12 @@ export default function Classes() {
         title="Delete Class"
         message={`Are you sure you want to delete "${deleteDialog.cls?.name}"?`}
         confirmText="Delete"
+      />
+
+      <ShareMeetingLinkDialog
+        open={shareDialog.open}
+        classObj={shareDialog.cls ? { id: shareDialog.cls.id, name: shareDialog.cls.name, meeting_link: shareDialog.cls.meeting_link } : null}
+        onClose={() => setShareDialog({ open: false, cls: null })}
       />
     </div>
   );

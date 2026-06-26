@@ -18,6 +18,7 @@ import {
   Share2,
   Edit2,
   UserMinus,
+  Video,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -25,7 +26,10 @@ import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
+import ShareMeetingLinkDialog from '../components/ShareMeetingLinkDialog';
 import { useConfirm } from '../contexts/ConfirmContext';
+
+const isOnlineClassType = (t) => t === 'online' || t === 'online_group';
 
 export default function Attendance() {
   const confirm = useConfirm();
@@ -46,6 +50,7 @@ export default function Attendance() {
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState(null);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [shareLinkOpen, setShareLinkOpen] = useState(false);
   // Which roster rows are actually members of the class's batch/group — only
   // these expose a "remove from batch" action (extras / single students don't).
   const [batchMemberIds, setBatchMemberIds] = useState(() => new Set());
@@ -1064,6 +1069,15 @@ export default function Attendance() {
               </p>
             </div>
             <div className="flex items-center gap-4 text-sm">
+              {isOnlineClassType(selectedClass.class_type) && (
+                <button
+                  onClick={() => setShareLinkOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                >
+                  <Video className="w-4 h-4" />
+                  Send meeting link
+                </button>
+              )}
               <span className="text-green-600 font-medium">
                 <Check className="w-4 h-4 inline mr-1" />{presentCount} Present
               </span>
@@ -1075,6 +1089,15 @@ export default function Attendance() {
               </span>
             </div>
           </div>
+
+          {isOnlineClassType(selectedClass.class_type) && (
+            <ShareMeetingLinkDialog
+              open={shareLinkOpen}
+              classObj={{ id: selectedClass.id, name: selectedClass.name, meeting_link: selectedClass.meeting_link }}
+              students={attendanceRecords.map((r) => ({ id: r.student_id, name: r.student_name }))}
+              onClose={() => setShareLinkOpen(false)}
+            />
+          )}
 
           {attendanceRecords.length === 0 ? (
             <EmptyState

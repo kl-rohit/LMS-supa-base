@@ -20,6 +20,7 @@
 //   {month} / {year}          month name + year
 //   {count}                   consecutive absences  (absence_alert only)
 //   {class_fees}, {additional_fees}  fee breakdown components
+//   {class_name}, {time}, {link}     online_meeting only (class title, time, join URL)
 //   {school}                  school.name from AppSettings (fallback below)
 //   {signature}               school.signature from AppSettings (fallback below)
 
@@ -48,6 +49,8 @@ const DEFAULT_TEMPLATES = {
     `Dear {parent},\n\nThank you for your continued support and for ensuring {name}'s regular attendance at {school}. We truly appreciate it.\n\nRegards,\n{signature}`,
   holiday_notice:
     `Dear {parent},\n\nThis is to inform you that {school} will remain closed on account of the upcoming holiday. {name}'s classes will resume as per the regular schedule after the break.\n\nRegards,\n{signature}`,
+  online_meeting:
+    `Dear {parent},\n\nThe online class "{class_name}" for {name} is ready to join {time}.\n\nJoin link: {link}\n\nRegards,\n{signature}`,
 };
 
 const TEMPLATE_TYPES = Object.keys(DEFAULT_TEMPLATES);

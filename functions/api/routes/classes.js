@@ -3,6 +3,42 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { createNotifications } = require('../lib/notify');
+const { substituteTemplate } = require('../lib/feeReminder');
+const { loadTemplates, loadAppSettings } = require('./settings');
+
+// Fallback body if the org hasn't customised the online_meeting template
+// (kept identical to settings.DEFAULT_TEMPLATES.online_meeting).
+const ONLINE_MEETING_DEFAULT =
+  `Dear {parent},\n\nThe online class "{class_name}" for {name} is ready to join {time}.\n\nJoin link: {link}\n\nRegards,\n{signature}`;
+
+// 24h "HH:MM" → "H:MM AM/PM" for the {time} placeholder.
+function fmtTime(t) {
+  const m = String(t || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const ap = h < 12 ? 'AM' : 'PM';
+  h = h % 12 || 12;
+  return `${h}:${m[2]} ${ap}`;
+}
+
+// Every student in a class: direct (student_id), group members, and roster
+// links. Mirrors the digest's classRoster, org-scoped.
+async function resolveRoster(req, cls) {
+  const ids = new Set();
+  if (cls.student_id) ids.add(String(cls.student_id));
+  if (cls.group_id) {
+    try {
+      const rows = await zcqlAll(req, `SELECT student_id FROM GroupStudents WHERE GroupStudents.group_id = ${Number(cls.group_id)} AND GroupStudents.org_id = ${Number(req.orgId)}`, 'GroupStudents');
+      for (const r of unwrap(rows, 'GroupStudents')) if (r.student_id) ids.add(String(r.student_id));
+    } catch { /* ignore */ }
+  }
+  try {
+    const rows = await zcqlAll(req, `SELECT student_id FROM ClassStudents WHERE ClassStudents.class_id = ${Number(cls.ROWID)} AND ClassStudents.org_id = ${Number(req.orgId)}`, 'ClassStudents');
+    for (const r of unwrap(rows, 'ClassStudents')) if (r.student_id) ids.add(String(r.student_id));
+  } catch { /* ignore */ }
+  return [...ids];
+}
 
 const VALID_TYPES = ['online', 'offline', 'offline_group', 'online_group'];
 const VALID_EXCEPTION_STATUS = ['cancelled', 'moved'];
@@ -318,6 +354,82 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Class deleted' });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete class', detail: e.message });
+  }
+});
+
+// POST /api/classes/:id/share-link — save a meeting link on the class (so the
+// portal Join button updates) and push an in-app notification to its students.
+// Body: { meeting_link, student_ids? }. Without student_ids, sends to the whole
+// roster; with them, only those (filtered to the class roster). The message is
+// rendered from the editable `online_meeting` template, personalised per student.
+router.post('/:id/share-link', async (req, res) => {
+  try {
+    const cls = await getById(req, 'Classes', req.params.id);
+    if (!cls || Number(cls.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Class not found' });
+    }
+    const link = cleanMeetingLink(req.body.meeting_link);
+    if (!link) return res.status(400).json({ error: 'meeting_link is required' });
+
+    // Persist on the class so the portal Join button reflects it.
+    try { await update(req, 'Classes', cls.ROWID, { meeting_link: link }); }
+    catch (e) { console.error('[share-link] save failed:', e.message); }
+
+    // Recipients: whole roster, optionally narrowed to a selected subset.
+    const roster = await resolveRoster(req, cls);
+    let recipients = roster;
+    if (Array.isArray(req.body.student_ids) && req.body.student_ids.length) {
+      const sel = new Set(req.body.student_ids.map(String));
+      recipients = roster.filter((id) => sel.has(String(id)));
+    }
+    if (!recipients.length) return res.status(400).json({ error: 'No recipients in this class' });
+
+    // Names for personalisation (one org Students pull).
+    const studentRows = await zcqlAll(req, `SELECT ROWID, name, parent_name FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []);
+    const byId = new Map(unwrap(studentRows, 'Students').map((s) => [String(s.ROWID), s]));
+
+    // Template + school identity.
+    let tmpl = ONLINE_MEETING_DEFAULT;
+    try { const t = await loadTemplates(req); if (t && t.online_meeting) tmpl = t.online_meeting; } catch { /* default */ }
+    let school = 'Your Academy', signature = 'Your Academy';
+    try {
+      const s = await loadAppSettings(req);
+      school = s['school.name'] || school;
+      signature = s['school.signature'] || s['school.name'] || signature;
+    } catch { /* defaults */ }
+
+    const className = cls.name || 'your class';
+    const timeStr = cls.start_time ? `at ${fmtTime(cls.start_time)}` : 'now';
+
+    let notified = 0;
+    for (const sid of recipients) {
+      const s = byId.get(String(sid));
+      const body = substituteTemplate(tmpl, {
+        parent: (s && s.parent_name) || 'Parent',
+        name: (s && s.name) || 'your child',
+        class_name: className,
+        time: timeStr,
+        link,
+        school,
+        signature,
+      });
+      try {
+        await createNotifications(req, {
+          orgId: Number(req.orgId),
+          studentIds: [String(sid)],
+          type: 'class',
+          title: 'Online class link',
+          body,
+          link: '/portal/dashboard',
+          push: true,
+        });
+        notified++;
+      } catch (e) { console.error('[share-link] notify failed', sid, e.message); }
+    }
+
+    res.json({ ok: true, meeting_link: link, recipients: recipients.length, notified });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to share meeting link', detail: e.message });
   }
 });
 

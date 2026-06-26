@@ -146,7 +146,30 @@ export default function Attendance() {
       ]);
       const all = (allClassesResp.classes || []).filter((c) => c.is_active !== 0);
       setAllClasses(all);
-      const dayClasses = all.filter((c) => c.day_of_week === dayOfWeek);
+      // Build the day's classes honouring timetable exceptions:
+      //   • a class MOVED to this date shows here (with its moved time), even
+      //     though its weekly day_of_week is different;
+      //   • a class CANCELLED or MOVED AWAY on this date is dropped from its
+      //     normal weekday slot.
+      const dayClasses = [];
+      for (const c of all) {
+        const exceptions = Array.isArray(c.exceptions) ? c.exceptions : [];
+        const movedIn = exceptions.find((e) => e.status === 'moved' && e.new_date === selectedDate);
+        if (movedIn) {
+          dayClasses.push({
+            ...c,
+            start_time: movedIn.new_start_time || c.start_time,
+            end_time: movedIn.new_end_time || c.end_time,
+            _moved_in: true,
+          });
+          continue;
+        }
+        if (c.day_of_week === dayOfWeek) {
+          const ex = exceptions.find((e) => e.date === selectedDate);
+          if (ex && (ex.status === 'cancelled' || ex.status === 'moved')) continue;
+          dayClasses.push(c);
+        }
+      }
       const campDays = (campDaysResp.days || []).map((d) => ({
         ...d,
         _isCamp: true,

@@ -16,13 +16,13 @@ import Loader from './Loader';
 // re-runs the auth check.
 function OfflineNotice() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
-      <div className="w-full max-w-sm text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-        <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-gray-700 flex items-center justify-center mx-auto">
-          <WifiOff className="w-6 h-6 text-indigo-600 dark:text-indigo-300" />
+    <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+      <div className="w-full max-w-sm text-center bg-white rounded-2xl shadow-xl p-6">
+        <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mx-auto">
+          <WifiOff className="w-6 h-6 text-indigo-600" />
         </div>
-        <h1 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">You're offline</h1>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        <h1 className="mt-4 text-lg font-semibold text-gray-900">You're offline</h1>
+        <p className="mt-2 text-sm text-gray-500">
           Reconnect to sign in and load your academy. Your data is safe.
         </p>
         <button

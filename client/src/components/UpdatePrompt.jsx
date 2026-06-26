@@ -25,7 +25,7 @@ export default function UpdatePrompt() {
 
   return (
     <div className="fixed bottom-4 inset-x-0 z-[55] flex justify-center px-4 pointer-events-none">
-      <div className="pointer-events-auto flex items-center gap-3 bg-gray-900 text-white rounded-xl shadow-lg px-4 py-3 max-w-sm w-full">
+      <div className="pointer-events-auto flex items-center gap-3 text-white rounded-xl shadow-lg px-4 py-3 max-w-sm w-full" style={{ backgroundColor: '#1f2937' }}>
         <RefreshCw className="w-5 h-5 flex-shrink-0 text-indigo-300" />
         <span className="text-sm flex-1">A new version is ready.</span>
         <button

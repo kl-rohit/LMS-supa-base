@@ -66,9 +66,9 @@ export default function MemoryMatch() {
     <div>
       {won ? (
         <div className="mt-2 mb-2 text-center">
-          <PartyPopper className="w-10 h-10 mx-auto text-indigo-600 dark:text-indigo-300" />
-          <p className="mt-3 text-lg font-semibold text-gray-900 dark:text-white">Cleared in {moves} moves</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Well played.</p>
+          <PartyPopper className="w-10 h-10 mx-auto text-indigo-600" />
+          <p className="mt-3 text-lg font-semibold text-gray-900">Cleared in {moves} moves</p>
+          <p className="text-sm text-gray-500">Well played.</p>
         </div>
       ) : (
         <div className="grid grid-cols-4 gap-2">
@@ -83,11 +83,11 @@ export default function MemoryMatch() {
                 aria-label={faceUp ? 'Card revealed' : 'Hidden card'}
                 className={`aspect-square rounded-xl text-2xl flex items-center justify-center transition-all duration-150 select-none ${
                   faceUp
-                    ? `bg-white dark:bg-gray-700 ring-2 ring-indigo-500 ${isMatched ? 'opacity-60' : ''}`
-                    : 'bg-indigo-50 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-gray-600 active:scale-95'
+                    ? `bg-white ring-2 ring-indigo-500 ${isMatched ? 'opacity-60' : ''}`
+                    : 'bg-indigo-50 hover:bg-indigo-100 active:scale-95'
                 }`}
               >
-                {faceUp ? card.emoji : <Music className="w-5 h-5 text-indigo-300 dark:text-gray-500" />}
+                {faceUp ? card.emoji : <Music className="w-5 h-5 text-indigo-300" />}
               </button>
             );
           })}
@@ -95,14 +95,14 @@ export default function MemoryMatch() {
       )}
 
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          Moves: <span className="font-semibold text-gray-700 dark:text-gray-200">{moves}</span>
-          {best != null && <span className="ml-2">Best: <span className="font-semibold text-gray-700 dark:text-gray-200">{best}</span></span>}
+        <span className="text-xs text-gray-500">
+          Moves: <span className="font-semibold text-gray-700">{moves}</span>
+          {best != null && <span className="ml-2">Best: <span className="font-semibold text-gray-700">{best}</span></span>}
         </span>
         <button
           type="button"
           onClick={reset}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
         >
           <RotateCcw className="w-4 h-4" />
           {won ? 'Play again' : 'New game'}

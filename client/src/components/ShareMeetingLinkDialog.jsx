@@ -49,15 +49,15 @@ export default function ShareMeetingLinkDialog({ open, onClose, classObj, studen
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => onClose(false)}>
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2">
-          <Video className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Send meeting link</h3>
-          <button onClick={() => onClose(false)} aria-label="Close" className="ml-auto p-1.5 rounded-md text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+          <Video className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-base font-semibold text-gray-900">Send meeting link</h3>
+          <button onClick={() => onClose(false)} aria-label="Close" className="ml-auto p-1.5 rounded-md text-gray-400 hover:bg-gray-100">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-xs text-gray-500">
           {classObj.name ? `${classObj.name} — ` : ''}paste your Zoom / Meet / Jitsi link. Students get a push with the link, and the portal Join button updates.
         </p>
 
@@ -66,15 +66,15 @@ export default function ShareMeetingLinkDialog({ open, onClose, classObj, studen
           value={link}
           onChange={(e) => setLink(e.target.value)}
           placeholder="https://..."
-          className="mt-3 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+          className="mt-3 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-900"
         />
 
         {students && students.length > 0 && (
           <div className="mt-3">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Send to</p>
-            <div className="max-h-40 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2 space-y-1">
+            <p className="text-xs font-medium text-gray-500 mb-1">Send to</p>
+            <div className="max-h-40 overflow-auto rounded-lg border border-gray-200 p-2 space-y-1">
               {students.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <label key={s.id} className="flex items-center gap-2 text-sm text-gray-700">
                   <input type="checkbox" checked={selected.has(String(s.id))} onChange={() => toggle(s.id)} />
                   {s.name || `Student ${s.id}`}
                 </label>
@@ -84,7 +84,7 @@ export default function ShareMeetingLinkDialog({ open, onClose, classObj, studen
         )}
 
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={() => onClose(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Cancel</button>
+          <button onClick={() => onClose(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">Cancel</button>
           <button
             onClick={send}
             disabled={sending}

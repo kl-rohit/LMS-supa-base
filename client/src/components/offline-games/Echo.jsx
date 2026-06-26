@@ -4,10 +4,10 @@ import { Play, RotateCcw } from 'lucide-react';
 // Echo: a Simon-style melody memory game. The pads flash a growing sequence;
 // the player repeats it by tapping. Each cleared round adds one note.
 const PADS = [
-  { note: '🎵', on: 'bg-indigo-500',  off: 'bg-indigo-100 dark:bg-gray-700' },
-  { note: '🎶', on: 'bg-emerald-500', off: 'bg-emerald-100 dark:bg-gray-700' },
-  { note: '🎼', on: 'bg-amber-500',   off: 'bg-amber-100 dark:bg-gray-700' },
-  { note: '🎹', on: 'bg-rose-500',    off: 'bg-rose-100 dark:bg-gray-700' },
+  { note: '🎵', on: 'bg-indigo-500',  off: 'bg-indigo-100' },
+  { note: '🎶', on: 'bg-emerald-500', off: 'bg-emerald-100' },
+  { note: '🎼', on: 'bg-amber-500',   off: 'bg-amber-100' },
+  { note: '🎹', on: 'bg-rose-500',    off: 'bg-rose-100' },
 ];
 const BEST_KEY = 'veena_og_echo_best'; // highest round reached (higher is better)
 
@@ -70,8 +70,8 @@ export default function Echo() {
   return (
     <div>
       <div className="text-center mb-3">
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-sm font-medium text-gray-700">{label}</p>
+        <p className="text-xs text-gray-500">
           {phase === 'idle' ? 'Tap start, then echo the notes.' : phase === 'over' ? `Reached round ${sequence.length - 1}.` : `Round ${sequence.length}`}
         </p>
       </div>
@@ -94,8 +94,8 @@ export default function Echo() {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          Best: <span className="font-semibold text-gray-700 dark:text-gray-200">{best}</span>
+        <span className="text-xs text-gray-500">
+          Best: <span className="font-semibold text-gray-700">{best}</span>
         </span>
         {phase === 'idle' || phase === 'over' ? (
           <button

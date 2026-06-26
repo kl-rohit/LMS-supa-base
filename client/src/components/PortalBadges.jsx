@@ -33,7 +33,7 @@ export default function PortalBadges({ attendance = [], continueWatching = null 
         return (
           <span
             key={i}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white ring-1 ring-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700"
           >
             <Icon className={`w-4 h-4 ${b.color}`} />
             {b.label}

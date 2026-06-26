@@ -46,22 +46,22 @@ export default function OfflineGame() {
   const ActiveGame = active.Comp;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/70 backdrop-blur-sm">
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-5">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-indigo-50 dark:bg-gray-700 flex items-center justify-center">
-            <WifiOff className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center">
+            <WifiOff className="w-5 h-5 text-indigo-600" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white">You're offline</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Have a game while we reconnect you.</p>
+            <h2 className="text-base font-semibold text-gray-900">You're offline</h2>
+            <p className="text-xs text-gray-500">Have a game while we reconnect you.</p>
           </div>
           <button
             type="button"
             onClick={() => setVisible(false)}
             aria-label="Back to app"
             title="Back to app"
-            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
           >
             <X className="w-5 h-5" />
           </button>
@@ -77,7 +77,7 @@ export default function OfflineGame() {
               className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                 g.key === activeKey
                   ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
               {g.label}

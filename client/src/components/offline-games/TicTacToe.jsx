@@ -77,8 +77,8 @@ export default function TicTacToe() {
   return (
     <div>
       <div className="text-center mb-3">
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{status}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">You are ✖, computer is ⭕.</p>
+        <p className="text-sm font-medium text-gray-700">{status}</p>
+        <p className="text-xs text-gray-500">You are ✖, computer is ⭕.</p>
       </div>
 
       <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
@@ -90,7 +90,7 @@ export default function TicTacToe() {
             disabled={!!cell || !!result}
             aria-label={`Cell ${i + 1}`}
             className={`aspect-square rounded-xl text-3xl font-bold flex items-center justify-center transition-colors ${
-              cell ? 'bg-white dark:bg-gray-700' : 'bg-indigo-50 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-gray-600 active:scale-95'
+              cell ? 'bg-white' : 'bg-indigo-50 hover:bg-indigo-100 active:scale-95'
             }`}
           >
             {cell === 'X' ? '✖' : cell === 'O' ? '⭕' : ''}
@@ -99,13 +99,13 @@ export default function TicTacToe() {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          Wins: <span className="font-semibold text-gray-700 dark:text-gray-200">{wins}</span>
+        <span className="text-xs text-gray-500">
+          Wins: <span className="font-semibold text-gray-700">{wins}</span>
         </span>
         <button
           type="button"
           onClick={reset}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
         >
           <RotateCcw className="w-4 h-4" />
           New game

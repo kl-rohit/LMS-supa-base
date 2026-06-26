@@ -23,11 +23,11 @@ export default class ErrorBoundary extends React.Component {
 
     const reload = () => window.location.reload();
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
-        <div className="w-full max-w-sm text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+        <div className="w-full max-w-sm text-center bg-white rounded-2xl shadow-xl p-6">
           <div className="text-4xl mb-3">🎻</div>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Something needs a moment</h1>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-lg font-semibold text-gray-900">Something needs a moment</h1>
+          <p className="mt-2 text-sm text-gray-500">
             The app hit a snag rendering this screen. A quick reload usually sorts it out.
           </p>
           <button

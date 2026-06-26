@@ -86,15 +86,15 @@ export default function NoteCatch() {
   return (
     <div>
       <div className="text-center mb-3">
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+        <p className="text-sm font-medium text-gray-700">
           {running ? 'Catch the notes' : misses >= 3 ? 'Round over' : 'Note Catch'}
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-gray-500">
           {running ? `Misses ${misses}/3` : 'Tap a lane to move the basket. Miss three and the round ends.'}
         </p>
       </div>
 
-      <div className="rounded-xl bg-indigo-50/60 dark:bg-gray-700/40 p-2">
+      <div className="rounded-xl bg-indigo-50/60 p-2">
         <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${LANES}, minmax(0, 1fr))` }}>
           {Array.from({ length: ROWS }).map((_, row) =>
             Array.from({ length: LANES }).map((__, lane) => {
@@ -116,7 +116,7 @@ export default function NoteCatch() {
               onClick={() => setBasket(lane)}
               aria-label={`Lane ${lane + 1}`}
               className={`aspect-square rounded-lg text-xl flex items-center justify-center transition-colors ${
-                basket === lane ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-gray-600'
+                basket === lane ? 'bg-indigo-600 text-white' : 'bg-white hover:bg-indigo-100'
               }`}
             >
               🧺
@@ -126,9 +126,9 @@ export default function NoteCatch() {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          Score: <span className="font-semibold text-gray-700 dark:text-gray-200">{score}</span>
-          <span className="ml-2">Best: <span className="font-semibold text-gray-700 dark:text-gray-200">{best}</span></span>
+        <span className="text-xs text-gray-500">
+          Score: <span className="font-semibold text-gray-700">{score}</span>
+          <span className="ml-2">Best: <span className="font-semibold text-gray-700">{best}</span></span>
         </span>
         {!running && (
           <button

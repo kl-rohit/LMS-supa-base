@@ -26,6 +26,8 @@ export const DEFAULT_TEMPLATES = {
     `Dear {parent},\n\nThank you for your continued support and for ensuring {name}'s regular attendance at {school}. We truly appreciate it.\n\nRegards,\n{signature}`,
   holiday_notice:
     `Dear {parent},\n\nThis is to inform you that {school} will remain closed on account of the upcoming holiday. {name}'s classes will resume as per the regular schedule after the break.\n\nRegards,\n{signature}`,
+  online_meeting:
+    `Dear {parent},\n\nThe online class "{class_name}" for {name} is ready to join {time}.\n\nJoin link: {link}\n\nRegards,\n{signature}`,
 };
 
 // Which placeholders are meaningful for each template — drives the chips.
@@ -35,6 +37,7 @@ const TEMPLATE_PLACEHOLDERS = {
   class_update:   ['{parent}', '{name}', '{school}', '{signature}'],
   thank_you:      ['{parent}', '{name}', '{school}', '{signature}'],
   holiday_notice: ['{parent}', '{name}', '{school}', '{signature}'],
+  online_meeting: ['{parent}', '{name}', '{class_name}', '{time}', '{link}', '{signature}'],
 };
 
 const TEMPLATE_LABELS = {
@@ -43,6 +46,7 @@ const TEMPLATE_LABELS = {
   class_update:   'Class Update',
   thank_you:      'Thank You',
   holiday_notice: 'Holiday Notice',
+  online_meeting: 'Online Meeting Link',
 };
 
 export default function TemplatesEditor() {

@@ -339,6 +339,14 @@ function RequirePlatform({ children }) {
     );
   }
   if (!user) {
+    // Offline → don't redirect (it loops against the cached shell); just wait.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader text="You're offline. Reconnect to continue." />
+        </div>
+      );
+    }
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     window.location.replace(`${base}/landing.html`);
     return (

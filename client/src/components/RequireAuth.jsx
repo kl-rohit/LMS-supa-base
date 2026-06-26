@@ -5,8 +5,37 @@
 // - Still loading session → spinner
 
 import { Navigate } from 'react-router-dom';
+import { WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Loader from './Loader';
+
+// Shown when we can't verify the session because the device is offline. We must
+// NOT redirect here: the service worker serves the cached app shell for any
+// offline navigation, so bouncing to the landing page just loops (the "disco"
+// flicker). A calm screen with Retry breaks the loop; reconnecting + Retry
+// re-runs the auth check.
+function OfflineNotice() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
+      <div className="w-full max-w-sm text-center bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+        <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-gray-700 flex items-center justify-center mx-auto">
+          <WifiOff className="w-6 h-6 text-indigo-600 dark:text-indigo-300" />
+        </div>
+        <h1 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">You're offline</h1>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          Reconnect to sign in and load your academy. Your data is safe.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-5 w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Where each role should land by default. `app_role` is resolved server-side
 // from app data (OrgMembership / Students link), NOT the Catalyst role — so a
@@ -29,6 +58,12 @@ export default function RequireAuth({ children, role }) {
   }
 
   if (!user) {
+    // Offline → we couldn't verify the session (not necessarily logged out).
+    // Show a calm reconnect screen instead of redirecting, which would loop
+    // against the cached app shell.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return <OfflineNotice />;
+    }
     // No session → send to the public marketing/landing page (a static file
     // outside the SPA router). The landing page's "Sign in" button points at
     // /app/login, so there's no redirect loop. Logged-in users never reach

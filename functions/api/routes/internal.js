@@ -241,12 +241,34 @@ async function morningDigestHandler(req, res) {
     for (const org of orgs) {
       const orgId = Number(org.id);
       try {
+        // Pull all active classes (not just this weekday) so timetable
+        // exceptions can be applied: a class MOVED to today is included with its
+        // moved time, and one CANCELLED / MOVED AWAY today is excluded.
         const rows = await zcqlAll(
           req,
-          `SELECT * FROM Classes WHERE Classes.is_active = 1 AND Classes.day_of_week = ${dow} AND Classes.org_id = ${orgId}`,
+          `SELECT * FROM Classes WHERE Classes.is_active = 1 AND Classes.org_id = ${orgId}`,
           'Classes'
         );
-        const classes = unwrap(rows, 'Classes')
+        const parseEx = (raw) => {
+          if (!raw) return [];
+          if (Array.isArray(raw)) return raw;
+          try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+        };
+        const todays = [];
+        for (const c of unwrap(rows, 'Classes')) {
+          const exs = parseEx(c.exceptions);
+          const movedIn = exs.find((e) => e.status === 'moved' && e.new_date === istDate);
+          if (movedIn) {
+            todays.push({ ...c, start_time: movedIn.new_start_time || c.start_time, end_time: movedIn.new_end_time || c.end_time });
+            continue;
+          }
+          if (Number(c.day_of_week) === dow) {
+            const ex = exs.find((e) => e.date === istDate);
+            if (ex && (ex.status === 'cancelled' || ex.status === 'moved')) continue;
+            todays.push(c);
+          }
+        }
+        const classes = todays
           .map((c) => ({ ...c, _min: timeToMinInternal(c.start_time) }))
           .filter((c) => c._min !== null)
           .sort((a, b) => a._min - b._min);

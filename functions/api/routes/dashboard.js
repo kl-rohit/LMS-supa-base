@@ -52,9 +52,32 @@ router.get('/', async (req, res) => {
     // (students were already pulled above, org-scoped).
     const studentById = new Map(students.map((s) => [String(s.ROWID), s]));
 
-    const todayClasses = classes
-      .filter((c) => Number(c.day_of_week) === dow && (c.is_active === undefined || Number(c.is_active) === 1))
-      .map(normalize);
+    // Today's classes, honouring timetable exceptions: a class MOVED to today
+    // shows (with its moved time) even though its weekly day differs, and a
+    // class CANCELLED or MOVED AWAY today drops from its normal weekday slot.
+    const parseEx = (raw) => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+    };
+    const activeClasses = classes.filter((c) => c.is_active === undefined || Number(c.is_active) === 1);
+    const todayClasses = [];
+    for (const c of activeClasses) {
+      const exs = parseEx(c.exceptions);
+      const movedIn = exs.find((e) => e.status === 'moved' && e.new_date === todayStr);
+      if (movedIn) {
+        const nc = normalize(c);
+        nc.start_time = movedIn.new_start_time || nc.start_time;
+        nc.end_time = movedIn.new_end_time || nc.end_time;
+        todayClasses.push(nc);
+        continue;
+      }
+      if (Number(c.day_of_week) === dow) {
+        const ex = exs.find((e) => e.date === todayStr);
+        if (ex && (ex.status === 'cancelled' || ex.status === 'moved')) continue;
+        todayClasses.push(normalize(c));
+      }
+    }
 
     // Group names for today's classes: ONE org-scoped pull (only when a group
     // class is on today), not a getById per class.

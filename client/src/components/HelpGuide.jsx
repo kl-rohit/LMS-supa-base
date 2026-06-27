@@ -363,6 +363,8 @@ const ADMIN_ARTICLES = [
       ] },
       { type: 'h', text: 'Edit or view history' },
       { type: 'p', text: 'Tap any student to open their profile: edit details and see attendance, fees, lessons and their parent-login status.' },
+      { type: 'h', text: 'Enroll in a course' },
+      { type: 'p', text: 'Open a student and use **Courses → Enroll in a course** to add them to any course in one tap. They get access in the portal right away. Picking a course they already have is safe — it simply tells you they are already enrolled.' },
       { type: 'tip', text: 'Keep phone numbers accurate — they’re used for parent logins and notifications.' },
       { type: 'faq', items: [
         { q: 'Can I remove a student?', a: 'Yes — open the student and use the remove option. Their past attendance and fee records are kept for your reports.' },

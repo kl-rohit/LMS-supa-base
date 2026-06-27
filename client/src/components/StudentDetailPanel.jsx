@@ -30,7 +30,13 @@ import {
   RotateCcw,
   Send,
   MoreHorizontal,
+  GraduationCap,
+  ChevronDown,
+  Plus,
+  Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../utils/api';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 
 export default function StudentDetailPanel({
@@ -271,6 +277,10 @@ export default function StudentDetailPanel({
           {personalRows.length > 0 && <Section title="Personal" rows={personalRows} />}
           {feeRows.length > 0 && <Section title="Fees" rows={feeRows} />}
 
+          {/* One-click course enrollment. Courses load lazily on first open, so
+              this adds no reads unless the admin actually uses it. */}
+          <EnrollSection key={student.id} studentId={student.id} studentName={student.name} />
+
           {student.notes && (
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Notes</h3>
@@ -282,6 +292,94 @@ export default function StudentDetailPanel({
         </div>
       </aside>
     </>
+  );
+}
+
+// One-click enrollment from the student panel. Courses are fetched LAZILY on
+// first expand (one /courses read, not on every panel open), and the enroll
+// POST dedupes server-side, so re-picking a course the student already has is a
+// no-op. Mounted with key={studentId} so state resets per student.
+function EnrollSection({ studentId, studentName }) {
+  const [open, setOpen] = useState(false);
+  const [courses, setCourses] = useState(null); // null = not loaded yet
+  const [loading, setLoading] = useState(false);
+  const [enrolling, setEnrolling] = useState(null);
+
+  const loadCourses = async () => {
+    if (courses !== null || loading) return;
+    setLoading(true);
+    try {
+      const r = await api.get('/courses');
+      setCourses(r.courses || []);
+    } catch {
+      setCourses([]);
+      toast.error('Could not load courses');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) loadCourses();
+  };
+
+  const enroll = async (course) => {
+    setEnrolling(course.id);
+    try {
+      const r = await api.post('/enrollments', { course_id: course.id, student_id: studentId });
+      if (r.count > 0) toast.success(`Enrolled in ${course.name}`);
+      else toast(`${studentName || 'Student'} is already in ${course.name}`);
+      setOpen(false);
+    } catch (e) {
+      toast.error(e.message || 'Failed to enroll');
+    } finally {
+      setEnrolling(null);
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Courses</h3>
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+      >
+        <span className="flex items-center gap-2">
+          <GraduationCap className="w-4 h-4 text-indigo-600" /> Enroll in a course
+        </span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+          {loading ? (
+            <div className="px-3 py-3 text-sm text-gray-500 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading courses…
+            </div>
+          ) : courses && courses.length > 0 ? (
+            courses.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => enroll(c)}
+                disabled={enrolling === c.id}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 disabled:opacity-50"
+              >
+                <span className="truncate">{c.name}</span>
+                {enrolling === c.id
+                  ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
+                  : <Plus className="w-4 h-4 text-indigo-600 flex-shrink-0" />}
+              </button>
+            ))
+          ) : (
+            <div className="px-3 py-3 text-sm text-gray-500">No courses to enroll in yet.</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VidyaSetu: Pricing and feature comparison</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/app/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/app/logo.png" />
+  <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png" />
+  <meta name="description" content="Compare VidyaSetu Core and Complete plans feature by feature: students, attendance, fees, classes, camps, communication, parent portal, lessons, quizzes, assignments, question papers, reports, PWA and multi-academy." />
+  <meta name="theme-color" content="#14224e" />
+
+  <link rel="stylesheet" href="/app/landing.css?v=3" />
+  <style>
+    .glass { backdrop-filter: blur(10px); }
+    .grad-hero { background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(202,161,75,.20), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, rgba(36,58,110,.45), transparent 55%),
+      linear-gradient(180deg,#0b1430 0%, #14224e 100%); }
+    .logo-fallback { display:none; }
+    .logo-img-missing .logo-img { display:none; }
+    .logo-img-missing .logo-fallback { display:inline-flex; }
+    /* Animated gradient border — wraps the "Complete" plan card. */
+    .grad-border { background: linear-gradient(120deg, #caa14b, #6366f1, #a855f7, #6366f1, #caa14b); background-size: 300% 300%; animation: gradBorder 8s ease infinite; }
+    @keyframes gradBorder { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    @media (prefers-reduced-motion: reduce) {
+      .grad-border { animation: none; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+
+  <!-- ============ NAV ============ -->
+  <header class="sticky top-0 z-50 bg-white/80 glass border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <a href="/app/landing.html#top" class="flex items-center gap-2">
+        <span class="logo-box w-9 h-9 rounded-xl bg-brand-800 grid place-items-center overflow-hidden">
+          <picture class="logo-pic w-full h-full block">
+            <source srcset="/app/logo.webp" type="image/webp">
+            <img src="/app/logo.png" alt="VidyaSetu" class="logo-img w-full h-full object-cover block"
+                 onerror="this.closest('.logo-box').classList.add('logo-img-missing')">
+          </picture>
+          <span class="logo-fallback w-6 h-6 place-items-center">
+            <svg viewBox="0 0 48 48" class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M13 13 A13 13 0 0 1 35 13" fill="none" stroke="#caa14b" stroke-width="2" stroke-linecap="round"/>
+              <ellipse cx="22" cy="27" rx="6" ry="3.4" fill="#fff"/>
+              <path d="M25 28 C 19.5 26.5 18.5 20 22 16.5 C 24 14.5 27.5 14 28.5 10.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+              <path d="M28.6 10.4 l 3 -0.7 l -1.3 2.6 z" fill="#caa14b"/>
+              <path d="M24 30 L9 27.5 C 8.2 27.4 7.6 28 7.6 28.8 L7.6 35 C 7.6 35.7 8.1 36.2 8.9 36.1 L24 38 Z" fill="#caa14b"/>
+              <path d="M24 30 L39 27.5 C 39.8 27.4 40.4 28 40.4 28.8 L40.4 35 C 40.4 35.7 39.9 36.2 39.1 36.1 L24 38 Z" fill="#e0bd5c"/>
+              <path d="M24 30 L24 38" stroke="#a9842f" stroke-width="1.2"/>
+            </svg>
+          </span>
+        </span>
+        <span class="text-xl font-extrabold tracking-tight"><span class="text-brand-800">Vidya</span><span class="text-gold-600">Setu</span></span>
+      </a>
+      <div class="flex items-center gap-2">
+        <a href="/app/landing.html" class="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 px-3 py-2 rounded-lg whitespace-nowrap">
+          <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to home
+        </a>
+        <a href="/app/landing.html#contact" class="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 px-3 py-2 rounded-lg whitespace-nowrap">
+          <i data-lucide="mail" class="w-4 h-4"></i> Contact us
+        </a>
+        <a href="/app/login" class="inline-flex items-center gap-1.5 text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg transition-transform active:scale-95">
+          Sign in <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ INTRO ============ -->
+  <section class="grad-hero text-white">
+    <div class="max-w-5xl mx-auto px-4 pt-12 pb-14 md:pt-16 md:pb-20">
+      <div class="text-center max-w-2xl mx-auto">
+        <span data-offer-pill class="inline-flex items-center gap-2 bg-gold-400/15 text-gold-200 ring-1 ring-gold-400/30 rounded-full px-4 py-1.5 text-sm font-semibold mb-5">
+          <i data-lucide="badge-percent" class="w-4 h-4"></i> <span data-offer="name">Limited-time launch offer · introductory pricing</span>
+        </span>
+        <h1 class="text-3xl md:text-5xl font-extrabold leading-tight tracking-tight">Pricing and feature comparison</h1>
+        <p class="mt-4 text-slate-300 md:text-lg">Two simple plans, one flat monthly price that already includes your first <span data-price="core:included">15</span> students. Core covers the everyday essentials; Complete adds the full online-learning suite. Compare every feature below.</p>
+      </div>
+
+      <!-- Two plan cards -->
+      <div class="mt-10 grid md:grid-cols-2 gap-6 max-w-4xl mx-auto items-stretch">
+        <!-- Core column -->
+        <div class="rounded-2xl bg-white/5 ring-1 ring-white/10 p-7 flex flex-col">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">Core</h2>
+            <span class="text-xs bg-white/10 px-2.5 py-1 rounded-full">The essentials</span>
+          </div>
+          <div class="mt-4 flex items-end gap-2 flex-wrap">
+            <span class="text-4xl font-extrabold" data-price="core:base">₹1,000</span>
+            <span class="text-xl font-bold text-slate-500 line-through mb-1" data-price="core:baseRegular">₹1,500</span>
+            <span class="text-slate-400 mb-1">/mo</span>
+          </div>
+          <div class="mt-1 text-sm text-slate-300">
+            + <span data-price="core:perStudent">₹50</span> <span class="text-slate-500 line-through" data-price="core:perStudentRegular">₹75</span> / student after <span data-price="core:included">15</span>
+          </div>
+          <ul class="mt-6 space-y-3 text-sm text-slate-300 flex-1">
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Students, attendance &amp; timetable</li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Fees, UPI &amp; QR collection</li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Messaging &amp; notifications</li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Basic reports &amp; parent portal</li>
+            <li class="flex items-center gap-2 text-slate-500"><span class="w-4 h-4 grid place-items-center shrink-0">–</span> Online video lessons</li>
+            <li class="flex items-center gap-2 text-slate-500"><span class="w-4 h-4 grid place-items-center shrink-0">–</span> Quizzes &amp; certificates</li>
+            <li class="flex items-center gap-2 text-slate-500"><span class="w-4 h-4 grid place-items-center shrink-0">–</span> Assignments &amp; question papers</li>
+          </ul>
+          <a href="/app/landing.html#contact" class="mt-6 inline-flex items-center justify-center gap-2 w-full font-semibold text-white ring-1 ring-white/30 hover:bg-white/10 px-5 py-3 rounded-xl transition-colors">
+            <i data-lucide="mail" class="w-4 h-4"></i> Contact us
+          </a>
+        </div>
+
+        <!-- Complete column (emphasised) -->
+        <div class="grad-border rounded-2xl p-[2px]">
+          <div class="rounded-[14px] bg-brand-600 ring-1 ring-brand-300/40 p-7 relative overflow-hidden h-full flex flex-col">
+            <div class="absolute top-4 right-4 text-[11px] font-bold bg-white text-brand-700 px-2.5 py-1 rounded-full">All modules</div>
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-bold">Complete</h2>
+            </div>
+            <div class="mt-4 flex items-end gap-2 flex-wrap">
+              <span class="text-4xl font-extrabold" data-price="complete:base">₹2,000</span>
+              <span class="text-xl font-bold text-brand-200 line-through mb-1" data-price="complete:baseRegular">₹2,999</span>
+              <span class="text-brand-100 mb-1">/mo</span>
+            </div>
+            <div class="mt-1 text-sm text-brand-50">
+              + <span data-price="complete:perStudent">₹90</span> <span class="text-brand-200 line-through" data-price="complete:perStudentRegular">₹130</span> / student after <span data-price="complete:included">15</span>
+            </div>
+            <ul class="mt-6 space-y-3 text-sm text-brand-50 flex-1">
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Everything in Core</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Online video lessons</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Quizzes &amp; certificates</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Assignments</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Question papers</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Detailed reports</li>
+            </ul>
+            <a href="/app/landing.html#contact" class="mt-6 inline-flex items-center justify-center gap-2 w-full font-semibold bg-white text-brand-700 hover:bg-slate-100 px-5 py-3 rounded-xl transition-colors">
+              <i data-lucide="mail" class="w-4 h-4"></i> Contact us
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FULL FEATURE MATRIX ============ -->
+  <section class="bg-slate-900 text-white">
+    <div class="max-w-4xl mx-auto px-4 py-14 md:py-20">
+      <div class="text-center max-w-2xl mx-auto">
+        <h2 class="text-2xl md:text-3xl font-bold tracking-tight">Compare every feature</h2>
+        <p class="text-slate-400 text-sm mt-2">Everything in Core, plus the online-learning suite and detailed reports in Complete.</p>
+      </div>
+
+      <!-- The table scrolls on its own on small screens, so it never pushes the
+           whole page sideways. The wrapper is the only horizontally-scrollable
+           element. -->
+      <div class="mt-8 overflow-x-auto rounded-2xl ring-1 ring-white/10">
+        <table class="w-full text-left text-sm border-collapse min-w-[460px]">
+          <thead class="sticky top-0 z-10">
+            <tr class="bg-slate-800">
+              <th class="px-4 py-4 font-semibold text-slate-200">Feature</th>
+              <th class="px-4 py-4 text-center font-bold w-28">Core<div class="text-xs font-normal text-slate-400 mt-0.5"><span data-price="core:base">₹1,000</span>/mo</div></th>
+              <th class="px-4 py-4 text-center font-bold text-brand-200 w-28">Complete<div class="text-xs font-normal text-brand-300/80 mt-0.5"><span data-price="complete:base">₹2,000</span>/mo</div></th>
+            </tr>
+          </thead>
+          <tbody class="align-middle">
+            <!-- Students & Attendance -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Students &amp; Attendance</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Student profiles &amp; full history</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Parent contacts (kept private)</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Student photos</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Groups &amp; batches</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Bulk CSV import</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">One-tap daily attendance</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Auto-built class rosters</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Fees & Payments -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Fees &amp; Payments</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Fee tracking &amp; dues</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Per-student fee plans</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Additional charges &amp; discounts</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Automatic monthly reminders</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Monthly statements per student</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">UPI &amp; pay-by-QR collection</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Classes & Scheduling -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Classes &amp; Scheduling</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Weekly timetable grid</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Online, in-person &amp; group classes</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">One-tap join links for online classes</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Reschedule or cancel a single date</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Camps -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Camps &amp; Workshops</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Short-term camps &amp; intensives</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Own dates, roster &amp; attendance</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Communication & Notifications -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Communication &amp; Notifications</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">WhatsApp &amp; in-app messaging</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Bulk "Send all" messages</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Editable message templates</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Absence alerts &amp; fee reminders</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">In-app notification bell</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Web-push to the lock screen</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Automatic morning class digest</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Parent Portal -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Parent Portal</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Secure per-family login</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Attendance &amp; fees at a glance</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Profile self-service</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Lessons &amp; assignments view</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Lessons & Courses -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Lessons &amp; Courses</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Build video courses</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Distraction-free lesson player</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Notes &amp; resources per lesson</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Per-student progress tracking</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">One-click course enrolment</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Quizzes & Certificates -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Quizzes &amp; Certificates</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Add quizzes to lessons</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Gate course completion on quizzes</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Auto-issued completion certificates</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Assignments -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Assignments</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Assign work to students or batches</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Families see what is due</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Notifications on new assignments</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Question Papers -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Question Papers</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Share practice papers to the portal</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Students prepare any time</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Reports -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Reports</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Attendance &amp; fee summaries</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Detailed reports &amp; trends</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Lesson activity reports</td><td class="px-4 py-3 text-center text-slate-600">–</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- PWA / Offline -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Mobile &amp; PWA</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Installable mobile app (PWA)</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Add to home screen on Android &amp; iPhone</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Dark mode &amp; brand themes</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Multi-academy -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Multi-academy &amp; Data</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Run multiple branches from one login</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Isolated, private data per academy</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Data export &amp; backup</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+
+            <!-- Support -->
+            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">Support</td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Guided setup &amp; walkthrough</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">Real human support</td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td><td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-10 text-center">
+        <a href="/app/landing.html#contact" class="inline-flex items-center gap-2 bg-gold-400 hover:bg-gold-300 text-brand-900 font-bold px-6 py-3.5 rounded-xl text-lg shadow-sm transition-transform active:scale-95">
+          Contact us to get started <i data-lucide="arrow-right" class="w-5 h-5"></i>
+        </a>
+        <p class="mt-3 text-sm text-slate-400">Indicative pricing. We will share a quote for your exact student count. <a href="/app/landing.html" class="font-semibold text-gold-300 hover:text-gold-200 underline">Back to home</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="bg-brand-900 text-slate-400 text-center text-sm py-8">
+    <p>&copy; <span id="yr"></span> VidyaSetu. Bridging teachers and learners.</p>
+  </footer>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    // =====================================================================
+    // PRICING-PAGE CONFIG
+    // ---------------------------------------------------------------------
+    // The LANDING_CONFIG object below is GENERATED from config.master.js by
+    // scripts/gen-config.js (runs on build / deploy). Edit values in
+    // config.master.js, NOT here. applyLandingConfig() then fills every
+    // [data-price] / [data-offer] placeholder on the page at load, so the
+    // prices here stay in sync with the marketing landing page.
+    // =====================================================================
+    /* GEN:CONFIG:START — generated from config.master.js, do not edit by hand */
+    var LANDING_CONFIG = {
+      BRAND_NAME:    'VidyaSetu',
+      PHONE_TEL:     '+919360390883',
+      PHONE_DISPLAY: '+91 93603 90883',
+      SUPPORT_EMAIL: 'support@veena.app',
+      CURRENCY:      '₹',
+      OFFER_NAME:    'Limited-time launch offer · introductory pricing',
+      PRICES: {
+        core:     { base: 1000, baseRegular: 1500, included: 15, perStudent: 50, perStudentRegular: 75 },
+        complete: { base: 2000, baseRegular: 2999, included: 15, perStudent: 90, perStudentRegular: 130 },
+        sampleCounts: [15, 30, 60],
+      },
+    };
+    /* GEN:CONFIG:END */
+
+    (function applyLandingConfig() {
+      var cfg = LANDING_CONFIG;
+      var P = cfg.PRICES;
+      if (!P) return;
+      var sym = cfg.CURRENCY || '₹';
+      function fmt(n) { return sym + Number(n).toLocaleString('en-IN'); }
+      function plan(key) { return P[key] || { base: 0, baseRegular: null, included: 0, perStudent: 0, perStudentRegular: null }; }
+
+      var offerName = (cfg.OFFER_NAME || '').trim();
+      document.querySelectorAll('[data-offer="name"]').forEach(function (el) { el.textContent = offerName; });
+      document.querySelectorAll('[data-offer-pill]').forEach(function (el) {
+        el.style.display = offerName ? '' : 'none';
+      });
+
+      document.querySelectorAll('[data-price]').forEach(function (el) {
+        var parts = el.getAttribute('data-price').split(':'), pl = plan(parts[0]), field = parts[1];
+        if (field === 'base') {
+          el.textContent = fmt(pl.base);
+        } else if (field === 'perStudent') {
+          el.textContent = fmt(pl.perStudent);
+        } else if (field === 'included') {
+          el.textContent = String(pl.included);
+        } else if (field === 'baseRegular') {
+          if (pl.baseRegular && pl.baseRegular > pl.base) { el.textContent = fmt(pl.baseRegular); el.style.display = ''; }
+          else { el.style.display = 'none'; }
+        } else if (field === 'perStudentRegular') {
+          if (pl.perStudentRegular && pl.perStudentRegular > pl.perStudent) { el.textContent = fmt(pl.perStudentRegular); el.style.display = ''; }
+          else { el.style.display = 'none'; }
+        }
+      });
+    })();
+
+    (function () {
+      var yr = document.getElementById('yr'); if (yr) yr.textContent = new Date().getFullYear();
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+    })();
+  </script>
+</body>
+</html>

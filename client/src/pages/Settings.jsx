@@ -147,6 +147,9 @@ export default function Settings() {
   // flags only once (useModuleFlags on mount), so when one of these changes we
   // reload after saving to keep the nav in sync.
   const navFlagsRef = useRef({});
+  // Scrollable content body — reset to the top whenever the active tab changes
+  // so a new tab never opens mid-scroll from the previous tab's position.
+  const bodyRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,6 +184,12 @@ export default function Settings() {
     const wanted = new URLSearchParams(location.search).get('tab');
     if (wanted && TABS.some((t) => t.id === wanted)) setActiveTab(wanted);
   }, [location.search]);
+
+  // Switching tabs should always open the new tab from the top, even if the
+  // previous tab was scrolled halfway down.
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+  }, [activeTab]);
 
   const set = (key) => (e) => {
     const v = e?.target?.value ?? e;
@@ -299,8 +308,8 @@ export default function Settings() {
 
         {/* Content column — scrolls; the Save bar is pinned to its bottom. */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mr-auto p-4 lg:p-6 space-y-4">
+          <div ref={bodyRef} className="flex-1 overflow-y-auto">
+            <div className="p-4 lg:p-6 space-y-4">
               {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
               {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
               {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
@@ -464,19 +473,19 @@ function ScheduleTab({ form, setForm }) {
             </button>
 
             {d.open ? (
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
                 <input
                   type="time"
                   value={d.start}
                   onChange={(e) => updateDay(idx, { start: e.target.value })}
-                  className="input-field w-auto py-1.5"
+                  className="input-field w-auto min-w-0 py-1.5"
                 />
                 <span className="text-gray-400 text-sm">to</span>
                 <input
                   type="time"
                   value={d.end}
                   onChange={(e) => updateDay(idx, { end: e.target.value })}
-                  className="input-field w-auto py-1.5"
+                  className="input-field w-auto min-w-0 py-1.5"
                 />
                 <button
                   type="button"

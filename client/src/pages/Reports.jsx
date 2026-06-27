@@ -19,6 +19,15 @@ import {
   Youtube,
   PlayCircle,
   CheckCircle2,
+  LineChart as LineChartIcon,
+  Wallet,
+  UserCheck,
+  Clock,
+  GraduationCap,
+  Gauge,
+  FileText,
+  Download,
+  Printer,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -27,18 +36,58 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
+import { Donut, BarChart, LineChart, GroupedBarChart, TrendArrow, MobileCardTable, CHART_COLORS } from '../components/Charts';
+import { exportCsv, exportPdf, printSection } from '../utils/reportExport';
+import { useModuleFlags } from '../hooks/useModuleFlags';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const TABS = [
+const MONTHS_SHORT = MONTHS.map((m) => m.slice(0, 3));
+
+// Basic reports — available on every plan (Core and Complete).
+const BASIC_TABS = [
   { id: 'student', label: 'Student Report', icon: User },
   { id: 'monthly', label: 'Monthly Report', icon: Calendar },
   { id: 'overall', label: 'Overall Report', icon: TrendingUp },
   { id: 'lessons', label: 'Lesson Activity', icon: Youtube },
 ];
+
+// Detailed reports — unlocked on the Complete plan.
+const ADVANCED_TABS = [
+  { id: 'revenue', label: 'Revenue Trend', icon: LineChartIcon },
+  { id: 'defaulters', label: 'Fees Due', icon: Wallet },
+  { id: 'retention', label: 'Retention', icon: UserCheck },
+  { id: 'slots', label: 'Attendance by Slot', icon: Clock },
+  { id: 'courses', label: 'Course Completion', icon: GraduationCap },
+  { id: 'capacity', label: 'Class Capacity', icon: Gauge },
+];
+
+// Current month as YYYY-MM (local time).
+function thisMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// A short, friendly label for a YYYY-MM key.
+function monthKeyLabel(ym) {
+  if (!ym || !/^\d{4}-\d{2}/.test(ym)) return ym || '';
+  const [y, m] = ym.split('-');
+  return `${MONTHS_SHORT[parseInt(m, 10) - 1]} ${y}`;
+}
+
+// Last N month keys (YYYY-MM) ending this month, oldest first — for the picker.
+function recentMonthKeys(n) {
+  const out = [];
+  const d = new Date();
+  for (let i = 0; i < n; i++) {
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
 
 // Parse a Catalyst CREATEDTIME / MODIFIEDTIME value into a Date. Most data
 // centres return a human format ("Jun 20, 2026 02:30 PM") that new Date()
@@ -98,6 +147,33 @@ export default function Reports() {
   // Per-student lesson progress, shown inline on the Student Report tab
   const [studentLessons, setStudentLessons] = useState([]);
 
+  // ----- Detailed reports (Complete plan) -----
+  const { plan, loaded: planLoaded } = useModuleFlags();
+  const isComplete = plan === 'complete';
+  const tabs = useMemo(() => (isComplete ? [...BASIC_TABS, ...ADVANCED_TABS] : BASIC_TABS), [isComplete]);
+
+  // One bag of state per detailed report: { data, loading }.
+  const [adv, setAdv] = useState({}); // { [tabId]: { data, loading } }
+  const [revenueMonths, setRevenueMonths] = useState(6);
+  const [defaultersMonth, setDefaultersMonth] = useState(thisMonthKey());
+  const [statement, setStatement] = useState(null); // drill-down: { id, name } -> modal
+  const [statementMonth, setStatementMonth] = useState(thisMonthKey());
+
+  const setAdvState = (id, patch) =>
+    setAdv((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+
+  // Generic detailed-report fetch. Stores under adv[id].
+  const fetchAdvanced = async (id, url) => {
+    try {
+      setAdvState(id, { loading: true });
+      const data = await api.get(url);
+      setAdvState(id, { data, loading: false });
+    } catch (err) {
+      toast.error('Could not load report: ' + err.message);
+      setAdvState(id, { data: null, loading: false });
+    }
+  };
+
   useEffect(() => {
     fetchStudents();
   }, []);
@@ -126,6 +202,43 @@ export default function Reports() {
         .catch(() => setStudentLessons([]));
     }
   }, [selectedStudentId, activeTab]);
+
+  // Load the detailed report when its tab opens or its filter changes.
+  useEffect(() => {
+    if (!isComplete) return;
+    if (activeTab === 'revenue') fetchAdvanced('revenue', `/reports/revenue?months=${revenueMonths}`);
+  }, [activeTab, revenueMonths, isComplete]);
+
+  useEffect(() => {
+    if (!isComplete) return;
+    if (activeTab === 'defaulters') fetchAdvanced('defaulters', `/reports/defaulters?month=${defaultersMonth}`);
+  }, [activeTab, defaultersMonth, isComplete]);
+
+  useEffect(() => {
+    if (!isComplete) return;
+    if (activeTab === 'retention') fetchAdvanced('retention', '/reports/retention');
+    if (activeTab === 'slots') fetchAdvanced('slots', '/reports/attendance-slots');
+    if (activeTab === 'courses') fetchAdvanced('courses', '/reports/course-completion');
+    if (activeTab === 'capacity') fetchAdvanced('capacity', '/reports/capacity');
+  }, [activeTab, isComplete]);
+
+  // Drill-down: open a single student's combined statement in a modal.
+  const openStatement = async (id, name) => {
+    setStatement({ id, name, loading: true });
+    try {
+      const data = await api.get(`/reports/student-statement/${id}?month=${statementMonth}`);
+      setStatement({ id, name, data });
+    } catch (err) {
+      toast.error('Could not load statement: ' + err.message);
+      setStatement(null);
+    }
+  };
+
+  // Refresh an open statement when the chosen month changes.
+  useEffect(() => {
+    if (statement?.id) openStatement(statement.id, statement.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statementMonth]);
 
   const fetchLessonActivity = async () => {
     try {
@@ -342,7 +455,60 @@ export default function Reports() {
     );
   };
 
-  if (loading) return <Loader text="Loading..." />;
+  // Build a plain HTML table for the print window from the same columns/rows.
+  const buildPrintHtml = (columns, rows) => {
+    const head = columns.map((c) => `<th style="text-align:${c.align || 'left'}">${c.label}</th>`).join('');
+    const body = rows
+      .map((r) => `<tr>${columns.map((c) => `<td style="text-align:${c.align || 'left'}">${c.text ? c.text(r) : (r[c.key] ?? '')}</td>`).join('')}</tr>`)
+      .join('');
+    return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  };
+
+  // Shared CSV / PDF / Print bar for a detailed report. `columns` is
+  // [{ key, label, align, text? }] where text(row) gives a formatted string.
+  const ExportBar = ({ title, columns, rows }) => {
+    const csvCols = columns.map((c) => ({ key: c.key, label: c.label }));
+    const csvRows = rows.map((r) => {
+      const o = {};
+      columns.forEach((c) => { o[c.key] = c.text ? c.text(r) : (r[c.key] ?? ''); });
+      return o;
+    });
+    const disabled = !rows.length;
+    return (
+      <div className="flex items-center gap-2">
+        <button className="btn-secondary btn-sm" disabled={disabled} title="Download CSV"
+          onClick={() => exportCsv(`${title}.csv`, csvCols, csvRows)}>
+          <Download className="w-4 h-4" /> CSV
+        </button>
+        <button className="btn-secondary btn-sm" disabled={disabled} title="Download PDF"
+          onClick={() => exportPdf(title, [{ heading: title, columns: csvCols, rows: csvRows }])}>
+          <FileText className="w-4 h-4" /> PDF
+        </button>
+        <button className="btn-secondary btn-sm" disabled={disabled} title="Print"
+          onClick={() => printSection(title, buildPrintHtml(columns, rows))}>
+          <Printer className="w-4 h-4" /> Print
+        </button>
+      </div>
+    );
+  };
+
+  // Section heading shared by detailed reports.
+  const AdvHeader = ({ icon: Icon, title, children }) => (
+    <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+      <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+        {Icon && <Icon className="w-5 h-5 text-indigo-600" />} {title}
+      </h3>
+      <div className="flex items-center gap-2 flex-wrap">{children}</div>
+    </div>
+  );
+
+  const rupee = (v) => '₹' + Number(v || 0).toLocaleString('en-IN');
+
+  // Render a rate-like value as a whole percent. Accepts a 0..1 fraction or an
+  // already-scaled 0..100 number.
+  const asPctSafe = (v) => { const n = Number(v) || 0; return Math.round(n <= 1 ? n * 100 : n); };
+
+  if (loading || !planLoaded) return <Loader text="Loading..." />;
 
   return (
     <div className="space-y-4">
@@ -350,7 +516,7 @@ export default function Reports() {
 
       {/* Tabs */}
       <div className="flex flex-wrap border-b border-gray-200" data-tour="reports-tabs">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
@@ -1180,6 +1346,56 @@ export default function Reports() {
                 </div>
               </div>
 
+              {/* Visual overview — colourful, theme-aware charts from the same data */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="card">
+                  <h3 className="font-semibold text-gray-900 mb-4">Attendance</h3>
+                  <Donut
+                    size={150}
+                    centervalue={`${Math.round(overallReport.attendance?.overall_rate || 0)}%`}
+                    centerlabel="present"
+                    data={[
+                      { label: 'Present', value: overallReport.attendance?.present || 0, color: CHART_COLORS.present },
+                      { label: 'Absent', value: overallReport.attendance?.absent || 0, color: CHART_COLORS.absent },
+                      { label: 'Late', value: overallReport.attendance?.late || 0, color: CHART_COLORS.late },
+                    ]}
+                  />
+                </div>
+                <div className="card">
+                  <h3 className="font-semibold text-gray-900 mb-4">Students</h3>
+                  <Donut
+                    size={150}
+                    centervalue={overallReport.students?.total || 0}
+                    centerlabel="total"
+                    data={[
+                      { label: 'Active', value: overallReport.students?.active || 0, color: CHART_COLORS.active },
+                      { label: 'Inactive', value: overallReport.students?.inactive || 0, color: CHART_COLORS.inactive },
+                    ]}
+                  />
+                </div>
+                <div className="card">
+                  <h3 className="font-semibold text-gray-900 mb-4">Fees collected</h3>
+                  <BarChart
+                    fmt={(v) => '₹' + Number(v).toLocaleString('en-IN')}
+                    data={[
+                      { label: 'Class fees', value: overallReport.fees?.class_fees || 0, color: CHART_COLORS.fees },
+                      { label: 'Additional', value: overallReport.fees?.additional || 0, color: CHART_COLORS.additional },
+                    ]}
+                  />
+                </div>
+                <div className="card">
+                  <h3 className="font-semibold text-gray-900 mb-4">Classes by type</h3>
+                  <BarChart
+                    data={[
+                      { label: 'Online', value: overallReport.classes?.online || 0, color: CHART_COLORS.series[0] },
+                      { label: 'Offline', value: overallReport.classes?.offline || 0, color: CHART_COLORS.series[1] },
+                      { label: 'Online group', value: overallReport.classes?.online_group || 0, color: CHART_COLORS.series[2] },
+                      { label: 'Offline group', value: overallReport.classes?.offline_group || 0, color: CHART_COLORS.series[3] },
+                    ]}
+                  />
+                </div>
+              </div>
+
               {/* Monthly Trends */}
               {overallReport.monthly_revenue && overallReport.monthly_revenue.length > 0 && (
                 <div className="card">
@@ -1421,6 +1637,403 @@ export default function Reports() {
           })()}
         </div>
       )}
+
+      {/* ===================== DETAILED REPORTS (Complete plan) ===================== */}
+      {(() => {
+        const data = (id) => adv[id]?.data;
+        const busy = (id) => adv[id]?.loading;
+        const asPct = (v) => { const n = Number(v) || 0; return Math.round(n <= 1 ? n * 100 : n); };
+        const mShort = (ym) => MONTHS_SHORT[parseInt((ym || '').split('-')[1], 10) - 1] || ym;
+
+        // ---------- Revenue Trend ----------
+        if (activeTab === 'revenue') {
+          const d = data('revenue');
+          const months = d?.months || [];
+          const last = months[months.length - 1];
+          const prev = months[months.length - 2];
+          return (
+            <div className="card">
+              <AdvHeader icon={LineChartIcon} title="Revenue Trend">
+                <Select
+                  value={revenueMonths}
+                  onChange={(v) => setRevenueMonths(Number(v))}
+                  ariaLabel="Number of months"
+                  options={[{ value: 3, label: 'Last 3 months' }, { value: 6, label: 'Last 6 months' }, { value: 12, label: 'Last 12 months' }]}
+                />
+                <ExportBar
+                  title="Revenue Trend"
+                  columns={[
+                    { key: 'label', label: 'Month' },
+                    { key: 'class_fees', label: 'Class fees', align: 'right', text: (r) => rupee(r.class_fees) },
+                    { key: 'additional', label: 'Additional', align: 'right', text: (r) => rupee(r.additional) },
+                    { key: 'total', label: 'Total', align: 'right', text: (r) => rupee(r.total) },
+                  ]}
+                  rows={months}
+                />
+              </AdvHeader>
+              {busy('revenue') ? <Loader text="Loading report..." /> : months.length === 0 ? (
+                <EmptyState icon={LineChartIcon} title="No revenue yet" message="Revenue appears here as classes and fees are recorded." />
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+                    <div className="rounded-xl bg-gray-50 p-4">
+                      <p className="text-xs text-gray-500">This month</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{rupee(last?.total)}</p>
+                      <div className="mt-1"><TrendArrow current={last?.total} previous={prev?.total} goodIsUp fmt={rupee} /></div>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 p-4">
+                      <p className="text-xs text-gray-500">Class fees ({months.length} mo)</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{rupee(d?.totals?.class_fees)}</p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 p-4">
+                      <p className="text-xs text-gray-500">Additional ({months.length} mo)</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{rupee(d?.totals?.additional)}</p>
+                    </div>
+                  </div>
+                  <LineChart
+                    fmt={rupee}
+                    series={[
+                      { name: 'Total', color: CHART_COLORS.series[0], points: months.map((m) => ({ x: mShort(m.ym), y: m.total })) },
+                      { name: 'Class fees', color: CHART_COLORS.fees, points: months.map((m) => ({ x: mShort(m.ym), y: m.class_fees })) },
+                      { name: 'Additional', color: CHART_COLORS.additional, points: months.map((m) => ({ x: mShort(m.ym), y: m.additional })) },
+                    ]}
+                  />
+                  <div className="mt-5">
+                    <MobileCardTable
+                      keyField="ym"
+                      rows={[...months].reverse()}
+                      columns={[
+                        { key: 'label', label: 'Month' },
+                        { key: 'class_fees', label: 'Class fees', align: 'right', render: (r) => rupee(r.class_fees) },
+                        { key: 'additional', label: 'Additional', align: 'right', render: (r) => rupee(r.additional) },
+                        { key: 'total', label: 'Total', align: 'right', render: (r) => <span className="font-semibold">{rupee(r.total)}</span> },
+                      ]}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        }
+
+        // ---------- Fees Due (defaulters) ----------
+        if (activeTab === 'defaulters') {
+          const d = data('defaulters');
+          const rows = d?.defaulters || [];
+          return (
+            <div className="card">
+              <AdvHeader icon={Wallet} title="Fees Due">
+                <Select
+                  value={defaultersMonth}
+                  onChange={setDefaultersMonth}
+                  ariaLabel="Month"
+                  options={recentMonthKeys(12).map((ym) => ({ value: ym, label: monthKeyLabel(ym) }))}
+                />
+                <ExportBar
+                  title="Fees Due"
+                  columns={[
+                    { key: 'name', label: 'Student' },
+                    { key: 'due', label: 'Amount due', align: 'right', text: (r) => rupee(r.due) },
+                  ]}
+                  rows={rows}
+                />
+              </AdvHeader>
+              {busy('defaulters') ? <Loader text="Loading report..." /> : rows.length === 0 ? (
+                <EmptyState icon={CheckCircle2} title="All settled" message={`No dues recorded for ${monthKeyLabel(defaultersMonth)}.`} />
+              ) : (
+                <>
+                  <div className="rounded-xl bg-gray-50 p-4 mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-500">Total due · {monthKeyLabel(defaultersMonth)}</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{rupee(d?.total_due)}</p>
+                    </div>
+                    <p className="text-sm text-gray-500">{d?.count || rows.length} student{(d?.count || rows.length) === 1 ? '' : 's'}</p>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">Tap a student to open their statement.</p>
+                  <MobileCardTable
+                    keyField="student_id"
+                    rows={rows}
+                    onRowClick={(r) => openStatement(r.student_id, r.name)}
+                    columns={[
+                      { key: 'name', label: 'Student' },
+                      { key: 'due', label: 'Amount due', align: 'right', render: (r) => <span className="font-semibold text-gray-900">{rupee(r.due)}</span> },
+                    ]}
+                  />
+                </>
+              )}
+            </div>
+          );
+        }
+
+        // ---------- Retention ----------
+        if (activeTab === 'retention') {
+          const d = data('retention');
+          const joins = d?.joins_by_month || [];
+          return (
+            <div className="space-y-4">
+              <div className="card">
+                <AdvHeader icon={UserCheck} title="Retention" />
+                {busy('retention') ? <Loader text="Loading report..." /> : !d ? (
+                  <EmptyState icon={UserCheck} title="No data" message="Retention appears once students are enrolled." />
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+                    <Donut
+                      size={150}
+                      centervalue={d.total || 0}
+                      centerlabel="students"
+                      data={[
+                        { label: 'Active', value: d.active || 0, color: CHART_COLORS.active },
+                        { label: 'Inactive', value: d.inactive || 0, color: CHART_COLORS.inactive },
+                      ]}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="rounded-xl bg-gray-50 p-4">
+                        <p className="text-xs text-gray-500">Active</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-1">{d.active || 0}</p>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-4">
+                        <p className="text-xs text-gray-500">Inactive</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-1">{d.inactive || 0}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {!busy('retention') && joins.length > 0 && (
+                <div className="card">
+                  <AdvHeader icon={TrendingUp} title="New students by month">
+                    <ExportBar
+                      title="New students by month"
+                      columns={[{ key: 'label', label: 'Month' }, { key: 'count', label: 'New students', align: 'right' }]}
+                      rows={joins}
+                    />
+                  </AdvHeader>
+                  <LineChart
+                    series={[{ name: 'New students', color: CHART_COLORS.series[1], points: joins.map((j) => ({ x: mShort(j.ym), y: j.count })) }]}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // ---------- Attendance by Slot ----------
+        if (activeTab === 'slots') {
+          const d = data('slots');
+          const byDay = d?.by_day || [];
+          const byClass = d?.by_class || [];
+          return (
+            <div className="space-y-4">
+              <div className="card">
+                <AdvHeader icon={Clock} title="Attendance by Day" />
+                {busy('slots') ? <Loader text="Loading report..." /> : byDay.length === 0 ? (
+                  <EmptyState icon={Clock} title="No attendance yet" message="Attendance patterns appear once classes are recorded." />
+                ) : (
+                  <GroupedBarChart
+                    groups={byDay.map((r) => r.day)}
+                    series={[
+                      { name: 'Present', color: CHART_COLORS.present, values: byDay.map((r) => r.present || 0) },
+                      { name: 'Absent', color: CHART_COLORS.absent, values: byDay.map((r) => r.absent || 0) },
+                      { name: 'Late', color: CHART_COLORS.late, values: byDay.map((r) => r.late || 0) },
+                    ]}
+                  />
+                )}
+              </div>
+              {!busy('slots') && byClass.length > 0 && (
+                <div className="card">
+                  <AdvHeader icon={ClipboardCheck} title="By class">
+                    <ExportBar
+                      title="Attendance by class"
+                      columns={[
+                        { key: 'name', label: 'Class' },
+                        { key: 'present', label: 'Present', align: 'right' },
+                        { key: 'absent', label: 'Absent', align: 'right' },
+                        { key: 'late', label: 'Late', align: 'right' },
+                        { key: 'rate', label: 'Rate', align: 'right', text: (r) => `${asPct(r.rate)}%` },
+                      ]}
+                      rows={byClass}
+                    />
+                  </AdvHeader>
+                  <MobileCardTable
+                    keyField="class_id"
+                    rows={byClass}
+                    columns={[
+                      { key: 'name', label: 'Class' },
+                      { key: 'present', label: 'Present', align: 'right' },
+                      { key: 'absent', label: 'Absent', align: 'right' },
+                      { key: 'late', label: 'Late', align: 'right' },
+                      { key: 'rate', label: 'Rate', align: 'right', render: (r) => <span className="font-semibold">{asPct(r.rate)}%</span> },
+                    ]}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // ---------- Course Completion ----------
+        if (activeTab === 'courses') {
+          const d = data('courses');
+          const courses = d?.courses || [];
+          return (
+            <div className="card">
+              <AdvHeader icon={GraduationCap} title="Course Completion">
+                <ExportBar
+                  title="Course Completion"
+                  columns={[
+                    { key: 'name', label: 'Course' },
+                    { key: 'lessons_total', label: 'Lessons', align: 'right' },
+                    { key: 'enrolled', label: 'Enrolled', align: 'right' },
+                    { key: 'completion_rate', label: 'Completion', align: 'right', text: (r) => `${asPct(r.completion_rate)}%` },
+                  ]}
+                  rows={courses}
+                />
+              </AdvHeader>
+              {busy('courses') ? <Loader text="Loading report..." /> : courses.length === 0 ? (
+                <EmptyState icon={GraduationCap} title="No courses yet" message="Completion rates appear once courses have enrolled students." />
+              ) : (
+                <>
+                  <BarChart
+                    fmt={(v) => `${asPct(v)}%`}
+                    data={courses.map((c, i) => ({ label: c.name, value: asPct(c.completion_rate), color: CHART_COLORS.series[i % CHART_COLORS.series.length] }))}
+                  />
+                  <div className="mt-5">
+                    <MobileCardTable
+                      keyField="course_id"
+                      rows={courses}
+                      columns={[
+                        { key: 'name', label: 'Course' },
+                        { key: 'lessons_total', label: 'Lessons', align: 'right' },
+                        { key: 'enrolled', label: 'Enrolled', align: 'right' },
+                        { key: 'completion_rate', label: 'Completion', align: 'right', render: (r) => <span className="font-semibold">{asPct(r.completion_rate)}%</span> },
+                      ]}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        }
+
+        // ---------- Class Capacity ----------
+        if (activeTab === 'capacity') {
+          const d = data('capacity');
+          const classes = d?.classes || [];
+          return (
+            <div className="card">
+              <AdvHeader icon={Gauge} title="Class Capacity">
+                <ExportBar
+                  title="Class Capacity"
+                  columns={[
+                    { key: 'name', label: 'Class' },
+                    { key: 'day', label: 'Day' },
+                    { key: 'roster', label: 'Roster', align: 'right' },
+                    { key: 'attended_avg', label: 'Avg present', align: 'right', text: (r) => Math.round(Number(r.attended_avg) || 0) },
+                    { key: 'utilisation', label: 'Utilisation', align: 'right', text: (r) => `${asPct(r.utilisation)}%` },
+                  ]}
+                  rows={classes}
+                />
+              </AdvHeader>
+              {busy('capacity') ? <Loader text="Loading report..." /> : classes.length === 0 ? (
+                <EmptyState icon={Gauge} title="No active classes" message="Capacity appears once you have active classes with a roster." />
+              ) : (
+                <>
+                  <BarChart
+                    fmt={(v) => `${asPct(v)}%`}
+                    data={classes.map((c, i) => ({ label: c.name, value: asPct(c.utilisation), color: CHART_COLORS.series[i % CHART_COLORS.series.length] }))}
+                  />
+                  <div className="mt-5">
+                    <MobileCardTable
+                      keyField="class_id"
+                      rows={classes}
+                      columns={[
+                        { key: 'name', label: 'Class' },
+                        { key: 'day', label: 'Day' },
+                        { key: 'roster', label: 'Roster', align: 'right' },
+                        { key: 'utilisation', label: 'Utilisation', align: 'right', render: (r) => <span className="font-semibold">{asPct(r.utilisation)}%</span> },
+                      ]}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        }
+
+        return null;
+      })()}
+
+      {/* Drill-down: single-student combined statement */}
+      <Modal
+        isOpen={!!statement}
+        onClose={() => setStatement(null)}
+        title={statement ? `Statement · ${statement.name}` : 'Statement'}
+        size="md"
+      >
+        {statement && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <Select
+                value={statementMonth}
+                onChange={setStatementMonth}
+                ariaLabel="Statement month"
+                options={recentMonthKeys(12).map((ym) => ({ value: ym, label: monthKeyLabel(ym) }))}
+              />
+            </div>
+            {statement.loading || !statement.data ? (
+              <Loader text="Loading statement..." />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-gray-50 p-3">
+                    <p className="text-xs text-gray-500">Attendance</p>
+                    <p className="text-xl font-bold text-gray-900 mt-1">{asPctSafe(statement.data.attendance?.rate)}%</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {statement.data.attendance?.present || 0} present · {statement.data.attendance?.absent || 0} absent · {statement.data.attendance?.late || 0} late
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3">
+                    <p className="text-xs text-gray-500">Fees</p>
+                    <p className="text-xl font-bold text-gray-900 mt-1">{rupee(statement.data.fees?.total)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {rupee(statement.data.fees?.class_fees)} class · {rupee(statement.data.fees?.additional)} additional
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 col-span-2">
+                    <p className="text-xs text-gray-500">Lessons</p>
+                    <p className="text-xl font-bold text-gray-900 mt-1">
+                      {statement.data.lessons?.completed || 0} / {statement.data.lessons?.enrolled || 0}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">completed of enrolled</p>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    className="btn-secondary btn-sm"
+                    onClick={() => {
+                      const s = statement.data;
+                      exportPdf(`Statement ${statement.name} ${monthKeyLabel(statementMonth)}`, [{
+                        heading: `${statement.name} · ${monthKeyLabel(statementMonth)}`,
+                        columns: [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }],
+                        rows: [
+                          { metric: 'Attendance rate', value: `${asPctSafe(s.attendance?.rate)}%` },
+                          { metric: 'Present / Absent / Late', value: `${s.attendance?.present || 0} / ${s.attendance?.absent || 0} / ${s.attendance?.late || 0}` },
+                          { metric: 'Class fees', value: rupee(s.fees?.class_fees) },
+                          { metric: 'Additional fees', value: rupee(s.fees?.additional) },
+                          { metric: 'Total fees', value: rupee(s.fees?.total) },
+                          { metric: 'Lessons completed', value: `${s.lessons?.completed || 0} / ${s.lessons?.enrolled || 0}` },
+                        ],
+                      }]);
+                    }}
+                  >
+                    <FileText className="w-4 h-4" /> PDF
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

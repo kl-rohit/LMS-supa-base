@@ -77,6 +77,9 @@ export default function Classes() {
   const [campsStatusFilter, setCampsStatusFilter] = useState('active'); // active | archived
   const [campFormOpen, setCampFormOpen] = useState(false);
   const [campDetail, setCampDetail] = useState(null); // selected camp for detail modal
+  // Move-a-day inline form: the day being moved plus its editable fields.
+  const [moveDay, setMoveDay] = useState(null); // { id, day_date, start_time, end_time }
+  const [savingDay, setSavingDay] = useState(false);
   const [campForm, setCampForm] = useState({
     name: '',
     group_id: '',
@@ -251,6 +254,72 @@ export default function Classes() {
       toast.success('Camp deleted');
       fetchCamps();
       if (campDetail?.id === camp.id) setCampDetail(null);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  // Reload the open camp's days after a per-day change, and keep the list fresh.
+  async function refreshCampDetail(campId) {
+    try {
+      const data = await api.get(`/camps/${campId}`);
+      if (data.camp) setCampDetail(data.camp);
+    } catch {}
+    fetchCamps();
+  }
+
+  function openMoveDay(d) {
+    setMoveDay({
+      id: d.id,
+      day_date: d.day_date || '',
+      start_time: d.start_time || '',
+      end_time: d.end_time || '',
+    });
+  }
+
+  async function saveMoveDay() {
+    if (!moveDay || !campDetail) return;
+    if (!moveDay.day_date) { toast.error('Pick a date for the day'); return; }
+    setSavingDay(true);
+    try {
+      await api.patch(`/camps/days/${moveDay.id}`, {
+        day_date: moveDay.day_date,
+        start_time: moveDay.start_time,
+        end_time: moveDay.end_time,
+      });
+      toast.success('Day moved');
+      setMoveDay(null);
+      await refreshCampDetail(campDetail.id);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingDay(false);
+    }
+  }
+
+  async function cancelCampDay(d) {
+    if (!campDetail) return;
+    const ok = await confirm({
+      title: 'Cancel this day?',
+      message: `Mark ${d.day_date} as cancelled. It will be hidden from attendance for that date. You can restore it later.`,
+      confirmText: 'Cancel day',
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/camps/days/${d.id}/cancel`, {});
+      toast.success('Day cancelled');
+      await refreshCampDetail(campDetail.id);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function restoreCampDay(d) {
+    if (!campDetail) return;
+    try {
+      await api.post(`/camps/days/${d.id}/restore`, {});
+      toast.success('Day restored');
+      await refreshCampDetail(campDetail.id);
     } catch (err) {
       toast.error(err.message);
     }
@@ -992,7 +1061,7 @@ export default function Classes() {
       {/* Camp detail modal */}
       <Modal
         isOpen={!!campDetail}
-        onClose={() => setCampDetail(null)}
+        onClose={() => { setCampDetail(null); setMoveDay(null); }}
         title={campDetail?.name || 'Camp'}
         size="lg"
       >
@@ -1019,19 +1088,94 @@ export default function Classes() {
                     <th className="table-header">Date</th>
                     <th className="table-header">Time</th>
                     <th className="table-header">Type</th>
+                    <th className="table-header text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(campDetail.days || []).map((d) => (
-                    <tr key={d.id}>
-                      <td className="table-cell">{d.day_date}</td>
+                  {(campDetail.days || []).map((d) => {
+                    const cancelled = d.status === 'cancelled';
+                    const editing = moveDay && moveDay.id === d.id;
+                    return (
+                    <tr key={d.id} className={cancelled ? 'text-gray-400' : ''}>
+                      <td className="table-cell">
+                        <div className="flex items-center gap-2">
+                          <span>{d.day_date}</span>
+                          {cancelled && (
+                            <span className="badge text-xs bg-gray-100 text-gray-600">Cancelled</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="table-cell">{d.start_time} – {d.end_time}</td>
                       <td className="table-cell">{(d.class_type || '').replace('_', ' ')}</td>
+                      <td className="table-cell">
+                        <div className="flex justify-end gap-2 flex-wrap">
+                          {!editing && !cancelled && (
+                            <button onClick={() => openMoveDay(d)} className="btn-secondary btn-sm">
+                              <Calendar className="w-3.5 h-3.5" /> Move
+                            </button>
+                          )}
+                          {cancelled ? (
+                            <button onClick={() => restoreCampDay(d)} className="btn-secondary btn-sm">
+                              <Check className="w-3.5 h-3.5" /> Restore
+                            </button>
+                          ) : (
+                            !editing && (
+                              <button onClick={() => cancelCampDay(d)} className="btn-secondary btn-sm">
+                                <X className="w-3.5 h-3.5" /> Cancel
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+
+            {moveDay && (
+              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 space-y-3">
+                <p className="text-sm font-medium text-gray-900">Move this day</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={moveDay.day_date}
+                      onChange={(e) => setMoveDay({ ...moveDay, day_date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Start time</label>
+                    <input
+                      type="time"
+                      className="input"
+                      value={moveDay.start_time}
+                      onChange={(e) => setMoveDay({ ...moveDay, start_time: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">End time</label>
+                    <input
+                      type="time"
+                      className="input"
+                      value={moveDay.end_time}
+                      onChange={(e) => setMoveDay({ ...moveDay, end_time: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 flex-wrap">
+                  <button onClick={() => setMoveDay(null)} className="btn-secondary btn-sm" disabled={savingDay}>
+                    Close
+                  </button>
+                  <button onClick={saveMoveDay} className="btn-primary btn-sm" disabled={savingDay}>
+                    <Check className="w-4 h-4" /> {savingDay ? 'Saving...' : 'Save day'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <p className="text-xs text-gray-500">
               Mark attendance for each day from the <strong>Attendance</strong> page — camp days appear there alongside regular classes.

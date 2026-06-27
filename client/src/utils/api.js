@@ -155,6 +155,11 @@ const api = {
     body: data,
   }),
 
+  patch: (url, data) => request(url, {
+    method: 'PATCH',
+    body: data,
+  }),
+
   delete: (url) => request(url, { method: 'DELETE' }),
 };
 

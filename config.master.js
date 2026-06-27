@@ -36,21 +36,28 @@ module.exports = {
   },
 
   // ---- Pricing (landing-page display copy only — billing is not wired) -----
-  // Per-student / month. `offer` is the LIVE price shown prominently; `regular`
-  // is the higher struck-through anchor for the launch-offer treatment. To drop
-  // the strike + "Save X%" tag, set regular to null (or equal to offer).
-  // The save % and every volume-tier total are computed from these — they are
-  // the single source for all prices on client/public/landing.html.
+  // Model: a flat monthly BASE that already includes `included` students, then
+  // a per-student rate for each student beyond that. `base`/`perStudent` are the
+  // LIVE launch prices; `baseRegular`/`perStudentRegular` are the higher
+  // struck-through anchors. Set a *Regular to null (or equal to live) to drop
+  // its strike. This object is the single source for every price + the
+  // estimator on client/public/landing.html.
   prices: {
-    // Name of the current promotion, shown as the pill above the pricing
-    // heading on the landing page. Change it per campaign (e.g. 'Diwali offer',
-    // 'Founding-member pricing'). Set to '' (empty) to hide the pill entirely
-    // and present prices as the standard rate with no offer framing.
+    // Promotion pill above the pricing heading. '' hides the pill and presents
+    // prices as the standard rate with no offer framing.
     offerName: 'Limited-time launch offer · introductory pricing',
-    core:     { offer: 100, regular: 149 },   // ~33% off
-    complete: { offer: 200, regular: 299 },   // ~33% off
-    // Student counts shown in the "volume pricing" cards.
-    volumeTiers: [10, 25, 50],
+    core: {
+      base: 1000, baseRegular: 1500,        // ₹/month, includes `included` students
+      included: 15,
+      perStudent: 50, perStudentRegular: 75, // ₹/student/month beyond `included`
+    },
+    complete: {
+      base: 2000, baseRegular: 2999,
+      included: 15,
+      perStudent: 90, perStudentRegular: 130,
+    },
+    // Student counts shown as example totals in the pricing comparison table.
+    sampleCounts: [15, 30, 60],
   },
 
   // ---- Backend-only (functions/api/config.js) ------------------------------

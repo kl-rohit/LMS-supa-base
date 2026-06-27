@@ -243,11 +243,10 @@
         <a href="#mobile" class="hover:text-brand-700">Mobile &amp; PWA</a>
         <a href="#pricing" class="hover:text-brand-700">Pricing</a>
         <a href="#faq" class="hover:text-brand-700">FAQ</a>
-        <a href="#contact" class="hover:text-brand-700">Contact us</a>
       </nav>
       <div class="flex items-center gap-2">
-        <a href="tel:+919360390883" class="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 px-3 py-2 rounded-lg whitespace-nowrap">
-          <i data-lucide="phone" class="w-4 h-4"></i> +91 93603 90883
+        <a href="#contact" class="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800 px-3 py-2 rounded-lg whitespace-nowrap">
+          <i data-lucide="mail" class="w-4 h-4"></i> Contact us
         </a>
         <a href="/app/login" class="magnetic inline-flex items-center gap-1.5 text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg transition-transform active:scale-95">
           Sign in <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -419,8 +418,8 @@
         <div class="text-sm text-slate-500 mt-1">Teacher <em>and</em> parent, mobile &amp; web, with one simple login each.</div>
       </div>
       <div>
-        <div class="text-2xl font-extrabold text-slate-900" data-price="from">From ₹50</div>
-        <div class="text-sm text-slate-500 mt-1">Per student, per month. Honest, all-inclusive pricing you can plan around.</div>
+        <div class="text-2xl font-extrabold text-slate-900">From ₹1,000/mo</div>
+        <div class="text-sm text-slate-500 mt-1">One flat monthly price, first 15 students included. Honest, all-inclusive pricing you can plan around.</div>
       </div>
       <div>
         <div class="text-2xl font-extrabold text-slate-900">Browser-first</div>
@@ -969,90 +968,81 @@
         <span data-offer-pill class="inline-flex items-center gap-2 bg-gold-400/15 text-gold-200 ring-1 ring-gold-400/30 rounded-full px-4 py-1.5 text-sm font-semibold mb-5">
           <i data-lucide="badge-percent" class="w-4 h-4"></i> <span data-offer="name">Limited-time launch offer · introductory pricing</span>
         </span>
-        <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight">Simple, per-student pricing</h2>
-        <p class="mt-4 text-slate-300">Pay only for the students you have. Start with the essentials, or unlock every module. Volume tiers bring the price down as you grow. No setup fees, no lock-in. Lock in introductory pricing while it lasts.</p>
+        <h2 class="text-3xl md:text-4xl font-extrabold tracking-tight">Simple pricing that grows with you</h2>
+        <p class="mt-4 text-slate-300">One flat monthly price that already includes your first <span data-price="core:included">15</span> students. Add more only as you grow. No setup fees, no lock-in. Lock in introductory pricing while it lasts.</p>
       </div>
 
-      <!-- Two plans -->
-      <div class="mt-12 grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-        <div class="reveal rounded-2xl bg-white/5 ring-1 ring-white/10 p-7">
+      <!-- Comparison table: Core vs Complete -->
+      <div class="mt-12 grid md:grid-cols-2 gap-6 max-w-4xl mx-auto items-stretch">
+        <!-- Core column -->
+        <div class="reveal rounded-2xl bg-white/5 ring-1 ring-white/10 p-7 flex flex-col">
           <div class="flex items-center justify-between">
             <h3 class="text-lg font-bold">Core</h3>
-            <span class="text-xs bg-white/10 px-2.5 py-1 rounded-full">Most popular to start</span>
+            <span class="text-xs bg-white/10 px-2.5 py-1 rounded-full">The essentials</span>
           </div>
-          <div class="mt-4 flex items-end gap-2">
-            <span class="text-2xl font-bold text-slate-500 line-through mb-0.5" data-price="core:regular">₹75</span>
-            <span class="text-4xl font-extrabold" data-price="core:offer">₹50</span>
-            <span class="text-slate-400 mb-1">/ student / month</span>
+          <div class="mt-4 flex items-end gap-2 flex-wrap">
+            <span class="text-4xl font-extrabold" data-price="core:base">₹1,000</span>
+            <span class="text-xl font-bold text-slate-500 line-through mb-1" data-price="core:baseRegular">₹1,500</span>
+            <span class="text-slate-400 mb-1">/mo</span>
           </div>
-          <div class="mt-1 text-xs font-semibold text-gold-300" data-price="core:save">Save 33% · intro price</div>
-          <ul class="mt-5 space-y-2 text-sm text-slate-300">
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Students, groups &amp; classes</li>
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Attendance &amp; timetable</li>
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Fees, UPI &amp; QR collection</li>
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Messaging &amp; notifications</li>
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Reports &amp; summaries</li>
-            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300"></i> Parent portal</li>
+          <div class="mt-1 text-sm text-slate-300">
+            + <span data-price="core:perStudent">₹50</span> <span class="text-slate-500 line-through" data-price="core:perStudentRegular">₹75</span> / student after <span data-price="core:included">15</span>
+          </div>
+          <ul class="mt-6 space-y-3 text-sm text-slate-300 flex-1">
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Students, attendance &amp; timetable</li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Fees, UPI &amp; QR collection</li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Messaging &amp; notifications</li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-gold-300 shrink-0"></i> Reports &amp; parent portal</li>
+            <li class="flex items-center gap-2 text-slate-500"><span class="w-4 h-4 grid place-items-center shrink-0">–</span> Online video lessons</li>
+            <li class="flex items-center gap-2 text-slate-500"><span class="w-4 h-4 grid place-items-center shrink-0">–</span> Quizzes &amp; certificates</li>
+            <li class="flex items-center gap-2 text-slate-500"><span class="w-4 h-4 grid place-items-center shrink-0">–</span> Assignments &amp; question papers</li>
           </ul>
+          <a href="#contact" data-confetti class="shine magnetic mt-6 inline-flex items-center justify-center gap-2 w-full font-semibold text-white ring-1 ring-white/30 hover:bg-white/10 px-5 py-3 rounded-xl transition-colors">
+            <i data-lucide="mail" class="w-4 h-4"></i> Contact us
+          </a>
         </div>
+
+        <!-- Complete column (emphasised) -->
         <div class="reveal grad-border rounded-2xl p-[2px]">
-          <div class="rounded-[14px] bg-brand-600 p-7 relative overflow-hidden h-full">
+          <div class="rounded-[14px] bg-brand-600 ring-1 ring-brand-300/40 p-7 relative overflow-hidden h-full flex flex-col">
             <div class="absolute top-4 right-4 text-[11px] font-bold bg-white text-brand-700 px-2.5 py-1 rounded-full">All modules</div>
-            <h3 class="text-lg font-bold">Complete</h3>
-            <div class="mt-4 flex items-end gap-2">
-              <span class="text-2xl font-bold text-brand-200 line-through mb-0.5" data-price="complete:regular">₹150</span>
-              <span class="text-4xl font-extrabold" data-price="complete:offer">₹100</span>
-              <span class="text-brand-100 mb-1">/ student / month</span>
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-bold">Complete</h3>
             </div>
-            <div class="mt-1 text-xs font-semibold text-gold-200" data-price="complete:save">Save 33% · intro price</div>
-            <ul class="mt-5 space-y-2 text-sm text-brand-50">
-              <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4"></i> Everything in Core</li>
-              <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4"></i> Online lessons &amp; video courses</li>
-              <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4"></i> Quizzes &amp; certificates</li>
-              <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4"></i> Assignments</li>
-              <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4"></i> Question papers</li>
+            <div class="mt-4 flex items-end gap-2 flex-wrap">
+              <span class="text-4xl font-extrabold" data-price="complete:base">₹2,000</span>
+              <span class="text-xl font-bold text-brand-200 line-through mb-1" data-price="complete:baseRegular">₹2,999</span>
+              <span class="text-brand-100 mb-1">/mo</span>
+            </div>
+            <div class="mt-1 text-sm text-brand-50">
+              + <span data-price="complete:perStudent">₹90</span> <span class="text-brand-200 line-through" data-price="complete:perStudentRegular">₹130</span> / student after <span data-price="complete:included">15</span>
+            </div>
+            <ul class="mt-6 space-y-3 text-sm text-brand-50 flex-1">
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Students, attendance &amp; timetable</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Fees, UPI &amp; QR collection</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Messaging &amp; notifications</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Reports &amp; parent portal</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Online video lessons</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Quizzes &amp; certificates</li>
+              <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 shrink-0"></i> Assignments &amp; question papers</li>
             </ul>
+            <a href="#contact" data-confetti class="shine magnetic mt-6 inline-flex items-center justify-center gap-2 w-full font-semibold bg-white text-brand-700 hover:bg-slate-100 px-5 py-3 rounded-xl transition-colors">
+              <i data-lucide="mail" class="w-4 h-4"></i> Contact us
+            </a>
           </div>
         </div>
       </div>
 
-      <!-- Volume tiers -->
-      <div class="mt-14">
-        <h3 class="text-center text-sm font-semibold uppercase tracking-wider text-slate-400">Volume tiers</h3>
-        <div class="mt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="rounded-2xl bg-white/5 ring-1 ring-white/10 p-5 text-center" data-tier="0">
-            <div class="text-sm text-slate-400">Up to</div>
-            <div class="text-3xl font-extrabold" data-tier-count data-count="10">10</div>
-            <div class="text-sm text-slate-400">students</div>
-            <div class="mt-4 text-sm">Core <span class="text-slate-500 line-through" data-tier-price="core:regular">₹750</span> <span class="font-bold" data-tier-price="core:offer">₹500</span><span class="text-slate-400">/mo</span></div>
-            <div class="text-sm">Complete <span class="text-slate-500 line-through" data-tier-price="complete:regular">₹1,500</span> <span class="font-bold" data-tier-price="complete:offer">₹1,000</span><span class="text-slate-400">/mo</span></div>
-          </div>
-          <div class="rounded-2xl bg-white/5 ring-1 ring-white/10 p-5 text-center" data-tier="1">
-            <div class="text-sm text-slate-400">Up to</div>
-            <div class="text-3xl font-extrabold" data-tier-count data-count="25">25</div>
-            <div class="text-sm text-slate-400">students</div>
-            <div class="mt-4 text-sm">Core <span class="text-slate-500 line-through" data-tier-price="core:regular">₹1,875</span> <span class="font-bold" data-tier-price="core:offer">₹1,250</span><span class="text-slate-400">/mo</span></div>
-            <div class="text-sm">Complete <span class="text-slate-500 line-through" data-tier-price="complete:regular">₹3,750</span> <span class="font-bold" data-tier-price="complete:offer">₹2,500</span><span class="text-slate-400">/mo</span></div>
-          </div>
-          <div class="rounded-2xl bg-white/5 ring-1 ring-white/10 p-5 text-center" data-tier="2">
-            <div class="text-sm text-slate-400">Up to</div>
-            <div class="text-3xl font-extrabold" data-tier-count data-count="50">50</div>
-            <div class="text-sm text-slate-400">students</div>
-            <div class="mt-4 text-sm">Core <span class="text-slate-500 line-through" data-tier-price="core:regular">₹3,750</span> <span class="font-bold" data-tier-price="core:offer">₹2,500</span><span class="text-slate-400">/mo</span></div>
-            <div class="text-sm">Complete <span class="text-slate-500 line-through" data-tier-price="complete:regular">₹7,500</span> <span class="font-bold" data-tier-price="complete:offer">₹5,000</span><span class="text-slate-400">/mo</span></div>
-          </div>
-          <div class="rounded-2xl bg-brand-600/20 ring-1 ring-brand-400/40 p-5 text-center">
-            <div class="text-sm text-brand-200">50+</div>
-            <div class="text-3xl font-extrabold">More</div>
-            <div class="text-sm text-brand-200">students</div>
-            <div class="mt-4 text-sm text-slate-200">Custom volume pricing</div>
-            <div class="text-xs text-gold-200">Intro pricing applies</div>
-            <a href="tel:+919360390883" data-confetti class="mt-2 inline-block text-sm font-semibold text-white underline">Talk to us</a>
-          </div>
-        </div>
+      <!-- Feature-comparison teaser → full matrix lives on the standalone page -->
+      <div class="mt-12 max-w-3xl mx-auto text-center rounded-2xl bg-white/5 ring-1 ring-white/10 p-8">
+        <h3 class="text-2xl font-bold tracking-tight">See how Core and Complete compare</h3>
+        <p class="mt-2 text-slate-300 text-sm max-w-xl mx-auto">A category-by-category breakdown of every feature, from students and fees to lessons, quizzes, assignments and reports.</p>
+        <a href="/app/pricing.html" class="mt-6 inline-flex items-center gap-2 bg-gold-400 hover:bg-gold-300 text-brand-900 font-bold px-6 py-3.5 rounded-xl text-base shadow-sm transition-transform active:scale-95">
+          <i data-lucide="table-2" class="w-5 h-5"></i> Compare every feature
+        </a>
       </div>
 
-      <!-- Live estimator -->
+      <!-- Cost calculator -->
       <div class="mt-12 max-w-xl mx-auto rounded-2xl bg-white text-slate-800 p-6">
         <h3 class="font-bold text-slate-900 flex items-center gap-2"><i data-lucide="calculator" class="w-5 h-5 text-brand-600"></i> Estimate your monthly cost</h3>
         <div class="mt-4 grid sm:grid-cols-2 gap-4 items-end">
@@ -1064,17 +1054,19 @@
           <label class="block text-sm">
             <span class="font-medium text-slate-700">Plan</span>
             <select id="est-plan" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500">
-              <option value="50" data-regular="75" data-plan="core">Core · ₹50 / student</option>
-              <option value="100" data-regular="150" data-plan="complete">Complete · ₹100 / student</option>
+              <option value="core" data-plan="core">Core</option>
+              <option value="complete" data-plan="complete">Complete</option>
             </select>
           </label>
         </div>
         <div class="mt-5 flex items-baseline justify-between border-t border-slate-100 pt-4">
           <span class="text-slate-500 text-sm">Estimated monthly total</span>
-          <span id="est-total" class="text-3xl font-extrabold text-brand-700">₹1,250</span>
+          <span id="est-total" class="text-3xl font-extrabold text-brand-700">₹1,500</span>
         </div>
-        <div id="est-save" class="mt-1 text-right text-sm font-semibold text-emerald-600">Regular ₹1,875 · You save ₹625/mo</div>
-        <p class="mt-2 text-xs text-slate-400">Indicative pricing. Final rate may vary by volume tier and billing cycle. <a href="tel:+919360390883" class="text-brand-600 underline">Call us for a quote</a>.</p>
+        <div id="est-breakdown" class="mt-1 text-right text-xs text-slate-500">₹1,000 base · 15 students included + ₹500 for 10 more</div>
+        <div id="est-save" class="mt-1 text-right text-sm font-semibold text-emerald-600">Regular ₹2,250 · You save ₹750/mo</div>
+        <div id="est-value" class="mt-4 rounded-xl bg-brand-50 ring-1 ring-brand-100 p-4 text-sm text-slate-700"></div>
+        <p class="mt-3 text-xs text-slate-400">Indicative pricing. We will confirm a quote for your exact student count when you reach out below.</p>
       </div>
     </div>
     <!-- Wave divider: blends the dark pricing section into the light FAQ below -->
@@ -1106,7 +1098,7 @@
       </details>
       <details class="group rounded-2xl bg-white ring-1 ring-slate-200 p-5 [&_summary]:cursor-pointer">
         <summary class="flex items-center justify-between font-semibold text-slate-900">What's the difference between Core and Complete?<i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition group-open:rotate-180"></i></summary>
-        <p class="mt-2 text-sm text-slate-600">Core (<span data-price="core:offer">₹50</span>/student) covers the day-to-day essentials: students, attendance, timetable, fees, messaging and the parent portal. Complete (<span data-price="complete:offer">₹100</span>/student) adds online video lessons, quizzes &amp; certificates, assignments, question papers and reports.</p>
+        <p class="mt-2 text-sm text-slate-600">Core (from ₹1,000/mo, includes 15 students) covers the day-to-day essentials: students, attendance, timetable, fees, messaging and the parent portal. Complete (from ₹2,000/mo) adds online video lessons, quizzes &amp; certificates, assignments, question papers and reports.</p>
       </details>
       <details class="group rounded-2xl bg-white ring-1 ring-slate-200 p-5 [&_summary]:cursor-pointer">
         <summary class="flex items-center justify-between font-semibold text-slate-900">Can I import my existing student list?<i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition group-open:rotate-180"></i></summary>
@@ -1114,7 +1106,7 @@
       </details>
       <details class="group rounded-2xl bg-white ring-1 ring-slate-200 p-5 [&_summary]:cursor-pointer">
         <summary class="flex items-center justify-between font-semibold text-slate-900">How do I get started?<i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition group-open:rotate-180"></i></summary>
-        <p class="mt-2 text-sm text-slate-600">Just call <a href="tel:+919360390883" class="text-brand-600 font-semibold underline">+91 93603 90883</a>. We'll set up your academy, walk you through it, and give you a quote based on your student count.</p>
+        <p class="mt-2 text-sm text-slate-600"><a href="#contact" class="text-brand-600 font-semibold underline">Share your details</a> and we'll set up your academy, walk you through it, and give you a quote based on your student count.</p>
       </details>
     </div>
   </section>
@@ -1281,6 +1273,23 @@
     <div class="text-center text-xs text-slate-600 pb-8">© <span id="yr"></span> VidyaSetu. All rights reserved.</div>
   </footer>
 
+  <!-- Timed lead nudge — appears once, ~30s after arrival. Subtle (soft fade,
+       easy dismiss) but present (bottom sheet on mobile, centred card on web). -->
+  <div id="lead-nudge" class="fixed inset-0 z-[60] hidden items-end sm:items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+    <div id="lead-nudge-card" class="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 p-6 opacity-0 translate-y-3 transition-all duration-300">
+      <button id="lead-nudge-close" type="button" aria-label="Close" class="absolute top-3 right-3 p-1.5 rounded-md text-slate-400 hover:bg-slate-100">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+      <div class="w-11 h-11 rounded-full bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="sparkles" class="w-5 h-5"></i></div>
+      <h3 class="mt-3 text-lg font-bold text-slate-900">Still looking around?</h3>
+      <p class="mt-1 text-sm text-slate-600">Share a few details and we will set up your academy for free and show you around. It takes about a minute.</p>
+      <div class="mt-5 flex items-center gap-2">
+        <a id="lead-nudge-cta" href="#contact" class="flex-1 text-center font-semibold bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-xl transition-colors">Share your details</a>
+        <button id="lead-nudge-later" type="button" class="text-sm font-medium text-slate-500 hover:text-slate-700 px-3 py-2.5">Maybe later</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // =====================================================================
     // LANDING-PAGE CONFIG
@@ -1299,9 +1308,9 @@
       CURRENCY:      '₹',
       OFFER_NAME:    'Limited-time launch offer · introductory pricing',
       PRICES: {
-        core:     { offer: 100, regular: 149, save: 33 },
-        complete: { offer: 200, regular: 299, save: 33 },
-        volumeTiers: [10, 25, 50],
+        core:     { base: 1000, baseRegular: 1500, included: 15, perStudent: 50, perStudentRegular: 75 },
+        complete: { base: 2000, baseRegular: 2999, included: 15, perStudent: 90, perStudentRegular: 130 },
+        sampleCounts: [15, 30, 60],
       },
     };
     /* GEN:CONFIG:END */
@@ -1322,14 +1331,14 @@
       });
 
       // 3) Pricing — fill every price element from cfg.PRICES so the master
-      //    config is the single source. Computes the "Save X%" tag, the
-      //    volume-tier totals (count x rate) and the hero "From" figure.
-      //    A missing regular anchor hides the strike + the save tag.
+      //    config is the single source. Model is a flat monthly base that
+      //    includes `included` students, then a per-student rate beyond that.
+      //    A missing (or non-higher) *Regular anchor hides its strike.
       var P = cfg.PRICES;
       if (!P) return;
       var sym = cfg.CURRENCY || '₹';
       function fmt(n) { return sym + Number(n).toLocaleString('en-IN'); }
-      function plan(key) { return P[key] || { offer: 0, regular: null, save: 0 }; }
+      function plan(key) { return P[key] || { base: 0, baseRegular: null, included: 0, perStudent: 0, perStudentRegular: null }; }
 
       // Offer pill — driven by cfg.OFFER_NAME. Empty name hides the whole pill
       // (and the strike/save tags fall away on their own when regular === offer).
@@ -1339,70 +1348,50 @@
         el.style.display = offerName ? '' : 'none';
       });
 
-      // Plan cards + inline FAQ prices + hero "From".
+      // Plan columns + inline included counts. Each [data-price] carries a
+      // "<plan>:<field>" spec in the base + per-student model.
       document.querySelectorAll('[data-price]').forEach(function (el) {
-        var spec = el.getAttribute('data-price');
-        if (spec === 'from') {
-          el.textContent = 'From ' + fmt(Math.min(plan('core').offer, plan('complete').offer));
-          return;
-        }
-        var parts = spec.split(':'), pl = plan(parts[0]), field = parts[1];
-        if (field === 'offer') {
-          el.textContent = fmt(pl.offer);
-        } else if (field === 'regular') {
-          if (pl.regular && pl.regular > pl.offer) { el.textContent = fmt(pl.regular); el.style.display = ''; }
+        var parts = el.getAttribute('data-price').split(':'), pl = plan(parts[0]), field = parts[1];
+        if (field === 'base') {
+          el.textContent = fmt(pl.base);
+        } else if (field === 'perStudent') {
+          el.textContent = fmt(pl.perStudent);
+        } else if (field === 'included') {
+          el.textContent = String(pl.included);
+        } else if (field === 'baseRegular') {
+          if (pl.baseRegular && pl.baseRegular > pl.base) { el.textContent = fmt(pl.baseRegular); el.style.display = ''; }
           else { el.style.display = 'none'; }
-        } else if (field === 'save') {
-          if (pl.save > 0) { el.textContent = 'Save ' + pl.save + '% · intro price'; el.style.display = ''; }
+        } else if (field === 'perStudentRegular') {
+          if (pl.perStudentRegular && pl.perStudentRegular > pl.perStudent) { el.textContent = fmt(pl.perStudentRegular); el.style.display = ''; }
           else { el.style.display = 'none'; }
         }
-      });
-
-      // Volume tiers: each card's student count times the per-student rate.
-      var tiers = P.volumeTiers || [];
-      document.querySelectorAll('[data-tier]').forEach(function (card) {
-        var count = tiers[parseInt(card.getAttribute('data-tier'), 10)];
-        if (count == null) return;
-        var cEl = card.querySelector('[data-tier-count]');
-        if (cEl) cEl.textContent = count;
-        card.querySelectorAll('[data-tier-price]').forEach(function (el) {
-          var parts = el.getAttribute('data-tier-price').split(':'), pl = plan(parts[0]), field = parts[1];
-          if (field === 'offer') {
-            el.textContent = fmt(count * pl.offer);
-          } else if (field === 'regular') {
-            if (pl.regular && pl.regular > pl.offer) { el.textContent = fmt(count * pl.regular); el.style.display = ''; }
-            else { el.style.display = 'none'; }
-          }
-        });
-      });
-
-      // Estimator options: value = live rate, data-regular = struck anchor.
-      document.querySelectorAll('#est-plan option[data-plan]').forEach(function (opt) {
-        var pl = plan(opt.getAttribute('data-plan'));
-        var label = opt.textContent.split('·')[0].trim();
-        opt.value = pl.offer;
-        if (pl.regular && pl.regular > pl.offer) opt.setAttribute('data-regular', pl.regular);
-        else opt.removeAttribute('data-regular');
-        opt.textContent = label + ' · ' + fmt(pl.offer) + ' / student';
       });
     })();
 
-    // Pricing estimator
+    // Pricing estimator — base + per-student-beyond-included model.
     (function () {
+      var P = (LANDING_CONFIG && LANDING_CONFIG.PRICES) || {};
+      var sym = (LANDING_CONFIG && LANDING_CONFIG.CURRENCY) || '₹';
       var count = document.getElementById('est-count');
-      var plan = document.getElementById('est-plan');
+      var planSelect = document.getElementById('est-plan');
       var total = document.getElementById('est-total');
+      var breakdown = document.getElementById('est-breakdown');
       var save = document.getElementById('est-save');
-      function fmt(n) { return '₹' + Number(n).toLocaleString('en-IN'); }
+      var value = document.getElementById('est-value');
+      if (!count || !planSelect) return;
+      function fmt(n) { return sym + Number(n).toLocaleString('en-IN'); }
       function recalc() {
+        var plan = P[planSelect.value] || P.core || { base: 0, included: 0, perStudent: 0 };
         var c = Math.max(0, parseInt(count.value, 10) || 0);
-        var opt = plan.options[plan.selectedIndex];
-        var rate = parseInt(plan.value, 10) || 0;
-        var regularRate = parseInt(opt && opt.dataset.regular, 10) || rate;
-        var offer = c * rate;
-        var regular = c * regularRate;
-        var saved = regular - offer;
-        total.textContent = fmt(offer);
+        var extra = Math.max(0, c - plan.included);
+        var total$ = plan.base + extra * plan.perStudent;
+        var regular = (plan.baseRegular || plan.base) + extra * (plan.perStudentRegular || plan.perStudent);
+        var saved = regular - total$;
+        if (total) total.textContent = fmt(total$);
+        if (breakdown) {
+          breakdown.textContent = fmt(plan.base) + ' base · ' + plan.included + ' students included' +
+            (extra > 0 ? ' + ' + fmt(extra * plan.perStudent) + ' for ' + extra + ' more' : '');
+        }
         if (save) {
           if (saved > 0) {
             save.textContent = 'Regular ' + fmt(regular) + ' · You save ' + fmt(saved) + '/mo';
@@ -1411,9 +1400,22 @@
             save.style.display = 'none';
           }
         }
+        if (value) {
+          var hrs = Math.round(5 + 0.45 * c);
+          value.innerHTML =
+            'Plus the time you get back: about <b>' + hrs + ' hours every month</b>' +
+            '<ul class="mt-2 space-y-1 text-slate-600">' +
+              '<li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500 shrink-0"></i> No more paper registers or manual attendance</li>' +
+              '<li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500 shrink-0"></i> Automatic fee reminders instead of chasing parents</li>' +
+              '<li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500 shrink-0"></i> One-tap parent updates instead of WhatsApp by hand</li>' +
+              '<li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500 shrink-0"></i> Reports ready instantly, no spreadsheets</li>' +
+            '</ul>';
+          if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        }
       }
       count.addEventListener('input', recalc);
-      plan.addEventListener('change', recalc);
+      count.addEventListener('change', recalc);
+      planSelect.addEventListener('change', recalc);
       recalc();
     })();
 
@@ -1744,6 +1746,33 @@
     })();
 
     document.getElementById('yr').textContent = new Date().getFullYear();
+
+    // Timed lead nudge: show once, ~30s in, unless already seen or the visitor
+    // is already at the contact form. Soft fade in; any dismiss remembers.
+    (function () {
+      var KEY = 'vs_lead_nudge_seen';
+      var modal = document.getElementById('lead-nudge');
+      var card = document.getElementById('lead-nudge-card');
+      if (!modal || !card) return;
+      try { if (localStorage.getItem(KEY)) return; } catch (e) {}
+      function dismiss() {
+        card.classList.add('opacity-0', 'translate-y-3');
+        setTimeout(function () { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 250);
+        try { localStorage.setItem(KEY, '1'); } catch (e) {}
+      }
+      function open() {
+        if ((location.hash || '') === '#contact') return; // already converting
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        requestAnimationFrame(function () { card.classList.remove('opacity-0', 'translate-y-3'); });
+        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+      }
+      setTimeout(open, 30000);
+      document.getElementById('lead-nudge-close').addEventListener('click', dismiss);
+      document.getElementById('lead-nudge-later').addEventListener('click', dismiss);
+      document.getElementById('lead-nudge-cta').addEventListener('click', dismiss);
+      modal.addEventListener('click', function (e) { if (e.target === modal) dismiss(); });
+    })();
   </script>
   <!-- Lucide icons, loaded at end of body so it does not block first paint -->
   <script src="https://unpkg.com/lucide@latest"></script>

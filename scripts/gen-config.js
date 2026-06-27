@@ -133,8 +133,8 @@ export const CURRENCY_SYMBOL      = ${s(shared.currencySymbol)};
 // Live (offer) per-student / month prices. The struck-through "regular" anchors
 // used on the marketing landing page live in config.master.js too.
 export const PLAN_PRICES = {
-  core:     ${Number(prices.core.offer)},
-  complete: ${Number(prices.complete.offer)},
+  core:     ${Number(prices.core.base)},
+  complete: ${Number(prices.complete.base)},
 };
 
 export default {
@@ -154,22 +154,14 @@ export default {
 // ---------------------------------------------------------------------------
 // 3) Landing page — replace the block between GEN:CONFIG markers
 // ---------------------------------------------------------------------------
-// Percent off, rounded. 0 when there is no higher anchor (no strike shown).
-function savePct(plan) {
-  const off = Number(plan.offer);
-  const reg = Number(plan.regular);
-  if (!reg || reg <= off) return 0;
-  return Math.round(((reg - off) / reg) * 100);
-}
-
-// One plan as a JS object literal: { offer, regular, save }.
+// One plan as a JS object literal in the base + per-student shape.
 function planLiteral(plan) {
-  const reg = (plan.regular === null || plan.regular === undefined) ? 'null' : Number(plan.regular);
-  return `{ offer: ${Number(plan.offer)}, regular: ${reg}, save: ${savePct(plan)} }`;
+  const num = (v) => (v === null || v === undefined ? 'null' : Number(v));
+  return `{ base: ${Number(plan.base)}, baseRegular: ${num(plan.baseRegular)}, included: ${Number(plan.included)}, perStudent: ${Number(plan.perStudent)}, perStudentRegular: ${num(plan.perStudentRegular)} }`;
 }
 
 function landingBlock() {
-  const tiers = Array.isArray(prices.volumeTiers) ? prices.volumeTiers : [10, 25, 50];
+  const counts = Array.isArray(prices.sampleCounts) ? prices.sampleCounts : [15, 30, 60];
   return `    /* GEN:CONFIG:START — generated from config.master.js, do not edit by hand */
     var LANDING_CONFIG = {
       BRAND_NAME:    ${s(shared.brandName)},
@@ -181,7 +173,7 @@ function landingBlock() {
       PRICES: {
         core:     ${planLiteral(prices.core)},
         complete: ${planLiteral(prices.complete)},
-        volumeTiers: [${tiers.map(Number).join(', ')}],
+        sampleCounts: [${counts.map(Number).join(', ')}],
       },
     };
     /* GEN:CONFIG:END */`;
@@ -192,7 +184,7 @@ function patchLanding(file) {
   const re = /[ \t]*\/\* GEN:CONFIG:START[\s\S]*?\/\* GEN:CONFIG:END \*\//;
   if (!re.test(src)) {
     throw new Error(
-      'landing.html is missing the GEN:CONFIG:START / GEN:CONFIG:END markers. ' +
+      path.basename(file) + ' is missing the GEN:CONFIG:START / GEN:CONFIG:END markers. ' +
       'Add them around the LANDING_CONFIG object so the generator can target it.'
     );
   }
@@ -221,9 +213,12 @@ function main() {
   write('functions/api/config.js', backendFile());
   write('client/src/config.js', frontendFile());
 
-  const landing = path.join(ROOT, 'client/public/landing.html');
-  const changed = patchLanding(landing);
-  console.log((changed ? '  ✓ ' : '  = ') + 'client/public/landing.html' + (changed ? '' : ' (unchanged)'));
+  // Both static marketing pages carry the GEN:CONFIG block so their prices /
+  // offer copy stay sourced from the master config.
+  ['client/public/landing.html', 'client/public/pricing.html'].forEach(function (rel) {
+    const changed = patchLanding(path.join(ROOT, rel));
+    console.log((changed ? '  ✓ ' : '  = ') + rel + (changed ? '' : ' (unchanged)'));
+  });
 
   console.log('✔ config generated');
 }

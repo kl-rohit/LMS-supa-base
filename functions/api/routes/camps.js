@@ -3,6 +3,11 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
 
+// CampDays.status defaults to 'active' when the column is absent or empty.
+function dayStatus(d) {
+  return d && d.status ? d.status : 'active';
+}
+
 function calcDuration(start, end) {
   if (!start || !end) return 1;
   const [sh, sm] = start.split(':').map(Number);
@@ -41,7 +46,11 @@ async function decorate(req, camp) {
   }
   try {
     const dRows = await zcql(req, `SELECT * FROM CampDays WHERE CampDays.camp_id = ${camp.ROWID} AND CampDays.org_id = ${Number(req.orgId)} ORDER BY CampDays.day_date ASC`);
-    out.days = unwrap(dRows, 'CampDays').map(normalize);
+    out.days = unwrap(dRows, 'CampDays').map((d) => {
+      const n = normalize(d);
+      n.status = dayStatus(n);
+      return n;
+    });
   } catch {
     out.days = [];
   }
@@ -81,6 +90,7 @@ async function decorateCampsList(req, camps) {
   ]);
   const daysByCamp = new Map();
   for (const d of unwrap(dayRows, 'CampDays').map(normalize)) {
+    d.status = dayStatus(d);
     const k = String(d.camp_id);
     if (!daysByCamp.has(k)) daysByCamp.set(k, []);
     daysByCamp.get(k).push(d);
@@ -119,7 +129,14 @@ router.get('/days/by-date/:date', async (req, res) => {
       req,
       `SELECT * FROM CampDays WHERE CampDays.day_date = ${q(date)} AND CampDays.org_id = ${Number(req.orgId)}`
     );
-    const days = unwrap(dayRows, 'CampDays').map(normalize);
+    const days = unwrap(dayRows, 'CampDays')
+      .map((d) => {
+        const n = normalize(d);
+        n.status = dayStatus(n);
+        return n;
+      })
+      // A cancelled day should not surface as a class to take attendance for.
+      .filter((d) => d.status !== 'cancelled');
     // Resolve parent camps and group rosters in bulk rather than per day: one
     // Camps pull (by ROWID) + the shared group-roster maps replace the old
     // getById Camps + GroupStudents + Students reads per camp day.
@@ -219,6 +236,76 @@ router.post('/days/:dayId/attendance', async (req, res) => {
     res.status(201).json({ results, count: results.filter((r) => r.ok).length });
   } catch (e) {
     res.status(500).json({ error: 'Camp day attendance failed', detail: e.message });
+  }
+});
+
+// PATCH /api/camps/days/:dayId — move/reschedule a single camp day.
+router.patch('/days/:dayId', async (req, res) => {
+  try {
+    const day = await getById(req, 'CampDays', req.params.dayId);
+    if (!day || Number(day.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp day not found' });
+
+    const { day_date, start_time, end_time } = req.body;
+    const patch = {};
+    if (day_date !== undefined) {
+      if (typeof day_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day_date)) {
+        return res.status(400).json({ error: 'day_date must be a YYYY-MM-DD string' });
+      }
+      patch.day_date = day_date;
+    }
+    if (start_time !== undefined) patch.start_time = start_time;
+    if (end_time !== undefined) patch.end_time = end_time;
+
+    // Recompute duration when either time bound changes.
+    if (start_time !== undefined || end_time !== undefined) {
+      const s = start_time !== undefined ? start_time : day.start_time;
+      const e = end_time !== undefined ? end_time : day.end_time;
+      patch.duration_hours = calcDuration(s, e);
+    }
+
+    const updated = await update(req, 'CampDays', req.params.dayId, patch);
+    const out = normalize(updated);
+    out.status = dayStatus(out);
+    res.json({ day: out });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to move camp day', detail: e.message });
+  }
+});
+
+// POST /api/camps/days/:dayId/cancel — soft-cancel a single camp day.
+router.post('/days/:dayId/cancel', async (req, res) => {
+  try {
+    const day = await getById(req, 'CampDays', req.params.dayId);
+    if (!day || Number(day.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp day not found' });
+    try {
+      const updated = await update(req, 'CampDays', req.params.dayId, { status: 'cancelled' });
+      const out = normalize(updated);
+      out.status = dayStatus(out);
+      res.json({ day: out });
+    } catch (e) {
+      // Most likely the status column has not been added in the console yet.
+      return res.status(400).json({ error: 'Add a status column to CampDays in the console', detail: e.message });
+    }
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to cancel camp day', detail: e.message });
+  }
+});
+
+// POST /api/camps/days/:dayId/restore — bring a cancelled day back to active.
+router.post('/days/:dayId/restore', async (req, res) => {
+  try {
+    const day = await getById(req, 'CampDays', req.params.dayId);
+    if (!day || Number(day.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Camp day not found' });
+    try {
+      const updated = await update(req, 'CampDays', req.params.dayId, { status: 'active' });
+      const out = normalize(updated);
+      out.status = dayStatus(out);
+      res.json({ day: out });
+    } catch (e) {
+      return res.status(400).json({ error: 'Add a status column to CampDays in the console', detail: e.message });
+    }
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to restore camp day', detail: e.message });
   }
 });
 

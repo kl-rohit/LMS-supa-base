@@ -120,78 +120,89 @@ export default function NotificationBell({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
-            <div className="flex items-center gap-1">
-              {unread > 0 && (
-                <button onClick={markAll} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1">
-                  <CheckCheck className="w-3.5 h-3.5" /> Mark all read
+        <>
+          {/* Mobile backdrop — tap to dismiss. Hidden on sm+ where the popover
+              floats over the page instead of taking the whole screen. */}
+          <div
+            className="fixed inset-0 z-40 bg-black/40 sm:hidden"
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Mobile: full-screen overlay. sm+: anchored dropdown. */}
+          <div className="fixed inset-0 z-50 flex flex-col bg-white sm:absolute sm:inset-auto sm:right-0 sm:mt-2 sm:flex sm:w-80 sm:max-w-[calc(100vw-2rem)] sm:max-h-[80vh] sm:border sm:border-gray-200 sm:rounded-xl sm:shadow-lg sm:overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-4 sm:py-3 border-b border-gray-100 flex-shrink-0">
+              <h3 className="text-lg sm:text-sm font-semibold text-gray-900">Notifications</h3>
+              <div className="flex items-center gap-1">
+                {unread > 0 && (
+                  <button onClick={markAll} className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-1">
+                    <CheckCheck className="w-3.5 h-3.5" /> Mark all read
+                  </button>
+                )}
+                <button onClick={() => setOpen(false)} className="p-1.5 sm:p-1 rounded hover:bg-gray-100 text-gray-400" aria-label="Close notifications">
+                  <X className="w-5 h-5 sm:w-4 sm:h-4" />
                 </button>
-              )}
-              <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-gray-100 text-gray-400">
-                <X className="w-4 h-4" />
+              </div>
+            </div>
+
+            {/* Push enable prompt */}
+            {isSupported && permission !== 'denied' && (
+              <button
+                onClick={subscribed ? unsubscribe : subscribe}
+                disabled={busy}
+                className="w-full flex items-center gap-2 px-4 py-3 sm:py-2.5 text-sm sm:text-xs border-b border-gray-100 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {subscribed ? <BellOff className="w-4 h-4" /> : <BellRing className="w-4 h-4 text-indigo-600" />}
+                {subscribed ? 'Turn off push notifications' : 'Enable push notifications on this device'}
               </button>
+            )}
+
+            <div className="flex-1 overflow-y-auto sm:flex-none sm:max-h-96">
+              {items.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <Bell className="w-8 h-8 mx-auto text-gray-300" />
+                  <p className="text-sm text-gray-500 mt-2">No notifications yet</p>
+                </div>
+              ) : (
+                items.map((n) => {
+                  const meta = TYPE_META[n.type] || TYPE_META.general;
+                  const MIcon = meta.icon;
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => openItem(n)}
+                      className={`w-full text-left flex items-start gap-3 px-4 py-4 sm:py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${n.read ? '' : 'bg-indigo-50/40'}`}
+                    >
+                      <div className={`w-9 h-9 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.cls}`}>
+                        <MIcon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-2">
+                          <p className={`text-base sm:text-sm break-words ${n.read ? 'text-gray-700' : 'font-semibold text-gray-900'}`}>{n.title}</p>
+                          {!n.read && <span className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
+                        </div>
+                        {n.body && <p className="text-sm sm:text-xs text-gray-500 mt-0.5 break-words whitespace-pre-wrap">{n.body}</p>}
+                        <p className="text-xs sm:text-[11px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+                      </div>
+                      {!n.read && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); markRead(n); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); markRead(n); } }}
+                          className="p-1 rounded hover:bg-gray-200 text-gray-400 flex-shrink-0"
+                          title="Mark read"
+                        >
+                          <Check className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
-
-          {/* Push enable prompt */}
-          {isSupported && permission !== 'denied' && (
-            <button
-              onClick={subscribed ? unsubscribe : subscribe}
-              disabled={busy}
-              className="w-full flex items-center gap-2 px-4 py-2.5 text-xs border-b border-gray-100 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-60"
-            >
-              {subscribed ? <BellOff className="w-4 h-4" /> : <BellRing className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
-              {subscribed ? 'Turn off push notifications' : 'Enable push notifications on this device'}
-            </button>
-          )}
-
-          <div className="max-h-96 overflow-y-auto">
-            {items.length === 0 ? (
-              <div className="px-4 py-10 text-center">
-                <Bell className="w-8 h-8 mx-auto text-gray-300" />
-                <p className="text-sm text-gray-500 mt-2">No notifications yet</p>
-              </div>
-            ) : (
-              items.map((n) => {
-                const meta = TYPE_META[n.type] || TYPE_META.general;
-                const MIcon = meta.icon;
-                return (
-                  <button
-                    key={n.id}
-                    onClick={() => openItem(n)}
-                    className={`w-full text-left flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${n.read ? '' : 'bg-indigo-50/40 dark:bg-indigo-500/10'}`}
-                  >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.cls} dark:bg-opacity-20`}>
-                      <MIcon className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start gap-2">
-                        <p className={`text-sm break-words ${n.read ? 'text-gray-700' : 'font-semibold text-gray-900'}`}>{n.title}</p>
-                        {!n.read && <span className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
-                      </div>
-                      {n.body && <p className="text-xs text-gray-500 mt-0.5 break-words whitespace-pre-wrap">{n.body}</p>}
-                      <p className="text-[11px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
-                    </div>
-                    {!n.read && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); markRead(n); }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); markRead(n); } }}
-                        className="p-1 rounded hover:bg-gray-200 text-gray-400 flex-shrink-0"
-                        title="Mark read"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

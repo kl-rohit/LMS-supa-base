@@ -3,6 +3,24 @@
 // hex (vivid in both light and dark); all surfaces/text use the app's themed
 // classes (bg-white, text-gray-*, bg-gray-100), which index.css remaps under
 // .dark — so charts recolour correctly with the theme automatically.
+import { useState } from 'react';
+
+// Small, theme-aware floating tooltip. Rendered inside a `relative` wrapper and
+// positioned via inline left/top. pointer-events-none so it never blocks the
+// element underneath; bg-gray-900 inverts to a light surface under .dark, which
+// stays readable. tip: { x, y, text } or null. `align` keeps the box from
+// pushing past the right edge so it cannot trigger horizontal page scroll.
+function ChartTip({ tip }) {
+  if (!tip) return null;
+  return (
+    <div
+      className="absolute pointer-events-none z-10 px-2 py-1 rounded-md bg-gray-900 text-white text-xs shadow whitespace-nowrap -translate-x-1/2 -translate-y-full max-w-[60vw] overflow-hidden text-ellipsis"
+      style={{ left: tip.x, top: tip.y }}
+    >
+      {tip.text}
+    </div>
+  );
+}
 
 // Donut / ring chart. data: [{ label, value, color }]. Optional centre text.
 export function Donut({ data = [], size = 160, thickness = 22, centervalue, centerlabel }) {
@@ -11,35 +29,57 @@ export function Donut({ data = [], size = 160, thickness = 22, centervalue, cent
   const c = 2 * Math.PI * r;
   let offset = 0;
   const cx = size / 2;
+  const [hover, setHover] = useState(null); // hovered segment index or null
+  const fmtVal = (v) => Number(v).toLocaleString('en-IN');
+  // Tooltip anchored near the top of the ring, in the SVG's own pixel space.
+  const tip = hover != null && data[hover]
+    ? { x: cx, y: thickness, text: `${data[hover].label}: ${fmtVal(data[hover].value)}` }
+    : null;
+  // When a segment is hovered, reflect it in the centre text (only if the chart
+  // already shows a centre value; otherwise leave the centre untouched).
+  const showCenter = centervalue !== undefined;
+  const centerMain = showCenter && hover != null && data[hover] ? fmtVal(data[hover].value) : centervalue;
+  const centerSub = showCenter && hover != null && data[hover] ? data[hover].label : centerlabel;
   return (
     <div className="flex items-center justify-center sm:justify-start gap-5 flex-wrap">
-      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="flex-shrink-0 max-w-[40vw] h-auto text-gray-900">
-        {/* track — currentColor (themed) so it inverts in dark mode */}
-        <circle cx={cx} cy={cx} r={r} fill="none" strokeWidth={thickness} stroke="currentColor" className="text-gray-100" />
-        {total > 0 && data.map((d, i) => {
-          const frac = (Number(d.value) || 0) / total;
-          const len = frac * c;
-          const seg = (
-            <circle
-              key={i}
-              cx={cx} cy={cx} r={r} fill="none" strokeWidth={thickness}
-              stroke={d.color}
-              strokeDasharray={`${len} ${c - len}`}
-              strokeDashoffset={-offset}
-              transform={`rotate(-90 ${cx} ${cx})`}
-              strokeLinecap="butt"
-            />
-          );
-          offset += len;
-          return seg;
-        })}
-        {(centervalue !== undefined) && (
-          <>
-            <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" fill="currentColor" className="text-gray-900 font-bold" style={{ fontSize: size * 0.2 }}>{centervalue}</text>
-            {centerlabel && <text x="50%" y="62%" textAnchor="middle" dominantBaseline="middle" fill="currentColor" className="text-gray-500" style={{ fontSize: size * 0.085 }}>{centerlabel}</text>}
-          </>
-        )}
-      </svg>
+      <div className="relative flex-shrink-0">
+        <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="max-w-[40vw] h-auto text-gray-900">
+          {/* track — currentColor (themed) so it inverts in dark mode */}
+          <circle cx={cx} cy={cx} r={r} fill="none" strokeWidth={thickness} stroke="currentColor" className="text-gray-100" />
+          {total > 0 && data.map((d, i) => {
+            const frac = (Number(d.value) || 0) / total;
+            const len = frac * c;
+            const active = hover === i;
+            const seg = (
+              <circle
+                key={i}
+                cx={cx} cy={cx} r={r} fill="none"
+                strokeWidth={active ? thickness + 4 : thickness}
+                stroke={d.color}
+                strokeDasharray={`${len} ${c - len}`}
+                strokeDashoffset={-offset}
+                transform={`rotate(-90 ${cx} ${cx})`}
+                strokeLinecap="butt"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover((h) => (h === i ? null : h))}
+                onClick={() => setHover((h) => (h === i ? null : i))}
+              >
+                <title>{`${d.label}: ${fmtVal(d.value)}`}</title>
+              </circle>
+            );
+            offset += len;
+            return seg;
+          })}
+          {showCenter && (
+            <>
+              <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" fill="currentColor" className="text-gray-900 font-bold" style={{ fontSize: size * 0.2 }}>{centerMain}</text>
+              {centerSub && <text x="50%" y="62%" textAnchor="middle" dominantBaseline="middle" fill="currentColor" className="text-gray-500" style={{ fontSize: size * 0.085 }}>{centerSub}</text>}
+            </>
+          )}
+        </svg>
+        <ChartTip tip={tip} />
+      </div>
       <ul className="space-y-1.5 text-sm">
         {data.map((d, i) => (
           <li key={i} className="flex items-center gap-2 text-gray-600">
@@ -56,6 +96,7 @@ export function Donut({ data = [], size = 160, thickness = 22, centervalue, cent
 // Horizontal bar chart. data: [{ label, value, color }]. fmt formats values.
 export function BarChart({ data = [], fmt = (v) => Number(v).toLocaleString('en-IN') }) {
   const max = Math.max(1, ...data.map((d) => Number(d.value) || 0));
+  const [hover, setHover] = useState(null); // hovered row index or null
   return (
     <div className="space-y-3">
       {data.map((d, i) => (
@@ -64,8 +105,27 @@ export function BarChart({ data = [], fmt = (v) => Number(v).toLocaleString('en-
             <span className="text-gray-600">{d.label}</span>
             <span className="font-semibold text-gray-900">{fmt(d.value)}</span>
           </div>
-          <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${((Number(d.value) || 0) / max) * 100}%`, backgroundColor: d.color }} />
+          {/* relative wrapper hosts the floating tooltip for this row */}
+          <div className="relative">
+            <div
+              className="h-2.5 rounded-full bg-gray-100 overflow-hidden cursor-pointer"
+              title={`${d.label}: ${fmt(d.value)}`}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover((h) => (h === i ? null : h))}
+              onClick={() => setHover((h) => (h === i ? null : i))}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${((Number(d.value) || 0) / max) * 100}%`,
+                  backgroundColor: d.color,
+                  outline: hover === i ? '1px solid currentColor' : 'none',
+                }}
+              />
+            </div>
+            {hover === i && (
+              <ChartTip tip={{ x: '50%', y: 0, text: `${d.label}: ${fmt(d.value)}` }} />
+            )}
           </div>
         </div>
       ))}
@@ -106,8 +166,22 @@ export function LineChart({ series = [], height = 180, fmt = (v) => Number(v).to
   const xAt = (i) => padL + (n <= 1 ? plotW / 2 : (plotW * i) / (n - 1));
   const yAt = (v) => padT + plotH - (plotH * ((Number(v) || 0) / maxY));
   const gridLines = 4;
+  // hovered point key "si:i" or null. Position the tooltip in the SVG's own
+  // pixel space; the SVG scales to its container so the box stays anchored to
+  // the dot. Clamp the tooltip x so it never spills past the chart edges.
+  const [hover, setHover] = useState(null);
+  let tip = null;
+  if (hover) {
+    const [hsi, hi] = hover.split(':').map(Number);
+    const s = valid[hsi];
+    const p = s && s.points[hi];
+    if (p) {
+      const pxPct = (Math.min(W - padR, Math.max(padL, xAt(hi))) / W) * 100;
+      tip = { x: `${pxPct}%`, y: (yAt(p.y) / H) * 100 + '%', text: `${p.x}: ${fmt(p.y)}` };
+    }
+  }
   return (
-    <div>
+    <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
         {/* gridlines — faint, themed */}
         <g stroke="currentColor" className="text-gray-100">
@@ -122,9 +196,24 @@ export function LineChart({ series = [], height = 180, fmt = (v) => Number(v).to
           return (
             <g key={si}>
               <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-              {s.points.map((p, i) => (
-                <circle key={i} cx={xAt(i)} cy={yAt(p.y)} r="2.5" fill={s.color} />
-              ))}
+              {s.points.map((p, i) => {
+                const key = `${si}:${i}`;
+                const active = hover === key;
+                return (
+                  <circle
+                    key={i}
+                    cx={xAt(i)} cy={yAt(p.y)}
+                    r={active ? 4.5 : 2.5}
+                    fill={s.color}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={() => setHover(key)}
+                    onMouseLeave={() => setHover((h) => (h === key ? null : h))}
+                    onClick={() => setHover((h) => (h === key ? null : key))}
+                  >
+                    <title>{`${s.name}  ${p.x}: ${fmt(p.y)}`}</title>
+                  </circle>
+                );
+              })}
             </g>
           );
         })}
@@ -135,6 +224,7 @@ export function LineChart({ series = [], height = 180, fmt = (v) => Number(v).to
           ))}
         </g>
       </svg>
+      <ChartTip tip={tip} />
       <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm mt-2 justify-center sm:justify-start">
         {valid.map((s, i) => (
           <li key={i} className="flex items-center gap-2 text-gray-600">
@@ -166,8 +256,24 @@ export function GroupedBarChart({ groups = [], series = [], fmt = (v) => Number(
   const barW = Math.max(2, barAreaW / valid.length);
   const yAt = (v) => padT + plotH - (plotH * ((Number(v) || 0) / maxY));
   const gridLines = 4;
+  // hovered bar key "gi:si" or null. Tooltip is positioned in the SVG's own
+  // pixel space (converted to % so it tracks the responsive scaling) and shows
+  // the series name plus the formatted value. x is clamped to the plot area so
+  // the box never pushes past the edge and triggers horizontal page scroll.
+  const [hover, setHover] = useState(null);
+  let tip = null;
+  if (hover) {
+    const [hgi, hsi] = hover.split(':').map(Number);
+    const s = valid[hsi];
+    if (s) {
+      const v = Number(s.values[hgi]) || 0;
+      const bx = padL + groupW * hgi + innerPad + barW * hsi + barW / 2;
+      const pxPct = (Math.min(W - padR, Math.max(padL, bx)) / W) * 100;
+      tip = { x: `${pxPct}%`, y: (yAt(v) / H) * 100 + '%', text: `${s.name}: ${fmt(v)}` };
+    }
+  }
   return (
-    <div>
+    <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
         {/* gridlines — faint, themed */}
         <g stroke="currentColor" className="text-gray-100">
@@ -184,6 +290,8 @@ export function GroupedBarChart({ groups = [], series = [], fmt = (v) => Number(
               {valid.map((s, si) => {
                 const v = Number(s.values[gi]) || 0;
                 const y = yAt(v);
+                const key = `${gi}:${si}`;
+                const active = hover === key;
                 return (
                   <rect
                     key={si}
@@ -193,7 +301,17 @@ export function GroupedBarChart({ groups = [], series = [], fmt = (v) => Number(
                     height={Math.max(0, padT + plotH - y)}
                     rx="1.5"
                     fill={s.color}
-                  />
+                    style={{ cursor: 'pointer' }}
+                    fillOpacity={hover && !active ? 0.55 : 1}
+                    stroke={active ? 'currentColor' : 'none'}
+                    strokeWidth={active ? 0.75 : 0}
+                    className="text-gray-900"
+                    onMouseEnter={() => setHover(key)}
+                    onMouseLeave={() => setHover((h) => (h === key ? null : h))}
+                    onClick={() => setHover((h) => (h === key ? null : key))}
+                  >
+                    <title>{`${s.name}  ${g}: ${fmt(v)}`}</title>
+                  </rect>
                 );
               })}
             </g>
@@ -206,6 +324,7 @@ export function GroupedBarChart({ groups = [], series = [], fmt = (v) => Number(
           ))}
         </g>
       </svg>
+      <ChartTip tip={tip} />
       <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm mt-2 justify-center sm:justify-start">
         {valid.map((s, i) => (
           <li key={i} className="flex items-center gap-2 text-gray-600">

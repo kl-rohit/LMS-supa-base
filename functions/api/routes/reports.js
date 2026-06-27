@@ -2,6 +2,41 @@
 
 const router = require('express').Router();
 const { getById, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
+const { normalizePlan } = require('../lib/plans');
+
+// Detailed reports are a Complete-plan feature. The client hides the tabs for
+// other plans, but the API must enforce it too (a Core org could call these
+// endpoints directly otherwise). Platform admins bypass for support.
+function requireComplete(req, res, next) {
+  if (req.isPlatformAdmin) return next();
+  if (normalizePlan(req.orgPlan) === 'complete') return next();
+  return res.status(402).json({
+    error: 'upgrade_required',
+    feature: 'detailed_reports',
+    plan: normalizePlan(req.orgPlan),
+    message: 'Detailed reports are available on the Complete plan.',
+  });
+}
+
+// Reports run full-table aggregations, so a short in-process cache keeps repeat
+// opens (flipping tabs, months, or filters) cheap. Keyed by org + full URL so
+// each filter combination is distinct. Warm-container only, like the dashboard
+// cache; skipped for platform-admin impersonation and non-200 responses.
+const REPORT_CACHE = new Map();
+function cacheJson(ttlMs) {
+  return (req, res, next) => {
+    if (req.isPlatformAdmin) return next();
+    const key = `${req.orgId}:${req.originalUrl}`;
+    const hit = REPORT_CACHE.get(key);
+    if (hit && Date.now() - hit.t < ttlMs) return res.json(hit.body);
+    const orig = res.json.bind(res);
+    res.json = (body) => {
+      try { if (res.statusCode === 200) REPORT_CACHE.set(key, { t: Date.now(), body }); } catch {}
+      return orig(body);
+    };
+    next();
+  };
+}
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -224,7 +259,7 @@ function lastNMonths(n) {
 // Monthly revenue trend for the last N months (default 6). class_fees comes
 // from Attendance.fee_charged bucketed by class_date month; additional comes
 // from AdditionalFees matched on fee_year/fee_month.
-router.get('/revenue', async (req, res) => {
+router.get('/revenue', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const n = Math.max(1, Math.min(36, Number(req.query.months) || 6));
     const buckets = lastNMonths(n);
@@ -279,7 +314,7 @@ router.get('/revenue', async (req, res) => {
 // of who owes money. Expected fee = Students.monthly_fee when set, else the
 // student's summed Attendance.fee_charged for the month, plus their
 // AdditionalFees for that month.
-router.get('/defaulters', async (req, res) => {
+router.get('/defaulters', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const now = new Date();
     const ym = /^\d{4}-\d{2}$/.test(String(req.query.month || ''))
@@ -331,7 +366,7 @@ router.get('/defaulters', async (req, res) => {
 
 // GET /api/reports/retention
 // Active/inactive split plus joins-by-month (last 12 months from CREATEDTIME).
-router.get('/retention', async (req, res) => {
+router.get('/retention', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const sRows = await zcqlAll(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`, 'Students').catch(() => []);
     const students = unwrap(sRows, 'Students');
@@ -362,7 +397,7 @@ router.get('/retention', async (req, res) => {
 // Attendance distribution by weekday and by class. Weekday is derived from
 // class_date. Many Attendance rows carry a class_id; when one is missing we
 // fall back to grouping that row under its class_type so nothing is dropped.
-router.get('/attendance-slots', async (req, res) => {
+router.get('/attendance-slots', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const { from, to } = req.query;
     const where = [`Attendance.org_id = ${Number(req.orgId)}`];
@@ -419,7 +454,7 @@ router.get('/attendance-slots', async (req, res) => {
 // GET /api/reports/course-completion
 // Per course: lessons_total, enrolled count, average completed lessons, and a
 // completion_rate (avg_completed / lessons_total).
-router.get('/course-completion', async (req, res) => {
+router.get('/course-completion', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const [courseRows, lessonRows, enrollRows] = await Promise.all([
       zcqlAll(req, `SELECT ROWID, name FROM Courses WHERE Courses.org_id = ${Number(req.orgId)}`, 'Courses').catch(() => []),
@@ -464,7 +499,7 @@ router.get('/course-completion', async (req, res) => {
 // student_id + group members via GroupStudents + ClassStudents links, mirroring
 // the roster pattern in classes.js). attended_avg = average present count per
 // distinct session date for that class. utilisation = attended_avg / roster.
-router.get('/capacity', async (req, res) => {
+router.get('/capacity', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const { from, to } = req.query;
     const cRows = await zcql(req, `SELECT * FROM Classes WHERE Classes.is_active = 1 AND Classes.org_id = ${Number(req.orgId)}`).catch(() => []);
@@ -546,7 +581,7 @@ router.get('/capacity', async (req, res) => {
 // One student's combined monthly statement: attendance, fees, and lesson
 // progress. fees.class_fees uses summed Attendance.fee_charged for the month
 // (per-class billing); see fees.js for the per_month flat-fee alternative.
-router.get('/student-statement/:id', async (req, res) => {
+router.get('/student-statement/:id', requireComplete, cacheJson(60000), async (req, res) => {
   try {
     const student = await getById(req, 'Students', req.params.id);
     if (!student || Number(student.org_id) !== Number(req.orgId)) {

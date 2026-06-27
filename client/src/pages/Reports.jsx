@@ -49,20 +49,30 @@ const MONTHS_SHORT = MONTHS.map((m) => m.slice(0, 3));
 
 // Basic reports — available on every plan (Core and Complete).
 const BASIC_TABS = [
-  { id: 'student', label: 'Student Report', icon: User },
-  { id: 'monthly', label: 'Monthly Report', icon: Calendar },
-  { id: 'overall', label: 'Overall Report', icon: TrendingUp },
-  { id: 'lessons', label: 'Lesson Activity', icon: Youtube },
+  { id: 'student', label: 'Student Report', icon: User,
+    desc: 'One student in full: attendance history, fees charged, and lesson progress over time.' },
+  { id: 'monthly', label: 'Monthly Report', icon: Calendar,
+    desc: 'Every student’s classes, attendance rate, and fees for a chosen month, side by side.' },
+  { id: 'overall', label: 'Overall Report', icon: TrendingUp,
+    desc: 'Your academy at a glance: students, classes conducted, fees collected, and attendance.' },
+  { id: 'lessons', label: 'Lesson Activity', icon: Youtube,
+    desc: 'Who is watching and completing each course, with progress and last activity.' },
 ];
 
 // Detailed reports — unlocked on the Complete plan.
 const ADVANCED_TABS = [
-  { id: 'revenue', label: 'Revenue Trend', icon: LineChartIcon },
-  { id: 'defaulters', label: 'Fees Due', icon: Wallet },
-  { id: 'retention', label: 'Retention', icon: UserCheck },
-  { id: 'slots', label: 'Attendance by Slot', icon: Clock },
-  { id: 'courses', label: 'Course Completion', icon: GraduationCap },
-  { id: 'capacity', label: 'Class Capacity', icon: Gauge },
+  { id: 'revenue', label: 'Revenue Trend', icon: LineChartIcon,
+    desc: 'Class fees and additional income month by month, with this month set against last.' },
+  { id: 'defaulters', label: 'Fees Due', icon: Wallet,
+    desc: 'Students with an amount outstanding for the month, ranked, with the total due.' },
+  { id: 'retention', label: 'Retention', icon: UserCheck,
+    desc: 'Active vs inactive students, and how many new students joined each month.' },
+  { id: 'slots', label: 'Attendance by Slot', icon: Clock,
+    desc: 'How attendance varies across the days of the week and across your classes.' },
+  { id: 'courses', label: 'Course Completion', icon: GraduationCap,
+    desc: 'How far students have progressed through each course, with completion rates.' },
+  { id: 'capacity', label: 'Class Capacity', icon: Gauge,
+    desc: 'How full each active batch runs against its roster, to spot room to grow.' },
 ];
 
 // Current month as YYYY-MM (local time).
@@ -151,6 +161,13 @@ export default function Reports() {
   const { plan, loaded: planLoaded } = useModuleFlags();
   const isComplete = plan === 'complete';
   const tabs = useMemo(() => (isComplete ? [...BASIC_TABS, ...ADVANCED_TABS] : BASIC_TABS), [isComplete]);
+  // Sidebar report groups (Reports Center style). Detailed group only on Complete.
+  const tabGroups = useMemo(() => ([
+    { heading: 'Overview', tabs: BASIC_TABS },
+    ...(isComplete ? [{ heading: 'Detailed reports', tabs: ADVANCED_TABS }] : []),
+  ]), [isComplete]);
+  const [reportSearch, setReportSearch] = useState('');
+  const activeMeta = useMemo(() => tabs.find((t) => t.id === activeTab) || BASIC_TABS[0], [tabs, activeTab]);
 
   // One bag of state per detailed report: { data, loading }.
   const [adv, setAdv] = useState({}); // { [tabId]: { data, loading } }
@@ -493,12 +510,17 @@ export default function Reports() {
   };
 
   // Section heading shared by detailed reports.
+  // Section header for a detailed report. With a title it labels a sub-section
+  // (justify-between); without one it is just a right-aligned controls bar (the
+  // report name already shows in the panel banner above).
   const AdvHeader = ({ icon: Icon, title, children }) => (
-    <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-      <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-        {Icon && <Icon className="w-5 h-5 text-indigo-600" />} {title}
-      </h3>
-      <div className="flex items-center gap-2 flex-wrap">{children}</div>
+    <div className={`flex items-center gap-3 mb-4 flex-wrap ${title ? 'justify-between' : 'justify-end'}`}>
+      {title && (
+        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+          {Icon && <Icon className="w-5 h-5 text-indigo-600" />} {title}
+        </h3>
+      )}
+      {children && <div className="flex items-center gap-2 flex-wrap">{children}</div>}
     </div>
   );
 
@@ -514,25 +536,80 @@ export default function Reports() {
     <div className="space-y-4">
       <h2 className="page-header mb-0">Reports</h2>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap border-b border-gray-200" data-tour="reports-tabs">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-indigo-600 text-indigo-600 dark:text-white'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Icon className="w-4 h-4" /> {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* Reports Center: a categorized sidebar on desktop, a picker on mobile,
+          and the selected report in the main panel. */}
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6" data-tour="reports-tabs">
+        {/* Mobile: compact report picker (replaces the long wrapping tab strip) */}
+        <div className="lg:hidden">
+          <Select
+            value={activeTab}
+            onChange={setActiveTab}
+            ariaLabel="Choose a report"
+            options={tabs.map((t) => ({ value: t.id, label: t.label }))}
+          />
+        </div>
+
+        {/* Desktop: grouped, searchable sidebar */}
+        <aside className="hidden lg:block w-60 flex-shrink-0">
+          <div className="card p-3 sticky top-4 space-y-4">
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={reportSearch}
+                onChange={(e) => setReportSearch(e.target.value)}
+                placeholder="Search reports"
+                className="input-field text-sm pl-8"
+              />
+            </div>
+            {tabGroups.map((group) => {
+              const items = group.tabs.filter((t) =>
+                t.label.toLowerCase().includes(reportSearch.trim().toLowerCase()));
+              if (!items.length) return null;
+              return (
+                <div key={group.heading}>
+                  <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{group.heading}</p>
+                  <div className="space-y-0.5">
+                    {items.map((tab) => {
+                      const Icon = tab.icon;
+                      const active = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`w-full flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-lg text-sm text-left border-l-2 transition-colors ${
+                            active
+                              ? 'bg-gray-100 text-gray-900 font-semibold border-indigo-500'
+                              : 'text-gray-600 hover:bg-gray-50 border-transparent'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Report panel */}
+        <main className="flex-1 min-w-0">
+          <div className="space-y-4">
+            {/* Report name + what it is about */}
+            <div className="flex items-start gap-3">
+              {activeMeta.icon && (
+                <span className="hidden sm:flex w-10 h-10 rounded-xl bg-gray-100 items-center justify-center flex-shrink-0">
+                  <activeMeta.icon className="w-5 h-5 text-indigo-600" />
+                </span>
+              )}
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-gray-900 leading-tight">{activeMeta.label}</h3>
+                {activeMeta.desc && <p className="text-sm text-gray-500 mt-0.5">{activeMeta.desc}</p>}
+              </div>
+            </div>
 
       {/* Student Report Tab */}
       {activeTab === 'student' && (
@@ -1653,7 +1730,7 @@ export default function Reports() {
           const prev = months[months.length - 2];
           return (
             <div className="card">
-              <AdvHeader icon={LineChartIcon} title="Revenue Trend">
+              <AdvHeader>
                 <Select
                   value={revenueMonths}
                   onChange={(v) => setRevenueMonths(Number(v))}
@@ -1722,7 +1799,7 @@ export default function Reports() {
           const rows = d?.defaulters || [];
           return (
             <div className="card">
-              <AdvHeader icon={Wallet} title="Fees Due">
+              <AdvHeader>
                 <Select
                   value={defaultersMonth}
                   onChange={setDefaultersMonth}
@@ -1772,7 +1849,6 @@ export default function Reports() {
           return (
             <div className="space-y-4">
               <div className="card">
-                <AdvHeader icon={UserCheck} title="Retention" />
                 {busy('retention') ? <Loader text="Loading report..." /> : !d ? (
                   <EmptyState icon={UserCheck} title="No data" message="Retention appears once students are enrolled." />
                 ) : (
@@ -1877,7 +1953,7 @@ export default function Reports() {
           const courses = d?.courses || [];
           return (
             <div className="card">
-              <AdvHeader icon={GraduationCap} title="Course Completion">
+              <AdvHeader>
                 <ExportBar
                   title="Course Completion"
                   columns={[
@@ -1921,7 +1997,7 @@ export default function Reports() {
           const classes = d?.classes || [];
           return (
             <div className="card">
-              <AdvHeader icon={Gauge} title="Class Capacity">
+              <AdvHeader>
                 <ExportBar
                   title="Class Capacity"
                   columns={[
@@ -2034,6 +2110,9 @@ export default function Reports() {
           </div>
         )}
       </Modal>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

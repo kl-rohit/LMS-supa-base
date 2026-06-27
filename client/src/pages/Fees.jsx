@@ -1033,6 +1033,10 @@ export default function Fees() {
         onClose={() => { setAddFeeModalOpen(false); setFeeForm({ student_ids: [], description: '', amount: '', date: formatDateLocal(new Date()), adjustment_type: 'fee' }); setStudentSearch(''); }}
         title={feeForm.adjustment_type === 'discount' ? 'Apply Discount' : 'Add Additional Fee'}
         size="md"
+        onSave={handleAddFee}
+        saving={savingFee}
+        saveDisabled={feeForm.student_ids.length === 0}
+        saveLabel={`${feeForm.adjustment_type === 'discount' ? 'Apply Discount' : 'Add Fee'}${feeForm.student_ids.length > 1 ? ` (${feeForm.student_ids.length} students)` : ''}`}
       >
         <form onSubmit={handleAddFee} className="space-y-4">
           {/* Type toggle: Fee adds to the monthly total, Discount subtracts from it. */}
@@ -1195,6 +1199,7 @@ export default function Fees() {
         onClose={closeEditFee}
         title={editFeeForm.is_discount ? 'Edit discount' : 'Edit additional fee'}
         size="sm"
+        onSave={saveEditFee}
       >
         <div className="space-y-4">
           <div>

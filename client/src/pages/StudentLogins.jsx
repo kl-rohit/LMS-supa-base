@@ -409,6 +409,9 @@ export default function StudentLogins() {
         onClose={() => setCreateFor(null)}
         title={`Create login for ${createFor?.name || ''}`}
         size="md"
+        onSave={handleCreate}
+        saving={submitting}
+        saveLabel="Create & send invite"
       >
         {createFor && (
           <div className="space-y-4">

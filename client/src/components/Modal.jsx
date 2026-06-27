@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }) {
+// Pass `onSave` to surface a primary Save/Update button in the header (next to
+// the close X) so long forms can be saved without scrolling. `saving` shows a
+// spinner + disables it; `saveLabel` sets the text (e.g. "Update" when editing).
+export default function Modal({ isOpen, onClose, title, children, size = 'md', onSave, saveLabel = 'Save', saving = false, saveDisabled = false }) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -38,14 +41,27 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
       <div
         className={`relative bg-white rounded-xl shadow-xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col`}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {onSave && (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving || saveDisabled}
+                className="btn-primary btn-sm disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {saving ? 'Saving…' : saveLabel}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
         <div className="px-6 py-4 overflow-y-auto scrollbar-thin">{children}</div>
       </div>

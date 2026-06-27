@@ -239,6 +239,9 @@ export default function Assignments() {
         onClose={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }}
         title={editing ? 'Edit Assignment' : 'New Assignment'}
         size="md"
+        onSave={handleSubmit}
+        saving={saving}
+        saveLabel={editing ? 'Update' : 'Create'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Kind */}

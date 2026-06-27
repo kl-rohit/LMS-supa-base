@@ -509,7 +509,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
       </Modal>
 
       {/* ===== Reschedule modal ===== */}
-      <Modal isOpen={!!resched} onClose={() => setResched(null)} title="Reschedule this class" size="sm">
+      <Modal isOpen={!!resched} onClose={() => setResched(null)} title="Reschedule this class" size="sm" onSave={saveReschedule} saveLabel="Move class">
         {resched && (
           <div className="space-y-3">
             <p className="text-sm text-gray-500">

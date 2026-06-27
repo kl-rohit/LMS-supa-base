@@ -789,6 +789,9 @@ export default function Classes() {
         onClose={() => setCampFormOpen(false)}
         title="New Camp"
         size="lg"
+        onSave={saveCamp}
+        saving={savingCamp}
+        saveLabel={`Create Camp (${campForm.total_days} days)`}
       >
         <div className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1059,6 +1062,9 @@ export default function Classes() {
         onClose={() => { setModalOpen(false); setEditingClass(null); setForm(emptyForm); setStudentSearch(''); }}
         title={editingClass ? 'Edit Class' : 'Add Class'}
         size="md"
+        onSave={handleSubmit}
+        saving={saving}
+        saveLabel={editingClass ? 'Update' : 'Create Class'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

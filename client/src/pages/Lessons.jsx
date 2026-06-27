@@ -756,6 +756,8 @@ export default function Lessons() {
           onClose={() => setLessonModalOpen(false)}
           title={editingLesson ? 'Edit lesson' : 'Add lesson'}
           size="md"
+          onSave={saveLesson}
+          saveLabel={editingLesson ? 'Save' : 'Add lesson'}
         >
           <div className="space-y-4">
             <div>
@@ -979,6 +981,9 @@ export default function Lessons() {
           onClose={() => setEnrollModalOpen(false)}
           title={`Enroll students — ${selectedCourse.name}`}
           size="md"
+          onSave={saveEnrollments}
+          saveDisabled={enrollSelection.length === 0}
+          saveLabel={`Enroll ${enrollSelection.length > 0 ? `(${enrollSelection.length})` : ''}`}
         >
           <div className="space-y-3">
             {unenrolledStudents.length === 0 ? (
@@ -1067,6 +1072,8 @@ export default function Lessons() {
           onClose={() => setSplitModalOpen(false)}
           title="Split one video into chapter-lessons"
           size="lg"
+          onSave={handleSplit}
+          saveLabel="Create lessons"
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
@@ -1219,7 +1226,7 @@ export default function Lessons() {
 
 function CourseModal({ isOpen, onClose, form, setForm, onSave, isEdit }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? 'Edit course' : 'New course'} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? 'Edit course' : 'New course'} size="md" onSave={onSave} saveLabel={isEdit ? 'Save' : 'Create course'}>
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>

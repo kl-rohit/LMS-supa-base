@@ -153,6 +153,9 @@ export default function QuestionPapers() {
         onClose={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }}
         title={editing ? 'Edit Question Paper' : 'Add Question Paper'}
         size="sm"
+        onSave={handleSubmit}
+        saving={saving}
+        saveLabel={editing ? 'Update' : 'Add'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

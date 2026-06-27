@@ -1020,6 +1020,8 @@ export default function Reports() {
         onClose={closeEdit}
         title="Edit Class Record"
         size="md"
+        onSave={saveEdit}
+        saving={savingEdit}
       >
         {editingRow && (
           <div className="space-y-4">

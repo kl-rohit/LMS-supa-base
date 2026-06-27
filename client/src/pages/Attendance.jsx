@@ -1491,6 +1491,8 @@ export default function Attendance() {
         onClose={closeEditRecord}
         title="Edit attendance"
         size="md"
+        onSave={saveEditRecord}
+        saving={savingEdit}
       >
         {editingRecord && (
           <div className="space-y-4">

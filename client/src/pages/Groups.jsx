@@ -380,6 +380,9 @@ export default function Groups() {
         onClose={() => { setModalOpen(false); setEditingGroup(null); setForm({ name: '', description: '' }); }}
         title={editingGroup ? 'Edit Group' : 'New Group'}
         size="sm"
+        onSave={handleSubmit}
+        saving={saving}
+        saveLabel={editingGroup ? 'Update' : 'Create Group'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -925,6 +925,9 @@ export default function Students() {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); }}
         title={editingStudent ? 'Edit Student' : 'Add Student'}
+        onSave={handleSubmit}
+        saving={saving}
+        saveLabel={editingStudent ? 'Update' : 'Add Student'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -1192,6 +1195,8 @@ export default function Students() {
         onClose={() => setBulkEditOpen(false)}
         title={`Bulk edit ${selectedIds.size} student(s)`}
         size="sm"
+        onSave={handleBulkEdit}
+        saveLabel={`Apply to ${selectedIds.size}`}
       >
         <div className="space-y-4">
           <div>

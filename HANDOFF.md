@@ -315,6 +315,37 @@ and the deployed site 404s on every route because asset paths are wrong.
 
 ## 🔜 Pending tasks (priority-ordered)
 
+> **STATUS UPDATE — 2026-06-27.** Most of the list below is now done or
+> obsolete. Current reality (everything deployed; live health endpoint reports
+> the latest commit):
+>
+> | Item | State |
+> |---|---|
+> | 1. Attendance `org_id` stamping | ✅ Resolved (audit confirmed code correct). |
+> | 2. Slug in URL `/app/o/<slug>/` | ❎ Obsolete — replaced by the OrgSwitcher + `?org=` active-org approach. |
+> | 3. CSV export | ✅ Done — per-module CSV in Settings → **Backup & migrate** (`DataMigration.jsx`). |
+> | 4. Courses revamp (one-click "Enroll in" from student panel, simpler lesson form) | ⏳ Still open (optional enhancement). |
+> | 5. Quizzes + Certificates | ✅ Built, deployed, live. |
+>
+> **Console columns** flagged below are all in place (the features using them
+> work live): `Classes.exceptions`, `Lessons.quiz_required`,
+> `CourseEnrollments.completed_count`.
+>
+> **Shipped since this doc was last hand-edited** (admin + portal, all live):
+> N+1 read-batching + short-TTL org caches; precomputed `completed_count`;
+> offline games + PWA hardening (chunk self-heal, SW auto-update prompt, error
+> boundary, offline read-cache); parent engagement (weekly digest cron,
+> streak/progress badges); per-org Stratus backup cron; **online meeting-link
+> share** (Classes + Attendance → push via the `online_meeting` template);
+> timetable-exception–aware "today's classes" across Attendance, Dashboard and
+> the morning digest.
+>
+> **Console / ops still to confirm:** the `weekly-digest` and `backup` Job
+> Scheduling crons (Webhook + `X-Cron-Secret`), and a one-time
+> `POST /api/enrollments/recompute` after adding `completed_count`.
+>
+> The original (now mostly historical) list follows.
+
 ### 1. Verify Attendance org_id stamping in production *(urgent)*
 
 User reported on day-of-handoff that an attendance row inserted today

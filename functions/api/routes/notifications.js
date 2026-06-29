@@ -8,6 +8,7 @@
 const router = require('express').Router();
 const { getById, zcqlAll, unwrap, normalize, insert, update, remove, safeId } = require('../db/catalystDb');
 const { publicVapidKey } = require('../lib/notify');
+const { requireFeature } = require('../middleware/entitlement');
 
 // GET /api/notifications — org admin inbox, newest first + unread count.
 router.get('/', async (req, res) => {
@@ -82,7 +83,7 @@ router.get('/push/vapid-key', (req, res) => {
 });
 
 // POST /api/notifications/push/subscribe — register this admin device.
-router.post('/push/subscribe', async (req, res) => {
+router.post('/push/subscribe', requireFeature('notify.push'), async (req, res) => {
   try {
     const sub = req.body && req.body.subscription ? req.body.subscription : req.body;
     const endpoint = sub && sub.endpoint;

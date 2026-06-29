@@ -6,6 +6,7 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeI
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
 const { createNotifications } = require('../lib/notify');
+const { requireFeature } = require('../middleware/entitlement');
 
 // Friendly inbox titles per message_type.
 const MSG_TITLES = {
@@ -134,7 +135,7 @@ router.post('/generate-absence-alert', async (req, res) => {
 });
 
 // POST /api/messages/generate-fee-reminder
-router.post('/generate-fee-reminder', async (req, res) => {
+router.post('/generate-fee-reminder', requireFeature('fees.reminders'), async (req, res) => {
   try {
     const now = new Date();
     const month = parseInt(req.body?.month) || (now.getMonth() + 1);

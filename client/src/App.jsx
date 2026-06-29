@@ -136,7 +136,7 @@ function TeacherLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { flags } = useModuleFlags();
+  const { flags, featureOn } = useModuleFlags();
   const branding = useOrgBranding();
   const displayName = branding.name || BRAND_NAME;
 
@@ -244,12 +244,14 @@ function TeacherLayout() {
           </h1>
           <div className="ml-auto flex items-center gap-1">
             <OrgSwitcher />
-            <NotificationBell
-              listUrl="/notifications"
-              readUrl={(id) => `/notifications/${id}/read`}
-              readAllUrl="/notifications/read-all"
-              pushBase="/notifications"
-            />
+            {featureOn('notify.bell') && (
+              <NotificationBell
+                listUrl="/notifications"
+                readUrl={(id) => `/notifications/${id}/read`}
+                readAllUrl="/notifications/read-all"
+                pushBase="/notifications"
+              />
+            )}
             {/* Context-aware Help — opens the article for the page you're on. */}
             <button
               type="button"

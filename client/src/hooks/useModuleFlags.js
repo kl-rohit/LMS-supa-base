@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '../utils/api';
+import { PREMIUM_MODULES as GEN_PREMIUM, FEATURE_PLANS } from '../config';
 
 const DEFAULTS = {
   // Admin modules
@@ -33,7 +34,12 @@ function parseBool(v, fallback) {
 
 // Premium modules gated by the subscription plan (see functions/api/lib/plans.js).
 // A module that isn't entitled is forced OFF regardless of the admin toggle.
-const PREMIUM = ['lessons', 'assignments', 'question_papers'];
+// Sourced from the generated config (client/src/config.js), which gen-config.js
+// derives from the feature catalog in config.master.js, so this matches the
+// pricing sheet. Fallback keeps the historical set if the generated value is absent.
+const PREMIUM = (Array.isArray(GEN_PREMIUM) && GEN_PREMIUM.length)
+  ? GEN_PREMIUM
+  : ['lessons', 'assignments', 'question_papers'];
 
 export function useModuleFlags() {
   const [flags, setFlags] = useState(DEFAULTS);
@@ -75,5 +81,15 @@ export function useModuleFlags() {
     return () => { cancelled = true; };
   }, []);
 
-  return { flags, plan, entitlements, loaded };
+  // Is a catalog feature available on this org's plan? Reads the generated
+  // FEATURE_PLANS map so UI can hide a feature the plan does not include.
+  // Unknown keys return true (never hide on a typo). complete/trial read the
+  // `complete` flag; everything else reads `core`.
+  const featureOn = (key) => {
+    const f = FEATURE_PLANS && FEATURE_PLANS[key];
+    if (!f) return true;
+    return (plan === 'complete' || plan === 'trial') ? f.complete !== false : f.core !== false;
+  };
+
+  return { flags, plan, entitlements, loaded, featureOn };
 }

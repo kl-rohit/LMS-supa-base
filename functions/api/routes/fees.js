@@ -4,6 +4,7 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
 const { loadAppSettings } = require('./settings');
+const { requireFeature } = require('../middleware/entitlement');
 
 // Attendance counts by hours, not by sessions: a 2-hour class marked present
 // counts as 2 toward present/late/absent totals and the min-classes threshold.
@@ -262,7 +263,7 @@ router.get('/additional', async (req, res) => {
 });
 
 // POST /api/fees/additional
-router.post('/additional', async (req, res) => {
+router.post('/additional', requireFeature('fees.additional'), async (req, res) => {
   try {
     const { student_id, student_ids, description, amount, fee_date, month, year } = req.body;
     const ids = Array.isArray(student_ids) && student_ids.length ? student_ids : student_id ? [student_id] : [];
@@ -312,7 +313,7 @@ router.post('/additional', async (req, res) => {
 });
 
 // PUT /api/fees/additional/:id
-router.put('/additional/:id', async (req, res) => {
+router.put('/additional/:id', requireFeature('fees.additional'), async (req, res) => {
   try {
     const existing = await getById(req, 'AdditionalFees', req.params.id);
     if (!existing || Number(existing.org_id) !== Number(req.orgId)) {
@@ -333,7 +334,7 @@ router.put('/additional/:id', async (req, res) => {
 });
 
 // DELETE /api/fees/additional/:id
-router.delete('/additional/:id', async (req, res) => {
+router.delete('/additional/:id', requireFeature('fees.additional'), async (req, res) => {
   try {
     const existing = await getById(req, 'AdditionalFees', req.params.id);
     if (!existing || Number(existing.org_id) !== Number(req.orgId)) {

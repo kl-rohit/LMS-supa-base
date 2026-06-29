@@ -3,6 +3,7 @@
 // Future tabs: Notifications, Branding, Privacy, Integrations.
 
 import { useEffect, useRef, useState } from 'react';
+import { useModuleFlags } from '../hooks/useModuleFlags';
 import {
   School,
   IndianRupee,
@@ -550,6 +551,7 @@ function ScheduleTab({ form, setForm }) {
 }
 
 function BillingTab({ form, set, setForm }) {
+  const { featureOn } = useModuleFlags();
   const feeMode = form['billing.fee_mode'] || 'per_class';
   const perMonth = feeMode === 'per_month';
 
@@ -641,14 +643,16 @@ function BillingTab({ form, set, setForm }) {
             <div className="text-sm font-semibold text-gray-900">Per class</div>
             <div className="text-xs text-gray-500 mt-0.5">Hourly rate times classes attended each month.</div>
           </button>
-          <button
-            type="button"
-            onClick={setMode('per_month')}
-            className={`text-left rounded-lg border p-3 transition ${perMonth ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50' : 'border-gray-200 hover:border-gray-300'}`}
-          >
-            <div className="text-sm font-semibold text-gray-900">Per month</div>
-            <div className="text-xs text-gray-500 mt-0.5">A flat monthly amount per student.</div>
-          </button>
+          {featureOn('fees.perStudent') && (
+            <button
+              type="button"
+              onClick={setMode('per_month')}
+              className={`text-left rounded-lg border p-3 transition ${perMonth ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50' : 'border-gray-200 hover:border-gray-300'}`}
+            >
+              <div className="text-sm font-semibold text-gray-900">Per month</div>
+              <div className="text-xs text-gray-500 mt-0.5">A flat monthly amount per student.</div>
+            </button>
+          )}
         </div>
 
         <div>

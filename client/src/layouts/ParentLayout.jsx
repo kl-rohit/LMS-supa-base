@@ -58,7 +58,7 @@ export default function ParentLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
-  const { flags } = useModuleFlags();
+  const { flags, featureOn } = useModuleFlags();
   const navItems = visibleNav(flags);
   const branding = useOrgBranding();
   const displayName = branding.name || BRAND_NAME;
@@ -187,7 +187,7 @@ export default function ParentLayout() {
           <h1 className="text-lg font-semibold text-gray-800">{currentLabel}</h1>
           <div className="ml-auto flex items-center gap-1">
             <OrgSwitcher />
-            <NotificationBell />
+            {featureOn('notify.bell') && <NotificationBell />}
           </div>
         </header>
 

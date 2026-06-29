@@ -28,6 +28,7 @@ const router = require('express').Router();
 const { insert, update, zcql, unwrap, normalize, readCount } = require('../db/catalystDb');
 const { normalizePlan, PREMIUM_MODULES, isModuleEntitled } = require('../lib/plans');
 const { uploadOrgAsset, deleteOrgAsset } = require('../lib/orgAsset');
+const { requireFeature } = require('../middleware/entitlement');
 
 // =============================================================================
 // MessageTemplates (existing)
@@ -101,7 +102,7 @@ router.get('/templates', async (req, res) => {
   }
 });
 
-router.put('/templates', async (req, res) => {
+router.put('/templates', requireFeature('messages.templates'), async (req, res) => {
   try {
     const incoming = req.body?.templates || {};
     const rows = await zcql(req, `SELECT * FROM ${TEMPLATES_TABLE} WHERE ${TEMPLATES_TABLE}.org_id = ${Number(req.orgId)}`);

@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { createNotifications } = require('../lib/notify');
+const { requireFeature } = require('../middleware/entitlement');
 
 // Students enrolled in a course (for new-lesson / new-quiz notifications).
 async function enrolledStudentIds(req, courseId) {
@@ -110,7 +111,7 @@ router.get('/quiz-list', async (req, res) => {
 });
 
 // GET /api/lessons/activity
-router.get('/activity', async (req, res) => {
+router.get('/activity', requireFeature('reports.lessons'), async (req, res) => {
   try {
     const sidFilter = safeId(req.query.student_id);
     const cidFilter = safeId(req.query.course_id);

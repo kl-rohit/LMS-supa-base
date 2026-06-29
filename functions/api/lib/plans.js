@@ -28,7 +28,15 @@
 
 // Premium modules — the paid "Complete" tier. Everything else is core.
 // Quizzes & certificates ride on the Lessons module (no separate gate).
-const PREMIUM_MODULES = ['lessons', 'assignments', 'question_papers'];
+// Sourced from the generated config (functions/api/config.js), which
+// gen-config.js derives from the feature catalog in config.master.js, so the
+// pricing sheet and this server-side paywall always agree. The literal below
+// is only a fallback when the generated value is absent (older build).
+let PREMIUM_MODULES;
+try { PREMIUM_MODULES = require('../config').PREMIUM_MODULES; } catch (e) { /* config not generated yet */ }
+if (!Array.isArray(PREMIUM_MODULES) || PREMIUM_MODULES.length === 0) {
+  PREMIUM_MODULES = ['lessons', 'assignments', 'question_papers'];
+}
 
 // How long a trial lasts from its start (org creation, or the moment the
 // platform admin flips an org to 'trial').

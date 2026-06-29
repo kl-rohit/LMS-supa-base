@@ -29,6 +29,70 @@ export const PLAN_PRICES = {
   complete: 2000,
 };
 
+// Module keys unlocked only on the Complete plan, derived from the feature
+// catalog in config.master.js. useModuleFlags reads this to force-hide a
+// premium module the org's plan does not include.
+export const PREMIUM_MODULES = ['assignments', 'lessons', 'question_papers'];
+
+// Per-feature plan availability (key -> { core, complete }), used by featureOn
+// to hide a feature's UI when the org's plan does not include it.
+export const FEATURE_PLANS = {
+    'students.profiles': { core: true, complete: true },
+    'students.contacts': { core: true, complete: true },
+    'students.photos': { core: true, complete: true },
+    'groups.batches': { core: true, complete: true },
+    'students.import': { core: true, complete: true },
+    'attendance.daily': { core: true, complete: true },
+    'attendance.rosters': { core: true, complete: true },
+    'fees.tracking': { core: true, complete: true },
+    'fees.perStudent': { core: true, complete: true },
+    'fees.additional': { core: true, complete: true },
+    'fees.reminders': { core: true, complete: true },
+    'fees.statements': { core: true, complete: true },
+    'fees.upi_qr': { core: true, complete: true },
+    'classes.timetable': { core: true, complete: true },
+    'classes.types': { core: true, complete: true },
+    'classes.join_links': { core: true, complete: true },
+    'classes.exceptions': { core: true, complete: true },
+    'camps.run': { core: true, complete: true },
+    'camps.roster': { core: true, complete: true },
+    'messages.send': { core: true, complete: true },
+    'messages.bulk': { core: true, complete: true },
+    'messages.templates': { core: true, complete: true },
+    'notify.auto': { core: true, complete: true },
+    'notify.bell': { core: true, complete: true },
+    'notify.push': { core: true, complete: true },
+    'notify.digest': { core: true, complete: true },
+    'portal.login': { core: true, complete: true },
+    'portal.glance': { core: true, complete: true },
+    'portal.profile': { core: true, complete: true },
+    'portal.learning': { core: false, complete: true },
+    'lessons.build': { core: false, complete: true },
+    'lessons.player': { core: false, complete: true },
+    'lessons.resources': { core: false, complete: true },
+    'lessons.progress': { core: false, complete: true },
+    'lessons.enrol': { core: false, complete: true },
+    'quizzes.add': { core: false, complete: true },
+    'quizzes.gate': { core: false, complete: true },
+    'quizzes.certs': { core: false, complete: true },
+    'assignments.assign': { core: false, complete: true },
+    'assignments.due': { core: false, complete: true },
+    'assignments.notify': { core: false, complete: true },
+    'papers.share': { core: false, complete: true },
+    'papers.prep': { core: false, complete: true },
+    'reports.basic': { core: true, complete: true },
+    'reports.detailed': { core: false, complete: true },
+    'reports.lessons': { core: false, complete: true },
+    'pwa.install': { core: true, complete: true },
+    'pwa.a2hs': { core: true, complete: true },
+    'pwa.theme': { core: true, complete: true },
+    'multi.branches': { core: true, complete: true },
+    'multi.isolated': { core: true, complete: true },
+    'data.export': { core: true, complete: true },
+    'support.setup': { core: true, complete: true },
+    'support.human': { core: true, complete: true },
+  };
+
 export default {
   BRAND_NAME,
   SUPPORT_EMAIL,
@@ -39,4 +103,6 @@ export default {
   DEFAULT_CURRENCY,
   CURRENCY_SYMBOL,
   PLAN_PRICES,
+  PREMIUM_MODULES,
+  FEATURE_PLANS,
 };

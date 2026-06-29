@@ -25,6 +25,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { formatMobileDisplay } from '../utils/phone';
 import { maskPhone } from '../utils/mask';
 import { useRevealTimer } from '../hooks/useRevealTimer';
+import { useModuleFlags } from '../hooks/useModuleFlags';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
@@ -92,6 +93,7 @@ const emptyForm = {
 
 export default function Students() {
   const confirm = useConfirm();
+  const { featureOn } = useModuleFlags();
   // Bank-style mask for phone numbers — toggle reveals all, auto-hides 20s later.
   const phoneReveal = useRevealTimer(20000);
   // Bulk-select state for multi-row operations
@@ -1098,18 +1100,22 @@ export default function Students() {
                   Filled by the parent via the portal — admin can override here.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    ref={photoFileRef}
-                    onChange={handlePickPhoto}
-                    className="hidden"
-                    id="admin-photo-input"
-                  />
-                  <label htmlFor="admin-photo-input" className="btn-secondary btn-sm cursor-pointer">
-                    <Camera className="w-3.5 h-3.5" />
-                    {form.photo_url || photoPending ? 'Change photo' : 'Upload photo'}
-                  </label>
+                  {featureOn('students.photos') && (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={photoFileRef}
+                        onChange={handlePickPhoto}
+                        className="hidden"
+                        id="admin-photo-input"
+                      />
+                      <label htmlFor="admin-photo-input" className="btn-secondary btn-sm cursor-pointer">
+                        <Camera className="w-3.5 h-3.5" />
+                        {form.photo_url || photoPending ? 'Change photo' : 'Upload photo'}
+                      </label>
+                    </>
+                  )}
                   {photoPending && (
                     <>
                       <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">

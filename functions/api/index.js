@@ -6,7 +6,7 @@ const cors = require('cors');
 const { requireAuth, requireAdmin } = require('./middleware/auth');
 const { requireParent } = require('./middleware/parent');
 const { resolveOrg, requireOrgId } = require('./middleware/org');
-const { requireModule } = require('./middleware/entitlement');
+const { requireModule, requireFeature } = require('./middleware/entitlement');
 const config = require('./config');
 
 // Build version — written by deploy.sh at deploy time (git SHA + build time).
@@ -84,17 +84,19 @@ app.use('/api/platform', requireAuth, requireAdmin, require('./routes/platform')
 // OrgMembership (or Catalyst App Administrator acting on a specific org).
 // resolveOrg attaches req.orgId + req.orgRole; each route uses those to
 // filter SELECTs and stamp INSERTs.
-app.use('/api/students',       requireAuth, resolveOrg, requireOrgId, require('./routes/students'));
-app.use('/api/groups',         requireAuth, resolveOrg, requireOrgId, require('./routes/groups'));
-app.use('/api/classes',        requireAuth, resolveOrg, requireOrgId, require('./routes/classes'));
-app.use('/api/attendance',     requireAuth, resolveOrg, requireOrgId, require('./routes/attendance'));
-app.use('/api/fees',           requireAuth, resolveOrg, requireOrgId, require('./routes/fees'));
-app.use('/api/messages',       requireAuth, resolveOrg, requireOrgId, require('./routes/messages'));
-app.use('/api/reports',        requireAuth, resolveOrg, requireOrgId, require('./routes/reports'));
+// Core modules carry a requireFeature gate keyed to the catalog. They default
+// to on for every plan, so this is a no-op until a row is flipped in config.
+app.use('/api/students',       requireAuth, resolveOrg, requireOrgId, requireFeature('students.profiles'), require('./routes/students'));
+app.use('/api/groups',         requireAuth, resolveOrg, requireOrgId, requireFeature('groups.batches'),    require('./routes/groups'));
+app.use('/api/classes',        requireAuth, resolveOrg, requireOrgId, requireFeature('classes.timetable'), require('./routes/classes'));
+app.use('/api/attendance',     requireAuth, resolveOrg, requireOrgId, requireFeature('attendance.daily'),  require('./routes/attendance'));
+app.use('/api/fees',           requireAuth, resolveOrg, requireOrgId, requireFeature('fees.tracking'),     require('./routes/fees'));
+app.use('/api/messages',       requireAuth, resolveOrg, requireOrgId, requireFeature('messages.send'),     require('./routes/messages'));
+app.use('/api/reports',        requireAuth, resolveOrg, requireOrgId, requireFeature('reports.basic'),     require('./routes/reports'));
 app.use('/api/dashboard',      requireAuth, resolveOrg, requireOrgId, require('./routes/dashboard'));
-app.use('/api/import',         requireAuth, resolveOrg, requireOrgId, require('./routes/import'));
+app.use('/api/import',         requireAuth, resolveOrg, requireOrgId, requireFeature('students.import'),   require('./routes/import'));
 app.use('/api/migration',      requireAuth, resolveOrg, requireOrgId, require('./routes/migration'));
-app.use('/api/camps',          requireAuth, resolveOrg, requireOrgId, require('./routes/camps'));
+app.use('/api/camps',          requireAuth, resolveOrg, requireOrgId, requireFeature('camps.run'),         require('./routes/camps'));
 app.use('/api/student-logins', requireAuth, resolveOrg, requireOrgId, require('./routes/student-logins'));
 // Premium routes (Complete plan) — gated by requireModule. quizzes, courses
 // and enrollments all ride on the Lessons module entitlement.

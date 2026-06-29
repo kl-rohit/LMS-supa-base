@@ -23,7 +23,39 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const master = require(path.join(ROOT, 'config.master.js'));
-const { shared, prices, backend } = master;
+const { shared, prices, backend, features } = master;
+
+// Flat list of every feature item across categories.
+function allFeatureItems() {
+  const cats = (features && Array.isArray(features.categories)) ? features.categories : [];
+  return cats.flatMap((c) => (Array.isArray(c.items) ? c.items : []));
+}
+
+// Premium MODULE keys: capabilities that are Complete-only AND map to a real
+// module toggle the app enforces. 'detailed_reports' is a plan-tier check
+// (reports.js), not a module, so it is excluded here. Derived from the catalog
+// so moving a gated row between plans updates the app's entitlements.
+function derivePremiumModules() {
+  const set = new Set();
+  for (const it of allFeatureItems()) {
+    if (it && it.gate && it.gate !== 'detailed_reports' && it.complete && !it.core) {
+      set.add(it.gate);
+    }
+  }
+  return [...set].sort();
+}
+const PREMIUM_MODULES = derivePremiumModules();
+
+// Per-feature plan availability, keyed by the catalog `key`. Consumed by the
+// requireFeature server guard and the featureOn client helper, so flipping a
+// row's core/complete in config.master.js changes the live gate everywhere.
+function featurePlansLiteral(indent) {
+  const pad = indent || '  ';
+  const lines = allFeatureItems()
+    .filter((it) => it && it.key)
+    .map((it) => `${pad}  ${s(it.key)}: { core: ${!!it.core}, complete: ${!!it.complete} },`);
+  return `{\n${lines.join('\n')}\n${pad}}`;
+}
 
 const DO_NOT_EDIT =
   'GENERATED FILE — do not edit by hand.\n' +
@@ -82,7 +114,18 @@ const DEFAULT_CURRENCY     = env.DEFAULT_CURRENCY     || ${s(shared.currency)};
 // ---- Identity / roles ------------------------------------------------------
 const PLATFORM_ADMIN_ROLE = ${s(backend.platformAdminRole)};
 
+// ---- Plan entitlements (derived from the feature catalog) ------------------
+// Module keys that are Complete-only. plans.js reads this so the pricing sheet
+// and the server-side paywall always agree. Edit config.master.js features.
+const PREMIUM_MODULES = [${PREMIUM_MODULES.map(s).join(', ')}];
+
+// Per-feature plan availability (key -> { core, complete }). requireFeature
+// reads this so every catalog row is independently switchable from config.
+const FEATURE_PLANS = ${featurePlansLiteral('')};
+
 module.exports = {
+  PREMIUM_MODULES,
+  FEATURE_PLANS,
   BRAND_NAME,
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
@@ -137,6 +180,15 @@ export const PLAN_PRICES = {
   complete: ${Number(prices.complete.base)},
 };
 
+// Module keys unlocked only on the Complete plan, derived from the feature
+// catalog in config.master.js. useModuleFlags reads this to force-hide a
+// premium module the org's plan does not include.
+export const PREMIUM_MODULES = [${PREMIUM_MODULES.map(s).join(', ')}];
+
+// Per-feature plan availability (key -> { core, complete }), used by featureOn
+// to hide a feature's UI when the org's plan does not include it.
+export const FEATURE_PLANS = ${featurePlansLiteral('')};
+
 export default {
   BRAND_NAME,
   SUPPORT_EMAIL,
@@ -147,6 +199,8 @@ export default {
   DEFAULT_CURRENCY,
   CURRENCY_SYMBOL,
   PLAN_PRICES,
+  PREMIUM_MODULES,
+  FEATURE_PLANS,
 };
 `;
 }
@@ -197,6 +251,46 @@ function patchLanding(file) {
 }
 
 // ---------------------------------------------------------------------------
+// 4) Pricing page — generate the feature comparison matrix from the catalog
+// ---------------------------------------------------------------------------
+function esc(t) {
+  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// A Core/Complete cell: a check when included, a dash when not.
+function matrixCell(on) {
+  return on
+    ? '<td class="px-4 py-3 text-center"><i data-lucide="check" class="w-4 h-4 inline text-emerald-400"></i></td>'
+    : '<td class="px-4 py-3 text-center text-slate-600">–</td>';
+}
+function matrixRows() {
+  const cats = (features && Array.isArray(features.categories)) ? features.categories : [];
+  const lines = [];
+  for (const c of cats) {
+    lines.push(`            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">${esc(c.name)}</td></tr>`);
+    for (const it of (Array.isArray(c.items) ? c.items : [])) {
+      lines.push(`            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">${esc(it.label)}</td>${matrixCell(!!it.core)}${matrixCell(!!it.complete)}</tr>`);
+    }
+  }
+  return lines.join('\n');
+}
+function matrixBlock() {
+  return `<!-- GEN:MATRIX:START — generated from config.master.js features, do not edit by hand -->\n${matrixRows()}\n            <!-- GEN:MATRIX:END -->`;
+}
+function patchMatrix(file) {
+  const src = fs.readFileSync(file, 'utf8');
+  const re = /<!-- GEN:MATRIX:START[\s\S]*?GEN:MATRIX:END -->/;
+  if (!re.test(src)) {
+    throw new Error(
+      path.basename(file) + ' is missing the GEN:MATRIX:START / GEN:MATRIX:END markers. ' +
+      'Add them inside the comparison table <tbody> so the generator can target it.'
+    );
+  }
+  const next = src.replace(re, matrixBlock());
+  if (next !== src) { fs.writeFileSync(file, next); return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 function write(rel, content) {
   const file = path.join(ROOT, rel);
   const prev = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
@@ -219,6 +313,10 @@ function main() {
     const changed = patchLanding(path.join(ROOT, rel));
     console.log((changed ? '  ✓ ' : '  = ') + rel + (changed ? '' : ' (unchanged)'));
   });
+
+  // Pricing page comparison matrix is generated from the feature catalog.
+  const mChanged = patchMatrix(path.join(ROOT, 'client/public/pricing.html'));
+  console.log((mChanged ? '  ✓ ' : '  = ') + 'client/public/pricing.html [matrix]' + (mChanged ? '' : ' (unchanged)'));
 
   console.log('✔ config generated');
 }

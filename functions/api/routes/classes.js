@@ -6,6 +6,7 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeI
 const { createNotifications } = require('../lib/notify');
 const { substituteTemplate } = require('../lib/feeReminder');
 const { loadTemplates, loadAppSettings } = require('./settings');
+const { requireFeature } = require('../middleware/entitlement');
 
 // Fallback body if the org hasn't customised the online_meeting template
 // (kept identical to settings.DEFAULT_TEMPLATES.online_meeting).
@@ -157,7 +158,7 @@ router.get('/today', async (req, res) => {
 // so they ride along with every GET /classes response.
 
 // POST /api/classes/:id/exceptions  — cancel or move a single occurrence
-router.post('/:id/exceptions', async (req, res) => {
+router.post('/:id/exceptions', requireFeature('classes.exceptions'), async (req, res) => {
   try {
     const { exception_date, status, new_date, new_start_time, new_end_time, note } = req.body;
     if (!exception_date || !status) {
@@ -192,7 +193,7 @@ router.post('/:id/exceptions', async (req, res) => {
 });
 
 // DELETE /api/classes/:id/exceptions/:date  — un-cancel / un-move (restore default)
-router.delete('/:id/exceptions/:date', async (req, res) => {
+router.delete('/:id/exceptions/:date', requireFeature('classes.exceptions'), async (req, res) => {
   try {
     const cls = await getById(req, 'Classes', req.params.id);
     if (!cls || Number(cls.org_id) !== Number(req.orgId)) {
@@ -362,7 +363,7 @@ router.delete('/:id', async (req, res) => {
 // Body: { meeting_link, student_ids? }. Without student_ids, sends to the whole
 // roster; with them, only those (filtered to the class roster). The message is
 // rendered from the editable `online_meeting` template, personalised per student.
-router.post('/:id/share-link', async (req, res) => {
+router.post('/:id/share-link', requireFeature('classes.join_links'), async (req, res) => {
   try {
     const cls = await getById(req, 'Classes', req.params.id);
     if (!cls || Number(cls.org_id) !== Number(req.orgId)) {

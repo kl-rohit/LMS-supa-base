@@ -18,6 +18,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useModuleFlags } from '../hooks/useModuleFlags';
 import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
@@ -42,6 +43,7 @@ function substituteTemplate(text, ctx) {
 
 export default function Messages() {
   const confirm = useConfirm();
+  const { featureOn } = useModuleFlags();
   const [messages, setMessages] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -412,7 +414,7 @@ export default function Messages() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="page-header mb-0">Messages</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          {pendingSendable.length > 0 && (
+          {pendingSendable.length > 0 && featureOn('messages.bulk') && (
             <button
               onClick={sendAllPending}
               disabled={bulkSending}

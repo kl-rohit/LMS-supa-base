@@ -20,6 +20,7 @@ const {
   MODULES, SYSTEM_COLS, ALIAS_COLS, getModule, refTableFor,
 } = require('../db/migrationRegistry');
 const { PHOTO_BUCKET, uploadStudentPhoto } = require('../lib/photoUpload');
+const { requireFeature } = require('../middleware/entitlement');
 
 const SCHEMA_VERSION = 1;
 
@@ -307,7 +308,7 @@ router.get('/counts', async (req, res) => {
 });
 
 // GET /api/migration/export/:module — one module's rows.
-router.get('/export/:module', async (req, res) => {
+router.get('/export/:module', requireFeature('data.export'), async (req, res) => {
   try {
     const mod = getModule(req.params.module);
     if (!mod) return res.status(404).json({ error: `Unknown module: ${req.params.module}` });
@@ -327,7 +328,7 @@ router.get('/export/:module', async (req, res) => {
 });
 
 // GET /api/migration/export — full bundle, all modules in dependency order.
-router.get('/export', async (req, res) => {
+router.get('/export', requireFeature('data.export'), async (req, res) => {
   try {
     const bundle = {
       schema_version: SCHEMA_VERSION,

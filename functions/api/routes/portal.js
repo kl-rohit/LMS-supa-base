@@ -10,6 +10,7 @@ const { codeFor } = require('../lib/certVerify');
 const { loadLessonQuiz, PASS_THRESHOLD } = require('./quizzes');
 const { loadAssignments } = require('./assignments');
 const { loadPapers } = require('./questionpapers');
+const { isFeatureEnabled, requireFeature } = require('../middleware/entitlement');
 const { publicVapidKey } = require('../lib/notify');
 const { parentKey, setFlag, isPending } = require('../lib/onboarding');
 const { loadAppSettings } = require('./settings');
@@ -270,11 +271,15 @@ router.get('/fees', async (req, res) => {
     // client-side) and/or an uploaded payment-QR image (streamed inline as a
     // data URL so it embeds without a cross-origin Stratus fetch). Both are
     // optional — the portal shows whichever the academy configured.
-    const upiId = String(appSettings['fees.upi_id'] || '').trim();
-    const payeeName = String(appSettings['fees.payee_name'] || '').trim();
-    const feeNote = String(appSettings['fees.note'] || '').trim();
+    // UPI/QR collection is a catalog feature (fees.upi_qr). When the org's plan
+    // does not include it, the whole payment block is suppressed so the portal
+    // shows no UPI id, QR or pay button.
+    const upiEnabled = isFeatureEnabled(req.orgPlan, 'fees.upi_qr');
+    const upiId = upiEnabled ? String(appSettings['fees.upi_id'] || '').trim() : '';
+    const payeeName = upiEnabled ? String(appSettings['fees.payee_name'] || '').trim() : '';
+    const feeNote = upiEnabled ? String(appSettings['fees.note'] || '').trim() : '';
     let qrImage = '';
-    const qrKey = String(appSettings['fees.qr_key'] || '').trim();
+    const qrKey = upiEnabled ? String(appSettings['fees.qr_key'] || '').trim() : '';
     if (qrKey) {
       try { qrImage = await loadAssetDataUrl(req, qrKey); } catch { qrImage = ''; }
     }
@@ -1234,7 +1239,7 @@ router.get('/push/vapid-key', (req, res) => {
 });
 
 // POST /api/portal/push/subscribe — register (or refresh) this device.
-router.post('/push/subscribe', async (req, res) => {
+router.post('/push/subscribe', requireFeature('notify.push'), async (req, res) => {
   try {
     const sid = safeId(req.studentId);
     if (!sid) return res.status(401).json({ error: 'Not authenticated' });
@@ -1477,7 +1482,7 @@ router.get('/profile', async (req, res) => {
 
 // PUT /api/portal/profile — whitelist-update. Anything outside
 // PORTAL_EDITABLE_FIELDS is silently ignored.
-router.put('/profile', async (req, res) => {
+router.put('/profile', requireFeature('portal.profile'), async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.studentId);
     if (!existing) return res.status(404).json({ error: 'Linked student not found' });

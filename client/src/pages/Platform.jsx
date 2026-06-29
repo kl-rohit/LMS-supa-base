@@ -6,8 +6,9 @@
 // plan-change history, module toggles), the cross-org activity log, and a
 // broadcast composer.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Fragment } from 'react';
 import { Link } from 'react-router-dom';
+import { FEATURE_CATALOG, PLAN_PRICING } from '../config';
 import {
   Building2,
   Users as UsersIcon,
@@ -34,6 +35,7 @@ import {
   Megaphone,
   Send,
   LayoutDashboard,
+  Layers,
   History,
   ChevronLeft,
   Activity,
@@ -708,6 +710,7 @@ export default function Platform() {
     { key: 'academies',  label: 'Academies',  icon: Building2,       badge: orgs.length },
     { key: 'search',     label: 'Search',     icon: Search,          badge: 0 },
     { key: 'billing',    label: 'Billing',    icon: Receipt,         badge: 0 },
+    { key: 'plans',      label: 'Plans',      icon: Layers,          badge: 0 },
     { key: 'activity',   label: 'Activity',   icon: ScrollText,      badge: 0 },
     { key: 'broadcast',  label: 'Broadcast',  icon: Megaphone,       badge: 0 },
   ];
@@ -880,6 +883,10 @@ export default function Platform() {
             )
           )}
 
+          {section === 'plans' && (
+            <PlansSection />
+          )}
+
           {section === 'activity' && (
             <ActivitySection audit={audit} />
           )}
@@ -1003,6 +1010,95 @@ function StatTile({ icon: Icon, label, value, color }) {
         <div className="text-2xl font-bold leading-tight">{value}</div>
         <div className="text-xs uppercase tracking-wide opacity-80">{label}</div>
       </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Plans section — read-only comparison of what each plan includes, plus the
+// live prices. Both the catalog and prices come from the generated config
+// (config.master.js → gen-config), so this always matches the public pricing
+// sheet and the in-app gating.
+// ----------------------------------------------------------------------------
+function PlansSection() {
+  const P = PLAN_PRICING || {};
+  const cur = P.currency || '₹';
+  const cats = Array.isArray(FEATURE_CATALOG) ? FEATURE_CATALOG : [];
+  const money = (n) => cur + Number(n || 0).toLocaleString('en-IN');
+  const coreCount = cats.reduce((n, cat) => n + cat.items.filter((it) => it.core).length, 0);
+  const completeCount = cats.reduce((n, cat) => n + cat.items.filter((it) => it.complete).length, 0);
+  const total = cats.reduce((n, cat) => n + cat.items.length, 0);
+
+  const PriceCard = ({ name, p, accent }) => {
+    if (!p) return null;
+    return (
+      <div className={`card ${accent ? 'ring-1 ring-indigo-200' : ''}`}>
+        <div className="flex items-baseline justify-between">
+          <h3 className="font-semibold text-gray-900">{name}</h3>
+          <div className="text-right">
+            <span className="text-2xl font-bold text-gray-900">{money(p.base)}</span>
+            <span className="text-sm text-gray-500">/mo</span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          First {p.included} students included, then {money(p.perStudent)} / student / month.
+        </p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="card">
+        <h2 className="text-lg font-bold text-gray-900">Plans &amp; feature comparison</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          What each plan includes. This mirrors the public pricing page and the live in-app gating,
+          all sourced from the same catalog in config.master.js.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <PriceCard name="Core" p={P.core} />
+        <PriceCard name="Complete" p={P.complete} accent />
+      </div>
+
+      <div className="card p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[420px]">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-700">Feature</th>
+                <th className="px-4 py-3 text-center font-semibold text-gray-700 w-28">Core<div className="text-[11px] font-normal text-gray-400">{coreCount}/{total}</div></th>
+                <th className="px-4 py-3 text-center font-semibold text-indigo-700 w-28">Complete<div className="text-[11px] font-normal text-gray-400">{completeCount}/{total}</div></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {cats.map((c) => (
+                <Fragment key={c.name}>
+                  <tr className="bg-gray-50/60">
+                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{c.name}</td>
+                  </tr>
+                  {c.items.map((it) => (
+                    <tr key={it.key}>
+                      <td className="px-4 py-2.5 text-gray-700">{it.label}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {it.core ? <span className="text-emerald-600 font-bold">{'✓'}</span> : <span className="text-gray-300">{'–'}</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {it.complete ? <span className="text-emerald-600 font-bold">{'✓'}</span> : <span className="text-gray-300">{'–'}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-400">
+        Read-only reference. To move a feature between plans, edit its row in config.master.js and redeploy.
+      </p>
     </div>
   );
 }

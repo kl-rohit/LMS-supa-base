@@ -57,6 +57,20 @@ function featurePlansLiteral(indent) {
   return `{\n${lines.join('\n')}\n${pad}}`;
 }
 
+// Full catalog with category names + labels, for the Platform Admin comparison
+// view. Carries enforce so the console can show how each row is gated.
+function featureCatalogLiteral(indent) {
+  const pad = indent || '';
+  const cats = (features && Array.isArray(features.categories)) ? features.categories : [];
+  const catStrs = cats.map((c) => {
+    const items = (Array.isArray(c.items) ? c.items : [])
+      .map((it) => `      { key: ${s(it.key)}, label: ${s(it.label)}, core: ${!!it.core}, complete: ${!!it.complete}, enforce: ${s(it.enforce || 'module')} }`)
+      .join(',\n');
+    return `${pad}  { name: ${s(c.name)}, items: [\n${items}\n${pad}  ] }`;
+  });
+  return `[\n${catStrs.join(',\n')}\n${pad}]`;
+}
+
 const DO_NOT_EDIT =
   'GENERATED FILE — do not edit by hand.\n' +
   '// Edit values in config.master.js (repo root) then run `npm run config:gen`\n' +
@@ -180,6 +194,15 @@ export const PLAN_PRICES = {
   complete: ${Number(prices.complete.base)},
 };
 
+// Full pricing detail (base, included students, per-student, struck regulars)
+// for the Platform Admin plans comparison.
+export const PLAN_PRICING = {
+  currency: ${s(shared.currencySymbol)},
+  offerName: ${s(prices.offerName || '')},
+  core:     ${planLiteral(prices.core)},
+  complete: ${planLiteral(prices.complete)},
+};
+
 // Module keys unlocked only on the Complete plan, derived from the feature
 // catalog in config.master.js. useModuleFlags reads this to force-hide a
 // premium module the org's plan does not include.
@@ -188,6 +211,10 @@ export const PREMIUM_MODULES = [${PREMIUM_MODULES.map(s).join(', ')}];
 // Per-feature plan availability (key -> { core, complete }), used by featureOn
 // to hide a feature's UI when the org's plan does not include it.
 export const FEATURE_PLANS = ${featurePlansLiteral('')};
+
+// Full feature catalog (categories + labels + plan flags) for the Platform
+// Admin plans/pricing comparison view.
+export const FEATURE_CATALOG = ${featureCatalogLiteral('')};
 
 export default {
   BRAND_NAME,
@@ -199,8 +226,10 @@ export default {
   DEFAULT_CURRENCY,
   CURRENCY_SYMBOL,
   PLAN_PRICES,
+  PLAN_PRICING,
   PREMIUM_MODULES,
   FEATURE_PLANS,
+  FEATURE_CATALOG,
 };
 `;
 }

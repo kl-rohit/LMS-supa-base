@@ -294,12 +294,15 @@ function matrixCell(on) {
 function matrixRows() {
   const cats = (features && Array.isArray(features.categories)) ? features.categories : [];
   const lines = [];
-  for (const c of cats) {
-    lines.push(`            <tr class="bg-white/5"><td colspan="3" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300">${esc(c.name)}</td></tr>`);
+  cats.forEach((c, ci) => {
+    // Category header: clickable to collapse/expand its rows (cmp-cat + caret).
+    lines.push(`            <tr class="cmp-cat bg-white/5 cursor-pointer" data-cat="${ci}"><td colspan="3" class="cmp-sticky px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gold-300"><span class="cmp-caret">&#9662;</span> ${esc(c.name)}</td></tr>`);
     for (const it of (Array.isArray(c.items) ? c.items : [])) {
-      lines.push(`            <tr class="border-t border-white/5"><td class="px-4 py-3 text-slate-300">${esc(it.label)}</td>${matrixCell(!!it.core)}${matrixCell(!!it.complete)}</tr>`);
+      // data-common=1 when both plans match (so "hide shared" can drop them).
+      const common = (!!it.core === !!it.complete) ? '1' : '0';
+      lines.push(`            <tr class="cmp-feat border-t border-white/5" data-cat="${ci}" data-common="${common}"><td class="cmp-sticky px-4 py-3 text-slate-300">${esc(it.label)}</td>${matrixCell(!!it.core)}${matrixCell(!!it.complete)}</tr>`);
     }
-  }
+  });
   return lines.join('\n');
 }
 function matrixBlock() {

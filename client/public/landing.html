@@ -204,6 +204,12 @@
       .shine:hover::before { animation: none; }
       .ripple-ink { display: none; }
     }
+    /* Feature cards: icon and title share the top row, description spans below
+       (works the same on mobile and desktop). Scoped so it only affects the
+       feature grid, not other icon+heading layouts. */
+    .feature-grid > div { display: grid; grid-template-columns: auto 1fr; column-gap: .75rem; align-items: center; }
+    .feature-grid > div > h3 { margin-top: 0; }
+    .feature-grid > div > p  { grid-column: 1 / -1; margin-top: .75rem; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
@@ -495,7 +501,7 @@
       <p class="mt-4 text-slate-600">One calm place to manage students, classes, money, learning and communication, all working together, all in sync.</p>
     </div>
 
-    <div class="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div class="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-5 feature-grid">
       <div class="reveal card-hover bg-white rounded-2xl p-6 ring-1 ring-slate-200">
         <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="users" class="w-5 h-5"></i></div>
         <h3 class="mt-4 font-bold text-slate-900">Students &amp; Groups</h3>
@@ -1141,7 +1147,7 @@
               <div>
                 <label for="lf-phone" class="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
                 <input id="lf-phone" name="phone" type="tel" autocomplete="tel"
-                       class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. +91 98765 43210">
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. +91 93603 90883">
               </div>
             </div>
 
@@ -1330,6 +1336,10 @@
           a.textContent = a.textContent.replace(phoneRe, cfg.PHONE_DISPLAY);
         }
       });
+      // 1b) Lead-form phone placeholder uses the configured number as the
+      // example, so it tracks config.master.js on every build.
+      var lfPhone = document.getElementById('lf-phone');
+      if (lfPhone) lfPhone.placeholder = 'e.g. ' + cfg.PHONE_DISPLAY;
       // 2) Every mailto link: fix href + visible text if it shows an address.
       document.querySelectorAll('a[href^="mailto:"]').forEach(function (a) {
         a.setAttribute('href', 'mailto:' + cfg.SUPPORT_EMAIL);

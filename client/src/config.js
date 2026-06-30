@@ -35,7 +35,7 @@ export const PLAN_PRICING = {
   currency: '₹',
   offerName: 'Limited-time launch offer · introductory pricing',
   core:     { base: 1000, baseRegular: 1500, included: 15, perStudent: 50, perStudentRegular: 75 },
-  complete: { base: 2000, baseRegular: 2999, included: 15, perStudent: 90, perStudentRegular: 130 },
+  complete: { base: 2000, baseRegular: 2999, included: 15, perStudent: 100, perStudentRegular: 150 },
 };
 
 // Module keys unlocked only on the Complete plan, derived from the feature
@@ -50,7 +50,7 @@ export const FEATURE_PLANS = {
     'students.contacts': { core: true, complete: true },
     'students.photos': { core: true, complete: true },
     'groups.batches': { core: true, complete: true },
-    'students.import': { core: true, complete: true },
+    'students.import': { core: false, complete: true },
     'attendance.daily': { core: true, complete: true },
     'attendance.rosters': { core: true, complete: true },
     'fees.tracking': { core: true, complete: true },
@@ -58,16 +58,16 @@ export const FEATURE_PLANS = {
     'fees.additional': { core: true, complete: true },
     'fees.reminders': { core: true, complete: true },
     'fees.statements': { core: true, complete: true },
-    'fees.upi_qr': { core: true, complete: true },
+    'fees.upi_qr': { core: false, complete: true },
     'classes.timetable': { core: true, complete: true },
     'classes.types': { core: true, complete: true },
     'classes.join_links': { core: true, complete: true },
-    'classes.exceptions': { core: true, complete: true },
-    'camps.run': { core: true, complete: true },
+    'classes.exceptions': { core: false, complete: true },
+    'camps.run': { core: false, complete: true },
     'camps.roster': { core: true, complete: true },
     'messages.send': { core: true, complete: true },
-    'messages.bulk': { core: true, complete: true },
-    'messages.templates': { core: true, complete: true },
+    'messages.bulk': { core: false, complete: true },
+    'messages.templates': { core: false, complete: true },
     'notify.auto': { core: true, complete: true },
     'notify.bell': { core: true, complete: true },
     'notify.push': { core: true, complete: true },
@@ -97,7 +97,7 @@ export const FEATURE_PLANS = {
     'pwa.theme': { core: true, complete: true },
     'multi.branches': { core: true, complete: true },
     'multi.isolated': { core: true, complete: true },
-    'data.export': { core: true, complete: true },
+    'data.export': { core: false, complete: true },
     'support.setup': { core: true, complete: true },
     'support.human': { core: true, complete: true },
   };
@@ -110,7 +110,7 @@ export const FEATURE_CATALOG = [
       { key: 'students.contacts', label: 'Parent contacts (kept private)', core: true, complete: true, enforce: 'inherent' },
       { key: 'students.photos', label: 'Student photos', core: true, complete: true, enforce: 'client' },
       { key: 'groups.batches', label: 'Groups & batches', core: true, complete: true, enforce: 'module' },
-      { key: 'students.import', label: 'Bulk CSV import', core: true, complete: true, enforce: 'inline' },
+      { key: 'students.import', label: 'Bulk CSV import', core: false, complete: true, enforce: 'inline' },
       { key: 'attendance.daily', label: 'One-tap daily attendance', core: true, complete: true, enforce: 'module' },
       { key: 'attendance.rosters', label: 'Auto-built class rosters', core: true, complete: true, enforce: 'inherent' }
   ] },
@@ -120,22 +120,22 @@ export const FEATURE_CATALOG = [
       { key: 'fees.additional', label: 'Additional charges & discounts', core: true, complete: true, enforce: 'inline' },
       { key: 'fees.reminders', label: 'Automatic monthly reminders', core: true, complete: true, enforce: 'inline' },
       { key: 'fees.statements', label: 'Monthly statements per student', core: true, complete: true, enforce: 'inherent' },
-      { key: 'fees.upi_qr', label: 'UPI & pay-by-QR collection', core: true, complete: true, enforce: 'inline' }
+      { key: 'fees.upi_qr', label: 'UPI & pay-by-QR collection', core: false, complete: true, enforce: 'inline' }
   ] },
   { name: 'Classes & Scheduling', items: [
       { key: 'classes.timetable', label: 'Weekly timetable grid', core: true, complete: true, enforce: 'module' },
       { key: 'classes.types', label: 'Online, in-person & group classes', core: true, complete: true, enforce: 'inherent' },
       { key: 'classes.join_links', label: 'One-tap join links for online classes', core: true, complete: true, enforce: 'inline' },
-      { key: 'classes.exceptions', label: 'Reschedule or cancel a single date', core: true, complete: true, enforce: 'inline' }
+      { key: 'classes.exceptions', label: 'Reschedule or cancel a single date', core: false, complete: true, enforce: 'inline' }
   ] },
   { name: 'Camps & Workshops', items: [
-      { key: 'camps.run', label: 'Short-term camps & intensives', core: true, complete: true, enforce: 'module' },
+      { key: 'camps.run', label: 'Short-term camps & intensives', core: false, complete: true, enforce: 'module' },
       { key: 'camps.roster', label: 'Own dates, roster & attendance', core: true, complete: true, enforce: 'inherent' }
   ] },
   { name: 'Communication & Notifications', items: [
       { key: 'messages.send', label: 'WhatsApp & in-app messaging', core: true, complete: true, enforce: 'module' },
-      { key: 'messages.bulk', label: 'Bulk "Send all" messages', core: true, complete: true, enforce: 'client' },
-      { key: 'messages.templates', label: 'Editable message templates', core: true, complete: true, enforce: 'inline' },
+      { key: 'messages.bulk', label: 'Bulk "Send all" messages', core: false, complete: true, enforce: 'client' },
+      { key: 'messages.templates', label: 'Editable message templates', core: false, complete: true, enforce: 'inline' },
       { key: 'notify.auto', label: 'Absence alerts & fee reminders', core: true, complete: true, enforce: 'inherent' },
       { key: 'notify.bell', label: 'In-app notification bell', core: true, complete: true, enforce: 'client' },
       { key: 'notify.push', label: 'Web-push to the lock screen', core: true, complete: true, enforce: 'inline' },
@@ -181,7 +181,7 @@ export const FEATURE_CATALOG = [
   { name: 'Multi-academy & Data', items: [
       { key: 'multi.branches', label: 'Run multiple branches from one login', core: true, complete: true, enforce: 'inherent' },
       { key: 'multi.isolated', label: 'Isolated, private data per academy', core: true, complete: true, enforce: 'inherent' },
-      { key: 'data.export', label: 'Data export & backup', core: true, complete: true, enforce: 'inline' }
+      { key: 'data.export', label: 'Data export & backup', core: false, complete: true, enforce: 'inline' }
   ] },
   { name: 'Support', items: [
       { key: 'support.setup', label: 'Guided setup & walkthrough', core: true, complete: true, enforce: 'inherent' },

@@ -22,7 +22,7 @@
 // the defaults.
 // =============================================================================
 
-module.exports = {
+const master = {
   // ---- Shared everywhere (backend + client + landing) ----------------------
   shared: {
     brandName:          'VidyaSetu',          // platform fallback name
@@ -182,3 +182,31 @@ module.exports = {
     platformAdminRole:  'App Administrator',         // Catalyst role string
   },
 };
+
+// ---- Owner overrides from Platform Admin --------------------------------
+// scripts/sync-pricing.js fetches whatever the owner saved in the Platform
+// Admin Plans editor and writes it to pricing.overrides.json (gitignored).
+// We merge it over the defaults above so a build picks up the live settings.
+// No file (fresh repo, or never edited) means the defaults stand.
+try {
+  // eslint-disable-next-line global-require, import/no-unresolved
+  const ov = require('./pricing.overrides.json');
+  if (ov && ov.prices) {
+    for (const plan of ['core', 'complete']) {
+      if (ov.prices[plan] && master.prices[plan]) Object.assign(master.prices[plan], ov.prices[plan]);
+    }
+  }
+  if (ov && ov.features) {
+    for (const cat of master.features.categories) {
+      for (const it of cat.items) {
+        const o = ov.features[it.key];
+        if (o) {
+          if (typeof o.core === 'boolean') it.core = o.core;
+          if (typeof o.complete === 'boolean') it.complete = o.complete;
+        }
+      }
+    }
+  }
+} catch (e) { /* no overrides file — defaults stand */ }
+
+module.exports = master;

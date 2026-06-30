@@ -15,6 +15,7 @@ const { generateFeeReminders } = require('../lib/feeReminder');
 const { zcql, zcqlAll, unwrap, normalize, remove, appFor } = require('../db/catalystDb');
 const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
 const config = require('../config');
+const { getOverrides } = require('../lib/pricingStore');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
 // matches the CRON_SECRET env var. If CRON_SECRET is unset (e.g. local
@@ -33,6 +34,19 @@ function requireCronSecret(req, res, next) {
 }
 
 router.use(requireCronSecret);
+
+// GET /api/internal/pricing-export — the saved pricing/feature overrides, for
+// scripts/sync-pricing.js to bake into config.master.js at deploy time. Behind
+// the same X-Cron-Secret as the crons, so the deploy machine (which has the
+// secret in catalyst-config.json) can read it without a user login.
+router.get('/pricing-export', async (req, res) => {
+  try {
+    const overrides = await getOverrides(req);
+    res.json({ overrides });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to export pricing', detail: e.message });
+  }
+});
 
 // Returns true when `date` is the last calendar day of its month.
 // Used by the monthly-cron to early-return on days 28-30 (so the cron

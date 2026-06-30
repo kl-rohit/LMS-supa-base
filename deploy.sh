@@ -43,6 +43,13 @@ if ! grep -q '"CRON_SECRET"' functions/api/catalyst-config.json 2>/dev/null; the
   echo
 fi
 
+# ---------- sync owner pricing overrides from the live app ----------
+# Pulls whatever the owner saved in Platform Admin → Plans into
+# pricing.overrides.json, which config.master.js merges below. Non-fatal: if
+# the app is unreachable or nothing is saved, we proceed with the defaults.
+blue "▶ Syncing pricing overrides (Platform Admin → pricing.overrides.json)"
+node scripts/sync-pricing.js || yellow "  (sync-pricing skipped)"
+
 # ---------- generate configs from master ----------
 # Expand config.master.js into the backend / client / landing configs so the
 # shipped values always match the single source of truth. (The client build

@@ -1024,42 +1024,188 @@ function PlansSection() {
   const P = PLAN_PRICING || {};
   const cur = P.currency || '₹';
   const cats = Array.isArray(FEATURE_CATALOG) ? FEATURE_CATALOG : [];
-  const money = (n) => cur + Number(n || 0).toLocaleString('en-IN');
-  const coreCount = cats.reduce((n, cat) => n + cat.items.filter((it) => it.core).length, 0);
-  const completeCount = cats.reduce((n, cat) => n + cat.items.filter((it) => it.complete).length, 0);
-  const total = cats.reduce((n, cat) => n + cat.items.length, 0);
 
-  const PriceCard = ({ name, p, accent }) => {
-    if (!p) return null;
+  // Default price shape for a plan, falling back to empty numbers so the inputs
+  // are always controlled.
+  const PRICE_FIELDS = ['base', 'baseRegular', 'included', 'perStudent', 'perStudentRegular'];
+  const defaultPrice = (plan) => {
+    const d = (plan === 'core' ? P.core : P.complete) || {};
+    const out = {};
+    PRICE_FIELDS.forEach((f) => { out[f] = Number(d[f] || 0); });
+    return out;
+  };
+
+  // Flat list of every feature with its default core/complete flags.
+  const allItems = cats.flatMap((c) => c.items);
+
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState('');
+  const [saved, setSaved]       = useState(false);   // true right after a successful save
+  const [prices, setPrices]     = useState(() => ({ core: defaultPrice('core'), complete: defaultPrice('complete') }));
+  const [features, setFeatures] = useState(() => {
+    const m = {};
+    allItems.forEach((it) => { m[it.key] = { core: !!it.core, complete: !!it.complete }; });
+    return m;
+  });
+
+  // Build the working state by overlaying saved overrides on top of the config
+  // defaults. Effective value = override if present, else default.
+  const applyOverrides = (overrides) => {
+    const ov = overrides || {};
+    const ovPrices = ov.prices || {};
+    const ovFeatures = ov.features || {};
+
+    const nextPrices = { core: defaultPrice('core'), complete: defaultPrice('complete') };
+    ['core', 'complete'].forEach((plan) => {
+      const o = ovPrices[plan] || {};
+      PRICE_FIELDS.forEach((f) => {
+        if (o[f] != null) nextPrices[plan][f] = Number(o[f]);
+      });
+    });
+
+    const nextFeatures = {};
+    allItems.forEach((it) => {
+      const o = ovFeatures[it.key] || {};
+      nextFeatures[it.key] = {
+        core: o.core != null ? !!o.core : !!it.core,
+        complete: o.complete != null ? !!o.complete : !!it.complete,
+      };
+    });
+
+    setPrices(nextPrices);
+    setFeatures(nextFeatures);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    setSaved(false);
+    try {
+      const res = await api.get('/platform/pricing');
+      applyOverrides(res?.overrides);
+    } catch (e) {
+      setError('Could not load saved pricing: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const setPriceField = (plan, field, value) => {
+    setSaved(false);
+    setPrices((prev) => ({ ...prev, [plan]: { ...prev[plan], [field]: value === '' ? '' : Number(value) } }));
+  };
+
+  const toggleFeature = (key, plan) => {
+    setSaved(false);
+    setFeatures((prev) => ({ ...prev, [key]: { ...prev[key], [plan]: !prev[key]?.[plan] } }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    setSaved(false);
+    try {
+      // Send the full working state: complete prices for both plans and every
+      // feature's {core, complete}. Inherent rows are forced on below.
+      const cleanPrices = {};
+      ['core', 'complete'].forEach((plan) => {
+        cleanPrices[plan] = {};
+        PRICE_FIELDS.forEach((f) => { cleanPrices[plan][f] = Number(prices[plan]?.[f] || 0); });
+      });
+      const body = { prices: cleanPrices, features: {} };
+      allItems.forEach((it) => {
+        const inherent = it.enforce === 'inherent';
+        const f = features[it.key] || {};
+        body.features[it.key] = inherent
+          ? { core: true, complete: true }
+          : { core: !!f.core, complete: !!f.complete };
+      });
+      const res = await api.put('/platform/pricing', body);
+      applyOverrides(res?.overrides);
+      setSaved(true);
+      toast.success('Pricing saved');
+    } catch (e) {
+      const msg = e?.message || 'Save failed';
+      setError(msg);
+      toast.error('Could not save pricing: ' + msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const money = (n) => cur + Number(n || 0).toLocaleString('en-IN');
+  const coreCount = allItems.filter((it) => features[it.key]?.core).length;
+  const completeCount = allItems.filter((it) => features[it.key]?.complete).length;
+  const total = allItems.length;
+
+  // Small inline editor for one plan's prices.
+  const PriceEditor = ({ plan, name, accent }) => {
+    const p = prices[plan] || {};
+    const Field = ({ label, field, suffix }) => (
+      <label className="block">
+        <span className="text-xs font-medium text-gray-600">{label}</span>
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="text-sm text-gray-400">{cur}</span>
+          <input
+            type="number"
+            min="0"
+            inputMode="numeric"
+            value={p[field] === '' ? '' : Number(p[field] || 0)}
+            onChange={(e) => setPriceField(plan, field, e.target.value)}
+            className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+          {suffix ? <span className="text-xs text-gray-400 whitespace-nowrap">{suffix}</span> : null}
+        </div>
+      </label>
+    );
     return (
-      <div className={`card ${accent ? 'ring-1 ring-indigo-200' : ''}`}>
+      <div className={`card space-y-3 ${accent ? 'ring-1 ring-indigo-200' : ''}`}>
         <div className="flex items-baseline justify-between">
           <h3 className="font-semibold text-gray-900">{name}</h3>
           <div className="text-right">
-            <span className="text-2xl font-bold text-gray-900">{money(p.base)}</span>
+            <span className="text-xl font-bold text-gray-900">{money(p.base)}</span>
             <span className="text-sm text-gray-500">/mo</span>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-1">
-          First {p.included} students included, then {money(p.perStudent)} / student / month.
-        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Base price" field="base" suffix="/mo" />
+          <Field label="Regular base (struck)" field="baseRegular" suffix="/mo" />
+          <Field label="Included students" field="included" />
+          <Field label="Per student" field="perStudent" suffix="/student" />
+          <Field label="Per student regular (struck)" field="perStudentRegular" suffix="/student" />
+        </div>
       </div>
     );
   };
 
+  if (loading) {
+    return (
+      <div className="card flex items-center justify-center py-10">
+        <Loader />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="card">
-        <h2 className="text-lg font-bold text-gray-900">Plans &amp; feature comparison</h2>
+        <h2 className="text-lg font-bold text-gray-900">Plans and feature pricing</h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          What each plan includes. This mirrors the public pricing page and the live in-app gating,
-          all sourced from the same catalog in config.master.js.
+          Editing here saves to the platform store and updates in-app gating right away. The public
+          pricing page updates on the next deploy (./deploy.sh pulls these in).
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <PriceCard name="Core" p={P.core} />
-        <PriceCard name="Complete" p={P.complete} accent />
+      {error ? (
+        <div className="card border-red-200 bg-red-50 text-sm text-red-700">{error}</div>
+      ) : null}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <PriceEditor plan="core" name="Core" />
+        <PriceEditor plan="complete" name="Complete" accent />
       </div>
 
       <div className="card p-0 overflow-hidden">
@@ -1078,17 +1224,36 @@ function PlansSection() {
                   <tr className="bg-gray-50/60">
                     <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{c.name}</td>
                   </tr>
-                  {c.items.map((it) => (
-                    <tr key={it.key}>
-                      <td className="px-4 py-2.5 text-gray-700">{it.label}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        {it.core ? <span className="text-emerald-600 font-bold">{'✓'}</span> : <span className="text-gray-300">{'–'}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        {it.complete ? <span className="text-emerald-600 font-bold">{'✓'}</span> : <span className="text-gray-300">{'–'}</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {c.items.map((it) => {
+                    const inherent = it.enforce === 'inherent';
+                    const f = features[it.key] || {};
+                    return (
+                      <tr key={it.key}>
+                        <td className="px-4 py-2.5 text-gray-700">
+                          {it.label}
+                          {inherent ? <span className="ml-2 text-[11px] text-gray-400">always on</span> : null}
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 align-middle accent-indigo-600 disabled:opacity-50"
+                            checked={inherent ? true : !!f.core}
+                            disabled={inherent}
+                            onChange={() => toggleFeature(it.key, 'core')}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 align-middle accent-indigo-600 disabled:opacity-50"
+                            checked={inherent ? true : !!f.complete}
+                            disabled={inherent}
+                            onChange={() => toggleFeature(it.key, 'complete')}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </Fragment>
               ))}
             </tbody>
@@ -1096,9 +1261,21 @@ function PlansSection() {
         </div>
       </div>
 
-      <p className="text-xs text-gray-400">
-        Read-only reference. To move a feature between plans, edit its row in config.master.js and redeploy.
-      </p>
+      <div className="sticky bottom-0 z-10 -mx-1 flex flex-col gap-2 rounded-xl border border-gray-200 bg-white/95 px-3 py-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs">
+          {saved
+            ? <span className="text-emerald-700">Saved. Run ./deploy.sh to publish to the public pricing page.</span>
+            : <span className="text-gray-500">Inherent features stay on for both plans and cannot be toggled off.</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn-secondary btn-sm" onClick={load} disabled={saving}>
+            Reset to saved
+          </button>
+          <button type="button" className="btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

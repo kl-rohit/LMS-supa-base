@@ -43,3 +43,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Synced from Platform Admin Plans editor at deploy time (scripts/sync-pricing.js)
+pricing.overrides.json

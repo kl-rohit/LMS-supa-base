@@ -17,6 +17,7 @@ const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = req
 const { MODULES } = require('../db/migrationRegistry');
 const { writeAudit } = require('../lib/audit');
 const { createAdminNotifications } = require('../lib/notify');
+const { getOverrides, saveOverrides } = require('../lib/pricingStore');
 
 // Admin module toggles a platform admin may flip per org. Mirrors the DEFAULTS
 // in client/src/hooks/useModuleFlags.js — keep the two in sync. Premium modules
@@ -1194,5 +1195,70 @@ function slugify(s) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 100);
 }
+
+// ---------------------------------------------------------------------------
+// Pricing / feature-plan overrides (the Platform Admin Plans editor).
+// GET returns the saved override blob ({} when none); the client merges it
+// over the generated defaults from its own config. PUT validates and saves.
+// Both run inside the requireAdmin chain (platform owner only).
+// ---------------------------------------------------------------------------
+router.get('/pricing', async (req, res) => {
+  try {
+    const overrides = await getOverrides(req);
+    res.json({ overrides });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load pricing overrides', detail: e.message });
+  }
+});
+
+router.put('/pricing', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const overrides = {};
+
+    if (body.prices && typeof body.prices === 'object') {
+      overrides.prices = {};
+      for (const plan of ['core', 'complete']) {
+        const p = body.prices[plan];
+        if (p && typeof p === 'object') {
+          const clean = {};
+          for (const k of ['base', 'baseRegular', 'included', 'perStudent', 'perStudentRegular']) {
+            if (p[k] !== undefined && p[k] !== null && p[k] !== '') {
+              const n = Number(p[k]);
+              if (Number.isFinite(n) && n >= 0) clean[k] = n;
+            }
+          }
+          if (Object.keys(clean).length) overrides.prices[plan] = clean;
+        }
+      }
+    }
+
+    if (body.features && typeof body.features === 'object') {
+      overrides.features = {};
+      for (const [key, v] of Object.entries(body.features)) {
+        if (v && typeof v === 'object') {
+          const f = {};
+          if (typeof v.core === 'boolean') f.core = v.core;
+          if (typeof v.complete === 'boolean') f.complete = v.complete;
+          if (Object.keys(f).length) overrides.features[key] = f;
+        }
+      }
+    }
+
+    await saveOverrides(req, overrides);
+    try {
+      await writeAudit(req, {
+        action: 'platform.pricing_update',
+        detail: { priceKeys: Object.keys(overrides.prices || {}), featureCount: Object.keys(overrides.features || {}).length },
+      });
+    } catch (e) { /* audit is best-effort */ }
+    res.json({ ok: true, overrides });
+  } catch (e) {
+    res.status(500).json({
+      error: 'Could not save. If this is the first save, add the PlatformConfig table in the Catalyst console.',
+      detail: e.message,
+    });
+  }
+});
 
 module.exports = router;

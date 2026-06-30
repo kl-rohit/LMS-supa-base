@@ -34,17 +34,45 @@ const clamp = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
 // the owner gets a usable address. Empty is rejected; exotic-but-valid passes.
 const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
+// Best-effort per-IP rate limit (warm-container only; resets on cold start).
+// Slows a bot hammering the public form. Not a hard security boundary.
+const RL = new Map(); // ip -> [timestamps within the window]
+const RL_MAX = 5;
+const RL_WINDOW_MS = 10 * 60 * 1000;
+function rateLimited(req) {
+  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+  const now = Date.now();
+  const hits = (RL.get(ip) || []).filter((t) => now - t < RL_WINDOW_MS);
+  hits.push(now);
+  RL.set(ip, hits);
+  return hits.length > RL_MAX;
+}
+
 router.post('/', async (req, res) => {
   try {
+    // ---- Spam guards (run before any work) ----
+    // Honeypot: the hidden "company" field is invisible to people; a bot that
+    // fills it gets a fake success and nothing is stored.
+    if (clamp(req.body.company, 200)) return res.json({ ok: true, id: null });
+    // Time trap: humans take a few seconds; bots submit instantly. Quietly drop
+    // anything submitted under 2 seconds after the form loaded.
+    const elapsed = Number(req.body.elapsed_ms);
+    if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) {
+      return res.json({ ok: true, id: null });
+    }
+    // Per-IP rate limit.
+    if (rateLimited(req)) {
+      return res.status(429).json({ error: 'Too many requests. Please try again in a few minutes.' });
+    }
+
     const name  = clamp(req.body.name, 120);
     const email = clamp(req.body.email, 160).toLowerCase();
     const phone = clamp(req.body.phone, 40);
 
     if (!name)  return res.status(400).json({ error: 'Please share your name.' });
-    if (!email && !phone) {
-      return res.status(400).json({ error: 'Please share an email or phone so we can reach you.' });
-    }
-    if (email && !looksLikeEmail(email)) {
+    if (!email) return res.status(400).json({ error: 'Please share your email.' });
+    if (!phone) return res.status(400).json({ error: 'Please share your phone number.' });
+    if (!looksLikeEmail(email)) {
       return res.status(400).json({ error: 'That email does not look right — please check it.' });
     }
 

@@ -474,21 +474,27 @@
       <div class="mt-12 grid md:grid-cols-3 gap-6">
         <div class="reveal card-hover relative rounded-2xl bg-white ring-1 ring-slate-200 p-6">
           <div class="absolute -top-3 -left-3 w-9 h-9 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold">1</div>
-          <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="user-plus" class="w-5 h-5"></i></div>
-          <h3 class="mt-4 font-bold text-slate-900">Add your students</h3>
-          <p class="mt-1.5 text-sm text-slate-600">Create student profiles and batches, or bulk-import from a spreadsheet. Add parent contacts so they can log in.</p>
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center shrink-0"><i data-lucide="user-plus" class="w-5 h-5"></i></div>
+            <h3 class="font-bold text-slate-900">Add your students</h3>
+          </div>
+          <p class="mt-3 text-sm text-slate-600">Create student profiles and batches, or bulk-import from a spreadsheet. Add parent contacts so they can log in.</p>
         </div>
         <div class="reveal card-hover relative rounded-2xl bg-white ring-1 ring-slate-200 p-6">
           <div class="absolute -top-3 -left-3 w-9 h-9 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold">2</div>
-          <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="calendar-clock" class="w-5 h-5"></i></div>
-          <h3 class="mt-4 font-bold text-slate-900">Set your timetable</h3>
-          <p class="mt-1.5 text-sm text-slate-600">Schedule recurring classes: online, in-person or group. Reschedule a single date without breaking the routine.</p>
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center shrink-0"><i data-lucide="calendar-clock" class="w-5 h-5"></i></div>
+            <h3 class="font-bold text-slate-900">Set your timetable</h3>
+          </div>
+          <p class="mt-3 text-sm text-slate-600">Schedule recurring classes: online, in-person or group. Reschedule a single date without breaking the routine.</p>
         </div>
         <div class="reveal card-hover relative rounded-2xl bg-white ring-1 ring-slate-200 p-6">
           <div class="absolute -top-3 -left-3 w-9 h-9 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold">3</div>
-          <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center"><i data-lucide="rocket" class="w-5 h-5"></i></div>
-          <h3 class="mt-4 font-bold text-slate-900">Run everything from one app</h3>
-          <p class="mt-1.5 text-sm text-slate-600">Take attendance, collect fees, share lessons and notify parents, all from your phone, all in one place.</p>
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 grid place-items-center shrink-0"><i data-lucide="rocket" class="w-5 h-5"></i></div>
+            <h3 class="font-bold text-slate-900">Run everything from one app</h3>
+          </div>
+          <p class="mt-3 text-sm text-slate-600">Take attendance, collect fees, share lessons and notify parents, all from your phone, all in one place.</p>
         </div>
       </div>
     </div>
@@ -1138,6 +1144,13 @@
           <p class="mt-1 text-sm text-slate-500">We usually respond within one business day.</p>
 
           <form id="lead-form" class="mt-6 space-y-4" novalidate>
+            <!-- Honeypot: hidden from people, irresistible to bots. If filled, we
+                 silently drop the submission. aria-hidden + off-screen + no tab. -->
+            <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">
+              <label>Company (leave this blank)
+                <input id="lf-company" name="company" type="text" tabindex="-1" autocomplete="off">
+              </label>
+            </div>
             <div class="grid sm:grid-cols-2 gap-4">
               <div>
                 <label for="lf-name" class="block text-sm font-semibold text-slate-700 mb-1">Your name <span class="text-rose-500">*</span></label>
@@ -1145,17 +1158,17 @@
                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. Anita Sharma">
               </div>
               <div>
-                <label for="lf-phone" class="block text-sm font-semibold text-slate-700 mb-1">Phone</label>
-                <input id="lf-phone" name="phone" type="tel" autocomplete="tel"
+                <label for="lf-phone" class="block text-sm font-semibold text-slate-700 mb-1">Phone <span class="text-rose-500">*</span></label>
+                <input id="lf-phone" name="phone" type="tel" required autocomplete="tel"
                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="e.g. +91 93603 90883">
               </div>
             </div>
 
             <div>
-              <label for="lf-email" class="block text-sm font-semibold text-slate-700 mb-1">Email</label>
-              <input id="lf-email" name="email" type="email" autocomplete="email"
+              <label for="lf-email" class="block text-sm font-semibold text-slate-700 mb-1">Email <span class="text-rose-500">*</span></label>
+              <input id="lf-email" name="email" type="email" required autocomplete="email"
                      class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500" placeholder="you@example.com">
-              <p class="mt-1 text-xs text-slate-400">Share an email or a phone number so we can reach you.</p>
+              <p class="mt-1 text-xs text-slate-400">We use both your email and phone to reach you quickly.</p>
             </div>
 
             <div class="grid sm:grid-cols-2 gap-4">
@@ -1457,6 +1470,7 @@
         show(spin, on);
       }
 
+      var formLoadedAt = Date.now();
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         show(okBox, false);
@@ -1470,7 +1484,9 @@
           academy_name:  (form.academy_name.value || '').trim(),
           student_count: form.student_count.value || '',
           city:          (form.city.value || '').trim(),
-          message:       (form.message.value || '').trim()
+          message:       (form.message.value || '').trim(),
+          company:       (form.company.value || '').trim(),
+          elapsed_ms:    Date.now() - formLoadedAt
         };
 
         // Light client-side checks; the server validates again.
@@ -1480,10 +1496,16 @@
           form.name.focus();
           return;
         }
-        if (!data.email && !data.phone) {
-          if (errText) errText.textContent = 'Please share an email or phone so we can reach you.';
+        if (!data.email) {
+          if (errText) errText.textContent = 'Please share your email.';
           show(errBox, true);
           form.email.focus();
+          return;
+        }
+        if (!data.phone) {
+          if (errText) errText.textContent = 'Please share your phone number.';
+          show(errBox, true);
+          form.phone.focus();
           return;
         }
 

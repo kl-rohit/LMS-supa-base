@@ -172,6 +172,22 @@ Pre-defined Webhook Cron `monthly-fee-reminder`:
     - `fixed_day` — a specific day, 1-28 (billing.fee_reminder_day).
   Orgs whose trigger doesn't match today are recorded as `skipped: true` in
   that org's summary entry, with no other side effects.
+- On success, each org whose reminders actually got created (skips a month
+  with nothing owed) also gets an admin-only in-app + push notification
+  ("Fee reminders ready for <Month> <Year>") that opens Messages on tap.
+  Idempotent the same way as the class digest, so a cron retry can't
+  double-notify.
+
+Pre-defined Webhook Cron `cleanup-notifications` (NEW — add this job):
+- Cron expression: `30 21 * * *` (= 3 AM IST, every day; any low-traffic hour
+  works, this just avoids clashing with the fee-reminder/digest crons)
+- Target: `POST .../server/api/api/internal/cron-cleanup-notifications`
+- Header: `X-Cron-Secret: <CRON_SECRET value>`
+- Behavior: deletes notifications that are BOTH read (`is_read`) AND older
+  than 3 days (`NOTIF_CLEANUP_MAX_AGE_DAYS` in internal.js), per active org.
+  Unread notifications are never touched, however old. Keeps the
+  Notifications table from growing unbounded, which keeps every future read
+  against it (the bell list, the digest de-dup checks) cheaper.
 
 ---
 

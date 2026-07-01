@@ -49,6 +49,12 @@ router.get('/pricing-export', async (req, res) => {
   }
 });
 
+// Used only to word the fee-reminder admin notification below.
+const FEE_MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
 // Returns true when `date` is the last calendar day of its month. Used per
 // org (orgWantsReminderToday, below) for academies on the default "last day
 // of the month" trigger, since standard 5-field cron can't express "last day
@@ -112,6 +118,36 @@ async function feeReminderHandler(req, res) {
         // generateFeeReminders sets req.orgId internally from the orgId arg.
         const r = await generateFeeReminders(req, { month, year, orgId: Number(org.id) });
         summary.push({ org_id: org.id, org_name: org.name, ok: true, created: r.created });
+
+        // Let the admin know there is something to review, with the bell
+        // opening Messages directly. Only when reminders actually got drafted
+        // (a month with nothing owed sends nothing). Idempotent the same way
+        // as the class digest above: insert without push, prune down to one
+        // row per org per month, and only the survivor pushes, so a racing
+        // cron retry can never double-notify or double-push.
+        if (r.created > 0) {
+          const feeLink = `/messages?fee=${year}-${String(month).padStart(2, '0')}`;
+          const feeWhere = `Notifications.org_id = ${Number(org.id)} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${feeLink}'`;
+          if (await alreadySent(req, feeWhere)) {
+            await pruneDuplicateDigests(req, feeWhere);
+          } else {
+            const feeMonthName = FEE_MONTH_NAMES[month - 1];
+            const feeTitle = `Fee reminders ready for ${feeMonthName} ${year}`;
+            const feeBody = `${r.created} fee reminder${r.created === 1 ? '' : 's'} drafted and ready to review and send.`;
+            const ins = await createAdminNotifications(req, {
+              orgId: Number(org.id),
+              type: 'fee_reminder',
+              title: feeTitle,
+              body: feeBody,
+              link: feeLink,
+              push: false,
+            });
+            const survivor = await pruneDuplicateDigests(req, feeWhere);
+            if (ins.rowid && survivor && String(survivor) === String(ins.rowid)) {
+              await pushToAdmins(req, Number(org.id), { type: 'fee_reminder', title: feeTitle, body: feeBody, link: feeLink });
+            }
+          }
+        }
       } catch (e) {
         summary.push({ org_id: org.id, org_name: org.name, ok: false, error: e.message });
       }
@@ -540,5 +576,82 @@ async function backupHandler(req, res) {
 
 router.get('/cron-backup', backupHandler);
 router.post('/cron-backup', backupHandler);
+
+// ---------- Notification cleanup (storage housekeeping) ----------
+// Deletes notifications that have BOTH been opened (is_read) AND are older
+// than NOTIF_CLEANUP_MAX_AGE_DAYS, across every active org. A read
+// notification serves no purpose once it's a few days old — pruning it keeps
+// the Notifications table small, which keeps every future read against it
+// (the bell list, the digest de-dup checks above) cheaper. Unread
+// notifications are NEVER touched, no matter how old, so nothing a
+// teacher/parent hasn't seen yet can silently disappear.
+// Schedule in the Catalyst console pointed at
+// /api/internal/cron-cleanup-notifications with the X-Cron-Secret header.
+const NOTIF_CLEANUP_MAX_AGE_DAYS = 3;
+
+// Parse a Catalyst CREATEDTIME value into a Date. Mirrors the client-side
+// parseTs helper (Reports.jsx): most data centres return a human format
+// ("Jun 20, 2026 02:30 PM") that `new Date()` reads directly; some return an
+// ISO-ish form with colon-separated millis. Returns null when unparseable so
+// the caller skips (never deletes) rather than mis-deleting on a bad parse.
+function parseCreatedTime(v) {
+  if (!v) return null;
+  let d = new Date(v);
+  if (!isNaN(d.getTime())) return d;
+  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?::(\d{1,3}))?/);
+  if (m) {
+    d = new Date(`${m[1]}T${m[2]}${m[3] ? '.' + m[3].padStart(3, '0') : ''}`);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+async function cleanupNotificationsHandler(req, res) {
+  try {
+    const cutoff = Date.now() - NOTIF_CLEANUP_MAX_AGE_DAYS * 86400000;
+
+    let orgs = [];
+    try {
+      const orgRows = await zcql(req, `SELECT * FROM Organizations WHERE Organizations.status = 'active'`);
+      orgs = unwrap(orgRows, 'Organizations').map(normalize);
+    } catch (e) {
+      return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
+    }
+
+    const summary = [];
+    for (const org of orgs) {
+      const orgId = Number(org.id);
+      try {
+        // Fetch then filter is_read in JS (matches routes/notifications.js'
+        // own convention) rather than trusting a ZCQL boolean WHERE, since
+        // the column is stored inconsistently (0/1 vs true/false) across rows.
+        const rows = await zcqlAll(
+          req,
+          `SELECT ROWID, is_read, CREATEDTIME FROM Notifications WHERE Notifications.org_id = ${orgId}`,
+          'Notifications'
+        );
+        const readRows = unwrap(rows, 'Notifications').filter((n) => Number(n.is_read) === 1);
+
+        let deleted = 0;
+        for (const n of readRows) {
+          const created = parseCreatedTime(n.CREATEDTIME);
+          if (created && created.getTime() < cutoff) {
+            try { await remove(req, 'Notifications', n.ROWID); deleted++; } catch {}
+          }
+        }
+        summary.push({ org_id: orgId, org_name: org.name, ok: true, read_checked: readRows.length, deleted });
+      } catch (e) {
+        summary.push({ org_id: orgId, org_name: org.name, ok: false, error: e.message });
+      }
+    }
+    const totalDeleted = summary.reduce((s, r) => s + (r.deleted || 0), 0);
+    res.json({ ok: true, max_age_days: NOTIF_CLEANUP_MAX_AGE_DAYS, orgs_processed: summary.length, total_deleted: totalDeleted, summary });
+  } catch (e) {
+    res.status(500).json({ error: 'Cron notification cleanup failed', detail: e.message });
+  }
+}
+
+router.get('/cron-cleanup-notifications', cleanupNotificationsHandler);
+router.post('/cron-cleanup-notifications', cleanupNotificationsHandler);
 
 module.exports = router;

@@ -83,7 +83,11 @@
     /* Auto-rotating hero word (slide-up swipe through 3 phrases) */
     .rotator { display:inline-block; overflow:hidden; height:1.25em; vertical-align:bottom; }
     .rotator-track { display:flex; flex-direction:column; animation: rotateWords 16s cubic-bezier(.65,0,.35,1) infinite; }
-    .rotator-item { height:1.25em; line-height:1.25em; white-space:nowrap; }
+    /* The track stretches every item to the width of the longest phrase
+       ("corporate trainers"), so a shorter phrase like "arts academies"
+       would otherwise leave a one-sided trailing gap before the text that
+       follows it. Centering keeps that leftover space even on both sides. */
+    .rotator-item { height:1.25em; line-height:1.25em; white-space:nowrap; text-align:center; }
     @keyframes rotateWords {
       0%, 13%      { transform: translateY(0); }
       16.67%, 30%  { transform: translateY(-1.25em); }
@@ -290,10 +294,10 @@
               <span class="rotator-item" aria-hidden="true">music academies</span>
             </span>
           </span>
-          who want everything in one place, not scattered across apps.
+          who'd rather run on one calm system.
         </p>
         <p class="mt-3 text-lg text-gold-200 font-medium max-w-xl">
-          Spend more time teaching. Let VidyaSetu handle the rest.
+          More time teaching. Less time managing.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <a href="tel:+919360390883" class="shine magnetic inline-flex items-center gap-2 bg-white text-slate-900 font-semibold px-5 py-3 rounded-xl hover:bg-slate-100">

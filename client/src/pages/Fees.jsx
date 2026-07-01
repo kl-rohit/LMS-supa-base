@@ -193,10 +193,18 @@ export default function Fees() {
       toast.error('Select at least one student and fill all fields');
       return;
     }
+    // Amount is always entered as a positive figure here; the fee/discount
+    // toggle decides the sign before it's sent, so the entered value itself
+    // must be a finite, non-negative number.
+    const parsedAmount = Number(feeForm.amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      toast.error('Please enter a valid amount.');
+      return;
+    }
     try {
       setSavingFee(true);
       // Discount stored as a negative AdditionalFees amount.
-      const rawAmount = Math.abs(Number(feeForm.amount));
+      const rawAmount = Math.abs(parsedAmount);
       const signedAmount = feeForm.adjustment_type === 'discount' ? -rawAmount : rawAmount;
       // The fee belongs to the billing month currently being viewed (same as the
       // auto-generated shortfall fee), so it appears right away after saving.
@@ -295,6 +303,10 @@ export default function Fees() {
 
   // Mark a student's monthly total as paid.
   const markAsPaid = async (student) => {
+    if (!Number.isFinite(student.total)) {
+      toast.error('Please enter a valid amount.');
+      return;
+    }
     try {
       await api.post('/fees/payments', {
         student_id: student.student_id,
@@ -327,6 +339,10 @@ export default function Fees() {
     const today = formatDateLocal(new Date());
     let success = 0;
     for (const s of toMark) {
+      if (!Number.isFinite(s.total)) {
+        console.error('bulk mark skipped for', s.student_name, 'amount not finite');
+        continue;
+      }
       try {
         await api.post('/fees/payments', {
           student_id: s.student_id,
@@ -387,9 +403,13 @@ export default function Fees() {
   };
   const closeEditFee = () => { setEditFeeId(null); };
   const saveEditFee = async () => {
+    const parsedAmount = Number(editFeeForm.amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      toast.error('Please enter a valid amount.');
+      return;
+    }
     try {
-      const raw = Number(editFeeForm.amount) || 0;
-      const signed = editFeeForm.is_discount ? -Math.abs(raw) : Math.abs(raw);
+      const signed = editFeeForm.is_discount ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
       await api.put(`/fees/additional/${editFeeId}`, {
         description: editFeeForm.description,
         amount: signed,

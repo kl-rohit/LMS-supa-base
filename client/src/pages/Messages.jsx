@@ -256,8 +256,12 @@ export default function Messages() {
 
   const handleCompose = async (e) => {
     e.preventDefault();
-    if (!composeForm.student_id || !composeForm.message_text.trim()) {
-      toast.error('Student and message are required');
+    if (!composeForm.student_id) {
+      toast.error('Please select a student first.');
+      return;
+    }
+    if (!composeForm.message_text.trim()) {
+      toast.error('Please write a message before sending.');
       return;
     }
     // Don't let unfilled {placeholder} tokens leak into a created message.

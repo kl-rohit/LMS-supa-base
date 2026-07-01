@@ -339,9 +339,9 @@ function main() {
   write('functions/api/config.js', backendFile());
   write('client/src/config.js', frontendFile());
 
-  // Both static marketing pages carry the GEN:CONFIG block so their prices /
+  // All static marketing pages carry the GEN:CONFIG block so their prices /
   // offer copy stay sourced from the master config.
-  ['client/public/landing.html', 'client/public/pricing.html'].forEach(function (rel) {
+  ['client/public/landing.html', 'client/public/landing-2.html', 'client/public/pricing.html'].forEach(function (rel) {
     const changed = patchLanding(path.join(ROOT, rel));
     console.log((changed ? '  ✓ ' : '  = ') + rel + (changed ? '' : ' (unchanged)'));
   });

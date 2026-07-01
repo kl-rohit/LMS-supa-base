@@ -71,6 +71,10 @@ const EMPTY_SETTINGS = {
   'billing.default_monthly_fee': '',
   // Class modes the academy offers — CSV of online / offline / group.
   'billing.class_modes': 'online,offline,group',
+  // When the monthly fee-reminder cron drafts this academy's reminders —
+  // 'last_day' (default) or 'fixed_day' (see billing.fee_reminder_day).
+  'billing.fee_reminder_trigger': 'last_day',
+  'billing.fee_reminder_day': '1',
   // Modules — string-encoded booleans ('true' / 'false').
   'modules.lessons':        'true',
   'modules.fees':           'true',
@@ -810,6 +814,58 @@ function BillingTab({ form, set, setForm }) {
         </div>
       </div>
 
+      {/* Monthly fee reminders — when the automatic reminder drafts are made */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2">
+          <Clock className="w-5 h-5 text-indigo-600" />
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Monthly fee reminders</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Choose when this month's fee-reminder drafts are prepared for you to review and send.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, 'billing.fee_reminder_trigger': 'last_day' }))}
+            className={`text-left rounded-lg border p-3 transition ${
+              (form['billing.fee_reminder_trigger'] || 'last_day') === 'last_day'
+                ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="text-sm font-semibold text-gray-900">Last day of the month</div>
+            <div className="text-xs text-gray-500 mt-0.5">Works for every month automatically. No date to pick.</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, 'billing.fee_reminder_trigger': 'fixed_day' }))}
+            className={`text-left rounded-lg border p-3 transition ${
+              form['billing.fee_reminder_trigger'] === 'fixed_day'
+                ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="text-sm font-semibold text-gray-900">A specific day each month</div>
+            <div className="text-xs text-gray-500 mt-0.5">Pick a day from 1 to 28.</div>
+          </button>
+        </div>
+        {form['billing.fee_reminder_trigger'] === 'fixed_day' && (
+          <Field label="Day of the month" icon={Clock} hint="1 to 28, so it always exists, even in February.">
+            <input
+              type="number"
+              min="1"
+              max="28"
+              value={form['billing.fee_reminder_day']}
+              onChange={set('billing.fee_reminder_day')}
+              className="input-field"
+              placeholder="1"
+            />
+          </Field>
+        )}
+      </div>
+
       {qrCropSrc && (
         <ImageCropper
           src={qrCropSrc}
@@ -1167,9 +1223,14 @@ function OrganizationTab() {
     }
   };
 
+  const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+
   const sendInvite = async (e) => {
     e?.preventDefault?.();
     if (!inviteForm.email.trim()) return toast.error('Email required');
+    if (!looksLikeEmail(inviteForm.email.trim())) {
+      return toast.error('Please enter a valid email address.');
+    }
     try {
       setInviting(true);
       await api.post('/organization/invite', inviteForm);

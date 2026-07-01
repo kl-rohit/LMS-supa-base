@@ -168,22 +168,32 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
     setDrafts((prev) => prev.map((d, i) => (i === idx ? next : d)));
   };
 
-  const validate = (draft) => {
-    if (!draft.question.trim()) { toast.error('Question text is required'); return false; }
-    const clean = draft.options.map((o) => o.trim()).filter(Boolean);
-    if (clean.length < MIN_OPTIONS) { toast.error('At least 2 non-empty options'); return false; }
-    if (!draft.options[draft.correct_index]?.trim()) { toast.error('The correct option can\'t be empty'); return false; }
-    return true;
+  // Trims the question + options and drops blank options, while tracking
+  // where the currently-marked correct option lands in the trimmed list (it
+  // shifts whenever a blank option ahead of it gets dropped). Returns null
+  // when a required piece is missing so callers can show one message and
+  // stop before the api call.
+  const buildCleanPayload = (draft) => {
+    const question = draft.question.trim();
+    if (!question) { toast.error('Please add the question text.'); return null; }
+    const entries = draft.options
+      .map((o, i) => ({ value: o.trim(), i }))
+      .filter((e) => e.value.length > 0);
+    if (entries.length < MIN_OPTIONS) { toast.error('Please add at least two answer options.'); return null; }
+    const correctPos = entries.findIndex((e) => e.i === draft.correct_index);
+    if (correctPos === -1) { toast.error('Please mark a correct answer among the answer options.'); return null; }
+    return { question, options: entries.map((e) => e.value), correct_index: correctPos };
   };
 
   const saveDraft = async (idx, draft) => {
-    if (!validate(draft)) return;
+    const clean = buildCleanPayload(draft);
+    if (!clean) return;
     updateDraft(idx, { ...draft, _saving: true });
     const payload = {
       lesson_id: String(lesson.id),
-      question: draft.question.trim(),
-      options: draft.options.map((o) => o.trim()).filter(Boolean),
-      correct_index: draft.correct_index,
+      question: clean.question,
+      options: clean.options,
+      correct_index: clean.correct_index,
       explanation: draft.explanation.trim(),
     };
     try {

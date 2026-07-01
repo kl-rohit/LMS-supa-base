@@ -252,6 +252,31 @@ export default function Students() {
       toast.error('Student name is required');
       return;
     }
+    if (!form.parent_name.trim()) {
+      toast.error('Parent name is required');
+      return;
+    }
+    const mobileDigits = String(form.mobile_number || '').replace(/\D/g, '');
+    if (mobileDigits.length < 10) {
+      toast.error('Please add a 10-digit mobile number');
+      return;
+    }
+    const feeFields = [
+      ['fee_online', 'Online fee'],
+      ['fee_offline', 'Offline fee'],
+      ['fee_offline_group', 'Group fee'],
+      ['monthly_fee', 'Monthly fee'],
+      ['min_classes_per_month', 'Minimum classes per month'],
+    ];
+    for (const [field, label] of feeFields) {
+      const raw = form[field];
+      if (raw === '' || raw === null || raw === undefined) continue;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) {
+        toast.error(`${label} should be 0 or more`);
+        return;
+      }
+    }
     try {
       setSaving(true);
       const payload = {

@@ -31,6 +31,18 @@ import { useConfirm } from '../contexts/ConfirmContext';
 
 const isOnlineClassType = (t) => t === 'online' || t === 'online_group';
 
+// Matches backend expectations for class_date: shape YYYY-MM-DD AND a real
+// calendar date. Date.parse is lenient about rollovers (e.g. "2024-02-30"
+// silently becomes March 1), so we also check the parsed parts round-trip
+// back to the same y/m/d before calling it valid.
+const isValidDateStr = (str) => {
+  if (typeof str !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const [y, m, d] = str.split('-').map(Number);
+  const parsed = new Date(str + 'T00:00:00');
+  if (Number.isNaN(parsed.getTime())) return false;
+  return parsed.getFullYear() === y && parsed.getMonth() === m - 1 && parsed.getDate() === d;
+};
+
 export default function Attendance() {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -39,7 +51,7 @@ export default function Attendance() {
   // pendingClassId until classes/students load, then auto-selected.
   const initialDateParam = searchParams.get('date');
   const [selectedDate, setSelectedDate] = useState(
-    initialDateParam && /^\d{4}-\d{2}-\d{2}$/.test(initialDateParam)
+    initialDateParam && isValidDateStr(initialDateParam)
       ? initialDateParam
       : formatDateLocal(new Date())
   );
@@ -809,7 +821,15 @@ export default function Attendance() {
             <input
               type="date"
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (!value) return; // still being typed, wait for a full value
+                if (!isValidDateStr(value)) {
+                  toast.error('Please choose a valid date.');
+                  return;
+                }
+                setSelectedDate(value);
+              }}
               // Tapping anywhere on the field opens the native calendar where the
               // browser supports it (Chrome / Edge / Android), so the user does not
               // have to hunt for the tiny calendar glyph. Falls back to the glyph

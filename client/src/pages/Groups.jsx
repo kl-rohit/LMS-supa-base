@@ -71,7 +71,7 @@ export default function Groups() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
-      toast.error('Group name is required');
+      toast.error('Please give the group a name.');
       return;
     }
     try {

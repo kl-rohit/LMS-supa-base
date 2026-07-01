@@ -7,7 +7,7 @@
 //
 // Build:  npx tailwindcss -c landing.tailwind.config.js -i src/landing.css -o dist/landing.css --minify
 module.exports = {
-  content: ['./public/landing.html', './public/landing-demo.html', './public/pricing.html'],
+  content: ['./public/landing.html', './public/landing-2.html', './public/landing-demo.html', './public/pricing.html'],
   theme: {
     extend: {
       colors: {

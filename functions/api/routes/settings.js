@@ -199,6 +199,13 @@ const APP_SETTINGS_DEFAULTS = {
   // Which class modes this academy offers, as a CSV of: online, offline, group.
   // Drives which fee-rate fields appear and which class types can be recorded.
   'billing.class_modes':         'online,offline,group',
+  // When the monthly fee-reminder cron drafts this academy's reminders:
+  //   'last_day'  — the actual last calendar day of the month (default, works
+  //                 for any month length with no configuration needed).
+  //   'fixed_day' — a specific day (billing.fee_reminder_day, 1-28 so it
+  //                 always exists, even in February).
+  'billing.fee_reminder_trigger': 'last_day',
+  'billing.fee_reminder_day':     '1',
 
   // ---- Modules (Phase 3) -----------------------------------------------
   // Per-org module enable/disable. Stored as 'true'/'false' strings so the

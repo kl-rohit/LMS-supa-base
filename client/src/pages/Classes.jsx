@@ -212,6 +212,16 @@ export default function Classes() {
         setSavingCamp(false);
         return;
       }
+      if (schedule.some((s) => !s.day_date || !s.start_time || !s.end_time)) {
+        toast.error('Please fill in the date and time for every camp day.');
+        setSavingCamp(false);
+        return;
+      }
+      if (schedule.some((s) => s.start_time >= s.end_time)) {
+        toast.error('End time should be after the start time for every camp day.');
+        setSavingCamp(false);
+        return;
+      }
       const result = await api.post('/camps', {
         name: name.trim(),
         // Send group_id as a STRING — Catalyst ROWIDs are 17 digits and lose
@@ -442,6 +452,14 @@ export default function Classes() {
     }
     if (!isGroup && form.student_ids.length === 0) {
       toast.error('Please select at least one student');
+      return;
+    }
+    if (form.start_time && form.end_time && form.start_time >= form.end_time) {
+      toast.error('End time should be after the start time.');
+      return;
+    }
+    if (isOnlineType(form.class_type) && (form.meeting_link || '').trim().length > 500) {
+      toast.error('That link is too long. Please use a shorter one.');
       return;
     }
 

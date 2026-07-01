@@ -12,6 +12,7 @@
 
 const router = require('express').Router();
 const { generateFeeReminders } = require('../lib/feeReminder');
+const { loadAppSettings } = require('./settings');
 const { zcql, zcqlAll, unwrap, normalize, remove, appFor } = require('../db/catalystDb');
 const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
 const config = require('../config');
@@ -48,33 +49,46 @@ router.get('/pricing-export', async (req, res) => {
   }
 });
 
-// Returns true when `date` is the last calendar day of its month.
-// Used by the monthly-cron to early-return on days 28-30 (so the cron
-// can be scheduled to fire daily across 28-31 without needing fancy
-// "last day of month" expressions, which standard 5-field cron doesn't
-// support directly).
+// Returns true when `date` is the last calendar day of its month. Used per
+// org (orgWantsReminderToday, below) for academies on the default "last day
+// of the month" trigger, since standard 5-field cron can't express "last day
+// of month" directly.
 function isLastDayOfMonth(date) {
   const next = new Date(date.getTime());
   next.setDate(next.getDate() + 1);
   return next.getMonth() !== date.getMonth();
 }
 
+// Does this org want its fee reminders drafted today (IST)? Reads the org's
+// own Settings → Billing → "Monthly fee reminders" choice:
+//   'last_day'  (default, and the only option before this setting existed)
+//     — fires on the actual last calendar day of the month.
+//   'fixed_day' — fires on billing.fee_reminder_day (1-28, clamped so it
+//     always exists even in February).
+// loadAppSettings reads req.orgId, so this stamps it first (mirroring how
+// generateFeeReminders does the same for the rest of the cron path).
+async function orgWantsReminderToday(req, orgId, ist) {
+  req.orgId = Number(orgId);
+  const settings = await loadAppSettings(req).catch(() => ({}));
+  const trigger = settings['billing.fee_reminder_trigger'] || 'last_day';
+  if (trigger === 'fixed_day') {
+    const day = Math.min(Math.max(parseInt(settings['billing.fee_reminder_day'], 10) || 1, 1), 28);
+    return ist.getDate() === day;
+  }
+  return isLastDayOfMonth(ist);
+}
+
 // POST /api/internal/cron-fee-reminder
-// Called daily on days 28-31 by the Catalyst Job Scheduling cron.
-// On the actual last day of the month (IST), iterates over every active
-// Organization and runs the fee-reminder generator for each. Each org's
-// own AppSettings (school name + signature) flow through automatically.
+// Called DAILY by the Catalyst Job Scheduling cron (see HANDOFF.md for the
+// exact cron expression). Each active Organization decides for itself
+// whether TODAY (IST) is its trigger day, via orgWantsReminderToday above —
+// so different academies can draft reminders on the last day of the month,
+// or on a fixed day, independently, from one shared cron. Each org's own
+// AppSettings (school name + signature) flow through automatically.
 async function feeReminderHandler(req, res) {
   try {
     const now = new Date();
     const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
-    if (!isLastDayOfMonth(ist)) {
-      return res.json({
-        skipped: true,
-        reason: 'Not the last day of the month',
-        ist_date: ist.toISOString().slice(0, 10),
-      });
-    }
     const month = ist.getMonth() + 1;
     const year = ist.getFullYear();
 
@@ -90,6 +104,11 @@ async function feeReminderHandler(req, res) {
     const summary = [];
     for (const org of orgs) {
       try {
+        const dueToday = await orgWantsReminderToday(req, org.id, ist);
+        if (!dueToday) {
+          summary.push({ org_id: org.id, org_name: org.name, ok: true, skipped: true });
+          continue;
+        }
         // generateFeeReminders sets req.orgId internally from the orgId arg.
         const r = await generateFeeReminders(req, { month, year, orgId: Number(org.id) });
         summary.push({ org_id: org.id, org_name: org.name, ok: true, created: r.created });
@@ -97,7 +116,7 @@ async function feeReminderHandler(req, res) {
         summary.push({ org_id: org.id, org_name: org.name, ok: false, error: e.message });
       }
     }
-    res.json({ skipped: false, month, year, orgs_processed: summary.length, summary });
+    res.json({ ist_date: ist.toISOString().slice(0, 10), month, year, orgs_processed: summary.length, summary });
   } catch (e) {
     res.status(500).json({ error: 'Cron fee-reminder failed', detail: e.message });
   }

@@ -160,12 +160,18 @@ Stores:
 ### Job Scheduling
 
 Pre-defined Webhook Cron `monthly-fee-reminder`:
-- Cron expression: `30 12 28-31 * *` (= 6 PM IST on 28-31 of each month)
+- Cron expression: `30 12 * * *` (= 6 PM IST, every day) — **changed from the
+  old `30 12 28-31 * *`; update this in the Catalyst console**, otherwise
+  academies configured for a fixed day outside 28-31 will silently never fire.
 - Target: `POST .../server/api/api/internal/cron-fee-reminder`
 - Header: `X-Cron-Secret: <CRON_SECRET value>`
-- Behavior: endpoint self-checks "is today actually the last day of the
-  month in IST?" — early-returns on days 28-30 if not. When it does run,
-  loops every active Organization and generates per-org reminders.
+- Behavior: fires daily, loops every active Organization, and each org
+  decides for itself whether TODAY (IST) is its trigger day — configurable
+  per academy in Settings → Billing → "Monthly fee reminders":
+    - `last_day` (default) — the actual last calendar day of that month.
+    - `fixed_day` — a specific day, 1-28 (billing.fee_reminder_day).
+  Orgs whose trigger doesn't match today are recorded as `skipped: true` in
+  that org's summary entry, with no other side effects.
 
 ---
 

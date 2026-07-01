@@ -44,10 +44,15 @@ export default function QuestionPapers() {
     setModalOpen(true);
   };
 
+  const looksLikeLink = (link) => /^https?:\/\//i.test(link) || link.includes('.');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) { toast.error('Title is required'); return; }
     if (!form.link.trim()) { toast.error('A link to the paper is required'); return; }
+    if (!looksLikeLink(form.link.trim())) {
+      toast('Links usually start with https://. Please check yours.');
+    }
     try {
       setSaving(true);
       if (editing) {

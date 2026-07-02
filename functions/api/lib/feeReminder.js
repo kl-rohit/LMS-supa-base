@@ -8,6 +8,8 @@
 
 const { insert, update, zcql, unwrap, q } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('../routes/settings');
+const { createAdminNotifications, pushToAdmins } = require('./notify');
+const { alreadySent, pruneDuplicateDigests } = require('./notifyDedup');
 
 // Build the {school} + {signature} ctx pieces from AppSettings, falling
 // back to the same hard-coded values the templates used pre-Settings
@@ -177,9 +179,43 @@ async function generateFeeReminders(req, { month, year, orgId }) {
   };
 }
 
+// Lets the admin know fee reminders are ready to review, with the bell
+// opening Messages directly. Called from BOTH trigger paths that produce
+// reminders — the monthly cron and the admin's manual "Generate Fee
+// Reminders" button — so either one can notify without ever double-
+// notifying. Idempotent the same way as the class digest: insert without
+// push, prune down to one row per org per month, and only the surviving
+// row pushes, so a racing retry (or the other trigger firing moments
+// later) can never double-notify or double-push.
+async function notifyAdminFeeRemindersReady(req, { orgId, month, year, created }) {
+  if (!created) return;
+  const feeLink = `/messages?fee=${year}-${String(month).padStart(2, '0')}`;
+  const feeWhere = `Notifications.org_id = ${Number(orgId)} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${feeLink}'`;
+  if (await alreadySent(req, feeWhere)) {
+    await pruneDuplicateDigests(req, feeWhere);
+    return;
+  }
+  const feeMonthName = MONTH_NAMES[month - 1];
+  const feeTitle = `Fee reminders ready for ${feeMonthName} ${year}`;
+  const feeBody = `${created} fee reminder${created === 1 ? '' : 's'} drafted and ready to review and send.`;
+  const ins = await createAdminNotifications(req, {
+    orgId: Number(orgId),
+    type: 'fee_reminder',
+    title: feeTitle,
+    body: feeBody,
+    link: feeLink,
+    push: false,
+  });
+  const survivor = await pruneDuplicateDigests(req, feeWhere);
+  if (ins.rowid && survivor && String(survivor) === String(ins.rowid)) {
+    await pushToAdmins(req, Number(orgId), { type: 'fee_reminder', title: feeTitle, body: feeBody, link: feeLink });
+  }
+}
+
 module.exports = {
   generateFeeReminders,
   substituteTemplate,
   pickTemplate,
   applyFeeReminderConditionalBlock,
+  notifyAdminFeeRemindersReady,
 };

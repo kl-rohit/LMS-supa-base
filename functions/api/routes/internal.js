@@ -11,8 +11,9 @@
 // secret first.
 
 const router = require('express').Router();
-const { generateFeeReminders } = require('../lib/feeReminder');
+const { generateFeeReminders, notifyAdminFeeRemindersReady } = require('../lib/feeReminder');
 const { loadAppSettings } = require('./settings');
+const { alreadySent, pruneDuplicateDigests } = require('../lib/notifyDedup');
 const { zcql, zcqlAll, unwrap, normalize, remove, appFor } = require('../db/catalystDb');
 const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
 const config = require('../config');
@@ -48,12 +49,6 @@ router.get('/pricing-export', async (req, res) => {
     res.status(500).json({ error: 'Failed to export pricing', detail: e.message });
   }
 });
-
-// Used only to word the fee-reminder admin notification below.
-const FEE_MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
 
 // Returns true when `date` is the last calendar day of its month. Used per
 // org (orgWantsReminderToday, below) for academies on the default "last day
@@ -119,35 +114,10 @@ async function feeReminderHandler(req, res) {
         const r = await generateFeeReminders(req, { month, year, orgId: Number(org.id) });
         summary.push({ org_id: org.id, org_name: org.name, ok: true, created: r.created });
 
-        // Let the admin know there is something to review, with the bell
-        // opening Messages directly. Only when reminders actually got drafted
-        // (a month with nothing owed sends nothing). Idempotent the same way
-        // as the class digest above: insert without push, prune down to one
-        // row per org per month, and only the survivor pushes, so a racing
-        // cron retry can never double-notify or double-push.
-        if (r.created > 0) {
-          const feeLink = `/messages?fee=${year}-${String(month).padStart(2, '0')}`;
-          const feeWhere = `Notifications.org_id = ${Number(org.id)} AND Notifications.recipient_role = 'admin' AND Notifications.link = '${feeLink}'`;
-          if (await alreadySent(req, feeWhere)) {
-            await pruneDuplicateDigests(req, feeWhere);
-          } else {
-            const feeMonthName = FEE_MONTH_NAMES[month - 1];
-            const feeTitle = `Fee reminders ready for ${feeMonthName} ${year}`;
-            const feeBody = `${r.created} fee reminder${r.created === 1 ? '' : 's'} drafted and ready to review and send.`;
-            const ins = await createAdminNotifications(req, {
-              orgId: Number(org.id),
-              type: 'fee_reminder',
-              title: feeTitle,
-              body: feeBody,
-              link: feeLink,
-              push: false,
-            });
-            const survivor = await pruneDuplicateDigests(req, feeWhere);
-            if (ins.rowid && survivor && String(survivor) === String(ins.rowid)) {
-              await pushToAdmins(req, Number(org.id), { type: 'fee_reminder', title: feeTitle, body: feeBody, link: feeLink });
-            }
-          }
-        }
+        // Shared with the admin's manual "Generate Fee Reminders" button
+        // (routes/messages.js), so both triggers notify identically and
+        // neither can double-notify on a retry/re-run.
+        await notifyAdminFeeRemindersReady(req, { orgId: Number(org.id), month, year, created: r.created });
       } catch (e) {
         summary.push({ org_id: org.id, org_name: org.name, ok: false, error: e.message });
       }
@@ -221,57 +191,9 @@ router.post('/cron-class-reminder', (req, res) => morningDigestHandler(req, res)
 // `/cron-class-reminder` fan-out (that endpoint is left in place as an
 // optional "30 min before" reminder but need not be scheduled).
 
-// Returns true if at least one Notifications row matches the given WHERE
-// clause. Used to make the morning digest idempotent: each digest carries a
-// date-stamped link, so a repeat run on the same day finds the existing row
-// and skips re-inserting. Best-effort — on any error we report "not sent" so
-// the digest still goes out rather than being silently suppressed.
-async function alreadySent(req, whereClause) {
-  try {
-    const rows = await zcqlAll(
-      req,
-      `SELECT ROWID FROM Notifications WHERE ${whereClause} LIMIT 1`,
-      'Notifications'
-    );
-    return unwrap(rows, 'Notifications').length > 0;
-  } catch {
-    return false;
-  }
-}
-
-// Self-healing dedup + push-ownership for digests. The morning-digest cron can
-// be delivered more than once in quick succession (webhook retry on a slow or
-// timed-out run, where the original invocation is still executing when the
-// retry starts). When that happens the check-then-insert `alreadySent` guard
-// races: two runs both read "not sent" before either commits, so both insert.
-//
-// After building a digest we prune any extras matching the same link, keeping
-// only the earliest ROWID. Every concurrent run agrees to keep the min ROWID,
-// so the bell converges to one row even under overlapping fires — and a later
-// run cleans up duplicates a prior run already left behind.
-//
-// Returns the surviving (earliest) ROWID as a string, or null. Callers fire the
-// web push ONLY when this survivor matches the row they just inserted: that
-// makes exactly one invocation the push owner, so the parent/admin sees a
-// single pop-up no matter how many times the cron is delivered. Best-effort:
-// on any error we return null and leave rows untouched (the caller then skips
-// the push rather than risk a duplicate).
-async function pruneDuplicateDigests(req, whereClause) {
-  try {
-    const rows = await zcqlAll(
-      req,
-      `SELECT ROWID FROM Notifications WHERE ${whereClause} ORDER BY Notifications.ROWID ASC`,
-      'Notifications'
-    );
-    const ids = unwrap(rows, 'Notifications').map((r) => r.ROWID).filter(Boolean);
-    for (const id of ids.slice(1)) {
-      await remove(req, 'Notifications', id).catch(() => {});
-    }
-    return ids.length ? String(ids[0]) : null;
-  } catch {
-    return null; // best-effort — caller skips push on null
-  }
-}
+// alreadySent / pruneDuplicateDigests now live in ../lib/notifyDedup (shared
+// with lib/feeReminder.js's notifyAdminFeeRemindersReady). See that file for
+// the full rationale — unchanged behavior, just no longer duplicated here.
 
 function minToTime(min) {
   const h = Math.floor(min / 60);

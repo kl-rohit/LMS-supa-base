@@ -4,7 +4,7 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
-const { generateFeeReminders, substituteTemplate, pickTemplate } = require('../lib/feeReminder');
+const { generateFeeReminders, substituteTemplate, pickTemplate, notifyAdminFeeRemindersReady } = require('../lib/feeReminder');
 const { createNotifications } = require('../lib/notify');
 const { requireFeature } = require('../middleware/entitlement');
 
@@ -142,6 +142,9 @@ router.post('/generate-fee-reminder', requireFeature('fees.reminders'), async (r
     const year = parseInt(req.body?.year) || now.getFullYear();
     // generateFeeReminders reads req.orgId internally — see lib/feeReminder.js.
     const result = await generateFeeReminders(req, { month, year, orgId: Number(req.orgId) });
+    // Same admin notification the monthly cron sends, so a manual run
+    // behaves identically (idempotent against a same-day cron run too).
+    await notifyAdminFeeRemindersReady(req, { orgId: Number(req.orgId), month, year, created: result.created });
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: 'Failed to generate fee reminders', detail: e.message });

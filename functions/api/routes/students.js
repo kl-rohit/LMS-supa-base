@@ -13,43 +13,37 @@ const { studentCapBlock } = require('../lib/studentLimit');
 // have the org_id column. Used to verify Phase A schema before running the
 // /api/platform/bootstrap migration.
 router.get('/debug/tables', async (req, res) => {
-  const result = { tried: [], tables: null, probe: {} };
-  const ds = appFor(req).datastore();
-  for (const m of ['getAllTables', 'getAllTableDetails']) {
-    if (typeof ds[m] === 'function') {
-      try {
-        const out = await ds[m]();
-        result.tried.push({ method: m, ok: true, count: Array.isArray(out) ? out.length : null });
-        if (Array.isArray(out)) {
-          result.tables = out.map((t) => ({
-            name: (typeof t.getTableName === 'function' && t.getTableName()) || t.table_name || t.name || null,
-          }));
-          break;
-        }
-      } catch (e) {
-        result.tried.push({ method: m, ok: false, error: e.message });
-      }
-    }
+  const { query } = require('../db/pg');
+  const result = { tables: null, probe: {} };
+  try {
+    const t = await query(
+      `select table_name from information_schema.tables where table_schema='public' order by table_name`
+    );
+    result.tables = t.rows.map((r) => ({ name: r.table_name }));
+  } catch (e) {
+    result.tables_error = e.message;
   }
 
-  // Tables that should have org_id for multi-tenancy
+  // Tables that should have org_id for multi-tenancy (lowercased Postgres names).
   const TENANT_TABLES = [
-    'Students', 'Groups', 'GroupStudents', 'Classes', 'ClassStudents',
-    'Attendance', 'AdditionalFees', 'Payments',
-    'Messages', 'MessageTemplates', 'AppSettings',
-    'Courses', 'Lessons', 'LessonProgress', 'CourseEnrollments',
-    'Camps', 'CampDays',
+    'students', 'groups', 'groupstudents', 'classes', 'classstudents',
+    'attendance', 'additionalfees', 'payments',
+    'messages', 'messagetemplates', 'appsettings',
+    'courses', 'lessons', 'lessonprogress', 'courseenrollments',
+    'camps', 'campdays',
   ];
-  // Multi-tenancy infra tables
-  const META_TABLES = ['Organizations', 'OrgMemberships'];
+  const META_TABLES = ['organizations', 'orgmemberships'];
 
   for (const t of [...META_TABLES, ...TENANT_TABLES]) {
     try {
-      const rows = await ds.table(t).getAllRows();
-      const info = { exists: true, count: rows.length };
-      // Sniff one row for org_id presence (skip META tables — they don't have it)
-      if (TENANT_TABLES.includes(t) && rows.length > 0) {
-        info.has_org_id = Object.prototype.hasOwnProperty.call(rows[0], 'org_id');
+      const c = await query(`select count(*)::int n from "${t}"`);
+      const info = { exists: true, count: c.rows[0].n };
+      if (TENANT_TABLES.includes(t)) {
+        const col = await query(
+          `select 1 from information_schema.columns where table_schema='public' and table_name=$1 and column_name='org_id'`,
+          [t]
+        );
+        info.has_org_id = col.rowCount > 0;
       }
       result.probe[t] = info;
     } catch (e) {

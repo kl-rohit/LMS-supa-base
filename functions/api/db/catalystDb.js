@@ -1,46 +1,75 @@
-// Single point of contact with Catalyst Data Store + ZCQL.
-// Every route file requires this and uses its helpers.
+// Single point of contact with the database.
+//
+// PORTED FROM ZOHO CATALYST TO POSTGRES (Supabase). The public API and return
+// shapes are UNCHANGED so the ~27 route files keep working without edits:
+//   - insert/bulkInsert/getById/getAll/update/remove operate on lowercased
+//     table names (Catalyst "Students" -> Postgres "students").
+//   - zcql/zcqlAll accept the app's existing ZCQL strings, translate the few
+//     differences to Postgres SQL, and return the SAME nested shape
+//     ([{ Students: {...} }, ...]) that unwrap()/readCount() expect.
+//   - Every returned row carries BOTH `id` and a Catalyst-style `ROWID` alias
+//     (and created_at/CREATEDTIME, updated_at/MODIFIEDTIME), so code that reads
+//     either name is unaffected. normalize() is unchanged.
+//
+// ROWIDs stay strings (17-digit; JS Number would lose precision). See db/pg.js.
 
-const catalyst = require('zcatalyst-sdk-node');
+const { query } = require('./pg');
 
-// IMPORTANT: scope: 'admin' bypasses end-user auth and uses the project's
-// own credentials. Veena has no end-user authentication.
+// Kept for the not-yet-migrated Stratus (file storage, Phase 4) and Catalyst
+// Auth (Phase 3) call sites that still do appFor(req).stratus()/.userManagement().
+// Datastore access no longer goes through this — it uses the pool above.
+let _catalyst;
 function appFor(req) {
-  return catalyst.initialize(req, { scope: 'admin' });
+  if (!_catalyst) _catalyst = require('zcatalyst-sdk-node');
+  return _catalyst.initialize(req, { scope: 'admin' });
 }
 
-// Escape single quotes for ZCQL string literals.
+// Escape single quotes for SQL string literals (works in Postgres too).
 const q = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
-// Catalyst ROWIDs are 17-digit numbers that exceed JS Number precision.
-// parseInt() on them silently rounds → wrong WHERE clauses → empty results.
-// Use this helper to inline IDs into ZCQL: returns digits-only string or null
-// (also prevents SQL injection by rejecting non-numeric input).
+// 17-digit ids exceed JS Number precision; inline into SQL as a validated
+// digit-string (also blocks injection by rejecting non-numeric input).
 function safeId(v) {
   if (v === undefined || v === null) return null;
   const s = String(v);
   return /^\d+$/.test(s) ? s : null;
 }
 
-// Convert a Catalyst row to plain JSON (handles ZCRecord instances).
+// Postgres rows are already plain objects; keep the toJSON guard for safety.
 function plain(row) {
   if (!row) return row;
   return typeof row.toJSON === 'function' ? row.toJSON() : row;
 }
 
+// Add the Catalyst-style aliases onto a flat Postgres row so downstream code
+// that reads .ROWID / .CREATEDTIME / .MODIFIEDTIME keeps working. ROWID is a
+// string to match the historical Catalyst shape (normalize() sets id = ROWID).
+function catalystify(row) {
+  if (!row || typeof row !== 'object') return row;
+  const out = { ...row };
+  if (row.id !== undefined && row.id !== null && out.ROWID === undefined) out.ROWID = String(row.id);
+  if (row.created_at !== undefined && out.CREATEDTIME === undefined) out.CREATEDTIME = row.created_at;
+  if (row.updated_at !== undefined && out.MODIFIEDTIME === undefined) out.MODIFIEDTIME = row.updated_at;
+  return out;
+}
+
 // Translate Catalyst row → shape the React client expects.
-// - Un-aliases reserved-word columns (class_date → date, fee_month → month, fee_year → year)
-// - Coerces known numeric columns back to JS numbers (Catalyst can return INT/BigInt
-//   columns as strings via JSON, which breaks frontend strict-equality filters
-//   like `c.day_of_week === 1`).
+// Postgres returns numeric/int8 columns as STRINGS, so every column the app
+// treats as a number must be listed here to be coerced back (this list is
+// extended vs. the Catalyst original for exactly that reason — e.g.
+// monthly_fee/paid_amount/daily_fee drive fee math and must not stay strings).
 const NUMERIC_FIELDS = [
   'day_of_week', 'is_active', 'is_sent',
   'duration_hours', 'fee_charged', 'fee_online', 'fee_offline', 'fee_offline_group',
   'amount', 'month', 'year', 'fee_month', 'fee_year',
-  'min_classes_per_month',
-  // Lessons module
+  'min_classes_per_month', 'monthly_fee',
+  // fees / payments / camps
+  'paid_amount', 'daily_fee', 'total_days',
+  // lessons module
   'duration_seconds', 'order_index', 'start_seconds', 'end_seconds',
-  'watched_seconds', 'percent_complete', 'points',
+  'watched_seconds', 'percent_complete', 'points', 'completed_count',
+  // quizzes
+  'score', 'total_questions', 'correct_count', 'attempts', 'correct_index',
 ];
 
 function normalize(row) {
@@ -64,103 +93,159 @@ function normalize(row) {
   return out;
 }
 
+// ---------- table/column helpers --------------------------------------------
+const qi = (k) => `"${String(k).replace(/"/g, '')}"`; // quote identifier
+const MANAGED = new Set(['id', 'ROWID', 'CREATEDTIME', 'MODIFIEDTIME', 'created_at', 'updated_at']);
+
+// Cache each table's real column set so write payloads can be filtered to
+// existing columns (drops client aliases like date/month/year and any stray
+// keys — mirrors a tolerant ORM and avoids "column does not exist" errors).
+const _colCache = new Map();
+async function tableColumns(table) {
+  const t = table.toLowerCase();
+  if (_colCache.has(t)) return _colCache.get(t);
+  const { rows } = await query(
+    `select column_name from information_schema.columns where table_schema='public' and table_name=$1`,
+    [t]
+  );
+  const set = new Set(rows.map((r) => r.column_name));
+  _colCache.set(t, set);
+  return set;
+}
+
+// jsonb columns accept objects/arrays; stringify them. undefined -> null.
+function coerce(v) {
+  if (v === undefined) return null;
+  if (v !== null && typeof v === 'object') return JSON.stringify(v);
+  return v;
+}
+
+function writableEntries(row, cols) {
+  return Object.entries(row).filter(([k]) => cols.has(k) && !MANAGED.has(k));
+}
+
 // ---------- Row API helpers --------------------------------------------------
 async function insert(req, table, row) {
-  return plain(await appFor(req).datastore().table(table).insertRow(row));
+  const t = table.toLowerCase();
+  const cols = await tableColumns(t);
+  const entries = writableEntries(row, cols);
+  if (!entries.length) {
+    const { rows } = await query(`insert into ${qi(t)} default values returning *`);
+    return catalystify(rows[0]);
+  }
+  const keys = entries.map(([k]) => k);
+  const vals = entries.map(([, v]) => coerce(v));
+  const params = vals.map((_, i) => `$${i + 1}`);
+  const sql = `insert into ${qi(t)} (${keys.map(qi).join(', ')}) values (${params.join(', ')}) returning *`;
+  const { rows } = await query(sql, vals);
+  return catalystify(rows[0]);
 }
 
 async function bulkInsert(req, table, rows) {
   if (!rows.length) return [];
-  const out = await appFor(req).datastore().table(table).insertRows(rows);
-  return out.map(plain);
+  const t = table.toLowerCase();
+  const cols = await tableColumns(t);
+  const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((k) => cols.has(k) && !MANAGED.has(k));
+  if (!keys.length) return [];
+  const params = [];
+  const tuples = rows.map((r) => {
+    const ph = keys.map((k) => {
+      params.push(coerce(r[k]));
+      return `$${params.length}`;
+    });
+    return `(${ph.join(', ')})`;
+  });
+  const sql = `insert into ${qi(t)} (${keys.map(qi).join(', ')}) values ${tuples.join(', ')} returning *`;
+  const { rows: out } = await query(sql, params);
+  return out.map(catalystify);
 }
 
 async function getById(req, table, id) {
+  const t = table.toLowerCase();
+  const sid = safeId(id);
+  if (sid === null) return null;
   try {
-    return plain(await appFor(req).datastore().table(table).getRow(id));
+    const { rows } = await query(`select * from ${qi(t)} where id = $1 limit 1`, [sid]);
+    return rows[0] ? catalystify(rows[0]) : null;
   } catch {
     return null;
   }
 }
 
 async function getAll(req, table) {
-  // getAllRows() is deprecated by the SDK + caps at the same 300-row ZCQL
-  // ceiling. Drain via the async iterator so we get everything regardless
-  // of table size.
-  const tbl = appFor(req).datastore().table(table);
-  if (typeof tbl.getIterableRows === 'function') {
-    const out = [];
-    for await (const row of tbl.getIterableRows()) out.push(plain(row));
-    return out;
-  }
-  // Fallback for older SDK versions
-  const rows = await tbl.getAllRows();
-  return rows.map(plain);
+  const t = table.toLowerCase();
+  const { rows } = await query(`select * from ${qi(t)}`);
+  return rows.map(catalystify);
 }
 
 async function update(req, table, id, patch) {
-  return plain(await appFor(req).datastore().table(table).updateRow({ ROWID: id, ...patch }));
+  const t = table.toLowerCase();
+  const sid = safeId(id);
+  const cols = await tableColumns(t);
+  const entries = writableEntries(patch, cols);
+  const vals = entries.map(([, v]) => coerce(v));
+  const sets = entries.map(([k], i) => `${qi(k)} = $${i + 1}`);
+  sets.push('updated_at = now()');
+  const sql = `update ${qi(t)} set ${sets.join(', ')} where id = $${vals.length + 1} returning *`;
+  const { rows } = await query(sql, [...vals, sid]);
+  return rows[0] ? catalystify(rows[0]) : null;
 }
 
 async function remove(req, table, id) {
-  return appFor(req).datastore().table(table).deleteRow(id);
+  const t = table.toLowerCase();
+  const sid = safeId(id);
+  const { rowCount } = await query(`delete from ${qi(t)} where id = $1`, [sid]);
+  return { ROWID: String(id), deleted: rowCount };
 }
 
-// ---------- ZCQL --------------------------------------------------------------
-// Catalyst ZCQL returns rows nested under the table name: [{ Students: {...} }, ...].
-// Flatten if there's only one table referenced.
-async function zcql(req, query) {
-  return appFor(req).zcql().executeZCQLQuery(query);
+// ---------- ZCQL-compatibility layer -----------------------------------------
+// Translate the app's existing ZCQL strings to Postgres SQL. Only a few things
+// differ; table/column case-folding is handled by Postgres itself (our tables
+// are lowercase, matching the fold of the app's PascalCase names).
+function translateQuery(zq) {
+  return String(zq)
+    // system columns → our real column names
+    .replace(/\bROWID\b/gi, 'id')
+    .replace(/\bCREATEDTIME\b/gi, 'created_at')
+    .replace(/\bMODIFIEDTIME\b/gi, 'updated_at')
+    // MySQL-style "LIMIT offset, count" → Postgres "LIMIT count OFFSET offset"
+    .replace(/\bLIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
 }
 
-// Paginate a SELECT until the table is exhausted.
-//
-// IMPORTANT: ZCQL silently caps SELECT at 300 rows per call. A bare
-// `SELECT * FROM Attendance` on a 312-row table returns 300 with no error
-// and no signal — your downstream filters silently miss rows.
-//
-// Use this helper for any SELECT that could plausibly exceed 300 rows:
-// Attendance, AdditionalFees, LessonProgress, Messages, Payments. Pass
-// the query WITHOUT a LIMIT/OFFSET clause; this helper appends them and
-// drains the table page-by-page.
-//
-// Returns the same nested shape as zcql() — caller still uses unwrap().
+// The table a single-table query selects from — used as the nesting key so the
+// result matches Catalyst's [{ TableName: {...} }] shape that unwrap() expects.
+function fromTable(zq) {
+  const m = /\bFROM\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(String(zq));
+  return m ? m[1] : '';
+}
+
+async function runQuery(zq, nestKey) {
+  const { rows } = await query(translateQuery(zq));
+  const key = nestKey || fromTable(zq) || '';
+  return rows.map((r) => ({ [key]: catalystify(r) }));
+}
+
+// Run a ZCQL query. Returns rows nested under the table name (same as Catalyst).
+async function zcql(req, queryStr) {
+  return runQuery(queryStr, fromTable(queryStr));
+}
+
+// Historically paginated around Catalyst's silent 300-row SELECT cap. Postgres
+// has no such cap, so this runs the query once. Signature unchanged; `table` is
+// used as the nesting key. Pass the query WITHOUT a LIMIT/OFFSET.
 async function zcqlAll(req, baseQuery, table) {
-  const PAGE_SIZE = 300;
-  const all = [];
-  let offset = 0;
-  // Guard against runaway loops if Catalyst ever returns >PAGE_SIZE rows.
-  let safety = 200; // up to 60k rows
-  while (safety-- > 0) {
-    // ZCQL LIMIT syntax: "LIMIT offset, count" — same as MySQL.
-    const pageQuery = `${baseQuery} LIMIT ${offset}, ${PAGE_SIZE}`;
-    const page = await appFor(req).zcql().executeZCQLQuery(pageQuery);
-    if (!page || page.length === 0) break;
-    all.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-  return all;
+  return runQuery(baseQuery, table);
 }
 
-// Unwrap a ZCQL result for a single-table query.
+// Unwrap a single-table ZCQL result. UNCHANGED.
 function unwrap(rows, table) {
   return rows.map((r) => plain(r[table]));
 }
 
-// Read a COUNT(...) aggregate value out of a ZCQL result.
-//
-// IMPORTANT: executeZCQLQuery returns ZCRecord objects, not plain objects.
-// Their nested values are only exposed after toJSON() (that is what plain()
-// does, and why unwrap() always calls it). Reading the count straight off the
-// record — `rows[0][table].alias` — yields undefined, which collapses to a
-// SILENT 0 even when the table is full. This un-wraps both levels (the row and
-// the table-named sub-object), reads the alias, and falls back to the first
-// numeric value present so an alias/casing difference can never read as 0.
+// Read a COUNT(...) aggregate out of a ZCQL result. UNCHANGED.
 function readCount(rows, table, alias = 'c') {
   if (!rows || !rows.length) return 0;
   const top = plain(rows[0]) || {};
-  // Aggregate is nested under the table name; some DCs key it under '' instead.
   let inner = top[table];
   if (inner == null) inner = top[''];
   if (inner == null) inner = top;
@@ -176,12 +261,8 @@ function readCount(rows, table, alias = 'c') {
   return 0;
 }
 
-// Run an async fn over items with BOUNDED concurrency, preserving order.
-//
-// Catalyst caps the number of in-flight ZCQL/datastore calls per function
-// invocation; a bare Promise.all over 20+ tables trips it with "Concurrency
-// limit reached for the feature COMPONENT" and the over-cap calls reject. A
-// limit of 4 stays comfortably under the cap while still parallelising.
+// Bounded-concurrency map. Kept for API compatibility (the pool also bounds
+// concurrency, but callers still import this).
 async function mapLimit(items, fn, limit = 4) {
   const out = new Array(items.length);
   let idx = 0;
@@ -213,4 +294,5 @@ module.exports = {
   unwrap,
   readCount,
   mapLimit,
+  tableColumns,
 };

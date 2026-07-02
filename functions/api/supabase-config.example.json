@@ -1,0 +1,7 @@
+{
+  "supabase_url": "https://YOUR-PROJECT-REF.supabase.co",
+  "supabase_anon_key": "PASTE-anon-public-key-here",
+  "supabase_service_role_key": "PASTE-service_role-key-here",
+  "supabase_db_url": "postgresql://postgres:YOUR-DB-PASSWORD@db.YOUR-PROJECT-REF.supabase.co:5432/postgres",
+  "supabase_jwt_secret": "PASTE-JWT-secret-here"
+}

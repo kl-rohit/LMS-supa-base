@@ -13,6 +13,10 @@ functions/api/version.json
 # Keep catalyst-config.example.json in git with placeholder values instead.
 functions/*/catalyst-config.json
 
+# Supabase secrets — service_role key + DB connection string. NEVER commit.
+# Keep supabase-config.example.json in git with placeholder values instead.
+functions/*/supabase-config.json
+
 # Student PII — names, mobile numbers, parent names. Never commit.
 veena-students-import.json
 *-import.json
@@ -46,3 +50,4 @@ npm-debug.log*
 
 # Synced from Platform Admin Plans editor at deploy time (scripts/sync-pricing.js)
 pricing.overrides.json
+

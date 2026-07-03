@@ -1,0 +1,21 @@
+# Netlify build config for the VidyaSetu frontend.
+# The backend lives elsewhere (Catalyst / Cloud Run); this only hosts the SPA.
+#
+# Set these environment variables in the Netlify UI (Site settings → Environment):
+#   API_BASE            = https://<your-backend-url>/server/api/api   (Catalyst)
+#                         or https://<your-cloud-run-url>/api          (Cloud Run)
+#   SUPABASE_URL        = https://<your-ref>.supabase.co
+#   SUPABASE_ANON_KEY   = <anon public key>
+# PUBLIC_URL is forced to "/" by the build:netlify script.
+
+[build]
+  base = "client"
+  command = "npm run build:netlify"
+  publish = "dist"
+
+# SPA fallback: real files (landing.html, assets) are served directly; any
+# other path falls through to the React app so client-side routing works.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

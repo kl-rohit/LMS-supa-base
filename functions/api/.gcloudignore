@@ -1,0 +1,7 @@
+# Files NOT uploaded to Cloud Run (source deploy). Secrets come from env vars
+# set on the service, not from files. node_modules is reinstalled by the build.
+node_modules
+supabase-config.json
+catalyst-config.json
+version.json
+*.log

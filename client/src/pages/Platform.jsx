@@ -50,10 +50,26 @@ import {
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
+import CredentialShare from '../components/CredentialShare';
 import EmptyState from '../components/EmptyState';
 import Tooltip from '../components/Tooltip';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+
+// Sign-in message shared with a new academy owner (no email — WhatsApp/in person).
+const PLATFORM_LOGIN_URL = `${window.location.origin}${(process.env.PUBLIC_URL || '/').replace(/\/$/, '')}/login`;
+function ownerCredMessage({ email, password, academyName }) {
+  const lines = [
+    `Your ${academyName || 'VidyaSetu'} admin access is ready.`,
+    ``,
+    `Sign in here: ${PLATFORM_LOGIN_URL}`,
+    `Email: ${email}`,
+  ];
+  if (password) lines.push(`Password: ${password}`, ``, `Please change your password after signing in.`);
+  else lines.push(``, `Use your existing password.`);
+  return lines.join('\n');
+}
+const waSend = (text) => `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
 
 // localStorage key the api client checks to inject ?org=<id> on every
 // admin call. Setting this lets the platform admin "see what the org
@@ -123,6 +139,8 @@ export default function Platform() {
   const emptyForm = { academy_name: '', first_name: '', last_name: '', owner_email: '' };
   const [createForm, setCreateForm] = useState(emptyForm);
   const setCF = (k) => (e) => setCreateForm((f) => ({ ...f, [k]: e.target.value }));
+  // Sign-in details to share after creating/resetting an owner (shown once).
+  const [credModal, setCredModal] = useState(null); // { email, password, academyName } | null
 
   // Trial date-picker modal — replaces the old window.prompt so trial length is
   // set with the same date input the rest of the app uses. Holds the target org
@@ -437,10 +455,16 @@ export default function Platform() {
         last_name: f.last_name.trim(),
         owner_email: f.owner_email.trim().toLowerCase(),
       });
-      toast.success(`Created "${data?.org?.name || f.academy_name}". Invite emailed to ${f.owner_email}.`);
+      toast.success(`Created "${data?.org?.name || f.academy_name}"`);
       setCreateForm(emptyForm);
       setShowCreate(false);
       fetchAll();
+      // Show the owner's sign-in details to share (password shown only once).
+      setCredModal({
+        email: data?.owner_email || f.owner_email.trim().toLowerCase(),
+        password: data?.temp_password || null,
+        academyName: data?.org?.name || f.academy_name.trim(),
+      });
     } catch (err) {
       toast.error('Could not create academy: ' + err.message);
     } finally {
@@ -578,7 +602,12 @@ export default function Platform() {
     setResending(true);
     try {
       const res = await api.post(`/platform/orgs/${org.id}/resend-invite`, {});
-      toast.success(`Access email sent${res?.email ? ` to ${res.email}` : ''}`);
+      toast.success('New password generated');
+      setCredModal({
+        email: res?.email || '',
+        password: res?.temp_password || null,
+        academyName: org?.name || '',
+      });
     } catch (e) {
       toast.error('Could not send access email: ' + e.message);
     } finally {
@@ -1512,6 +1541,30 @@ function AcademiesSection({
             </button>
           </div>
         </form>
+      )}
+
+      {/* Owner sign-in details to share (shown once, after create / reset) */}
+      {credModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCredModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 mb-1">Share these sign-in details</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {credModal.password
+                ? `Send these to the owner of ${credModal.academyName || 'the academy'} (e.g. on WhatsApp). The password is shown only once.`
+                : `${credModal.academyName || 'The academy'} is linked to an existing account — they sign in with their current password.`}
+            </p>
+            <CredentialShare
+              email={credModal.email}
+              password={credModal.password}
+              waLink={waSend(ownerCredMessage(credModal))}
+              copyText={ownerCredMessage(credModal)}
+              note={credModal.password ? 'Shown only once — copy or send it now.' : null}
+            />
+            <div className="flex justify-end pt-3 mt-3 border-t border-gray-100">
+              <button onClick={() => setCredModal(null)} className="btn-secondary btn-sm">Done</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Search bar */}

@@ -22,6 +22,7 @@ import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import Modal from '../components/Modal';
+import CredentialShare from '../components/CredentialShare';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Pagination, { usePagination } from '../components/Pagination';
 import Tooltip from '../components/Tooltip';
@@ -30,23 +31,39 @@ import { maskEmail } from '../utils/mask';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { useOrgBranding } from '../hooks/useOrgBranding';
 
-const PORTAL_URL = `${window.location.origin}/app/portal`;
+const BASE = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
+const LOGIN_URL = `${window.location.origin}${BASE}/login`;
 
-function whatsappLink(mobile, parentName, studentName, email, academyName) {
-  const phone = normalizeMobileForWhatsApp(mobile);
-  if (!phone) return null;
+// Build the sign-in message shared with the parent. Includes the temporary
+// password when we have it (just after creating the login); otherwise tells
+// them to use their existing password.
+function credentialsMessage({ parentName, studentName, email, password, academyName }) {
   const academy = academyName || 'our academy';
-  const msg = [
-    `Hi ${parentName || ''},`,
+  const lines = [
+    `Hi ${parentName || ''},`.trim(),
     ``,
-    `Your ${academy} parent portal access for ${studentName} is ready!`,
+    `Your ${academy} parent portal access${studentName ? ` for ${studentName}` : ''} is ready.`,
     ``,
-    `Step 1: Check your email (${email}) for the activation link from Zoho — click it and set your password.`,
-    `Step 2: Log in here: ${PORTAL_URL}`,
-    ``,
-    `From here you can see ${studentName}'s class history, recordings, and fees anytime.`,
-  ].join('\n');
-  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    `Sign in here: ${LOGIN_URL}`,
+    `Email: ${email}`,
+  ];
+  if (password) {
+    lines.push(`Password: ${password}`, ``, `Please change your password after signing in.`);
+  } else {
+    lines.push(``, `Use your existing password. If you forgot it, ask us to reset it.`);
+  }
+  if (studentName) lines.push(``, `From here you can see ${studentName}'s class history, recordings, and fees anytime.`);
+  return lines.join('\n');
+}
+
+// WhatsApp deep link. Goes straight to the parent's number when we have it,
+// otherwise opens WhatsApp to pick a contact — the message is prefilled either way.
+function whatsappLink(mobile, opts) {
+  const msg = credentialsMessage(opts);
+  const phone = normalizeMobileForWhatsApp(mobile);
+  return phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
 }
 
 export default function StudentLogins() {
@@ -60,6 +77,7 @@ export default function StudentLogins() {
   const [createEmail, setCreateEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [created, setCreated] = useState(null); // { student, email, password, reused }
 
   const fetchAll = async () => {
     setLoading(true);
@@ -118,14 +136,22 @@ export default function StudentLogins() {
     }
     setSubmitting(true);
     try {
-      await api.post('/student-logins', {
+      const resp = await api.post('/student-logins', {
         student_id: String(createFor.id),
         email: createEmail.trim(),
         first_name: createFor.parent_name || createFor.name,
       });
-      toast.success('Login created — invitation email sent');
+      const student = createFor;
       setCreateFor(null);
       await fetchAll();
+      // Show the sign-in details to share (temp password is shown only once).
+      setCreated({
+        student,
+        email: resp.email || createEmail.trim(),
+        password: resp.temp_password || null,
+        reused: !!resp.reused_existing,
+      });
+      toast.success(resp.reused_existing ? 'Linked to their existing account' : 'Login created');
     } catch (e) {
       toast.error('Failed: ' + e.message);
     } finally {
@@ -310,7 +336,7 @@ export default function StudentLogins() {
         <div className="md:hidden divide-y divide-gray-100">
           {pageRows.map(({ student, login }) => {
             const waLink = login
-              ? whatsappLink(student.mobile_number, student.parent_name, student.name, login.email, branding.name)
+              ? whatsappLink(student.mobile_number, { parentName: student.parent_name, studentName: student.name, email: login.email, academyName: branding.name })
               : null;
             return (
               <div key={student.id} className="p-4">
@@ -411,7 +437,7 @@ export default function StudentLogins() {
         size="md"
         onSave={handleCreate}
         saving={submitting}
-        saveLabel="Create & send invite"
+        saveLabel="Create login"
       >
         {createFor && (
           <div className="space-y-4">
@@ -431,7 +457,7 @@ export default function StudentLogins() {
                 autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">
-                Zoho will send an activation email here. The parent clicks the link, sets their own password, then can log in.
+                We'll create the login and show you a password to share with the parent (a "Send on WhatsApp" button makes it one tap).
               </p>
             </div>
 
@@ -441,8 +467,48 @@ export default function StudentLogins() {
               </button>
               <button onClick={handleCreate} className="btn-primary btn-sm" disabled={submitting}>
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {submitting ? 'Creating...' : 'Create & send invite'}
+                {submitting ? 'Creating...' : 'Create login'}
               </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Sign-in details to share — shown once, right after creating a login */}
+      <Modal
+        isOpen={!!created}
+        onClose={() => setCreated(null)}
+        title={created?.reused ? 'Login linked' : 'Share these sign-in details'}
+        size="md"
+      >
+        {created && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              {created.reused
+                ? `${created.student?.parent_name || 'This parent'} already had an account — it is now linked to ${created.student?.name || 'this student'}.`
+                : `Login created for ${created.student?.name || ''}. Share the details below with the parent — the password is shown only once.`}
+            </p>
+            <CredentialShare
+              email={created.email}
+              password={created.password}
+              waLink={whatsappLink(created.student?.mobile_number, {
+                parentName: created.student?.parent_name,
+                studentName: created.student?.name,
+                email: created.email,
+                password: created.password,
+                academyName: branding.name,
+              })}
+              copyText={credentialsMessage({
+                parentName: created.student?.parent_name,
+                studentName: created.student?.name,
+                email: created.email,
+                password: created.password,
+                academyName: branding.name,
+              })}
+              note={created.password ? 'Save or share the password now — it is shown only once.' : null}
+            />
+            <div className="flex justify-end pt-2 border-t border-gray-100">
+              <button onClick={() => setCreated(null)} className="btn-secondary btn-sm">Done</button>
             </div>
           </div>
         )}
@@ -453,7 +519,7 @@ export default function StudentLogins() {
         onClose={() => setConfirmDeleteId(null)}
         onConfirm={handleDelete}
         title="Delete this login?"
-        message="The parent will lose portal access. Their Catalyst account will be disabled. You can recreate the login later if needed."
+        message="The parent will lose portal access and their login will be disabled. You can recreate the login later if needed."
         confirmText="Delete"
         danger
       />

@@ -5,6 +5,10 @@
 // `process.env.API_BASE` is replaced at build time by webpack.DefinePlugin.
 const BASE_URL = process.env.API_BASE || '/api';
 
+// Attach the Supabase access token as `Authorization: Bearer <jwt>` on every
+// request (replaces Catalyst session cookies). supabase-js keeps it fresh.
+import { getAccessToken } from './supabaseClient';
+
 // Active-academy selection: every API call gets `?org=<id>` appended so the
 // backend's resolveOrg / requireParent scope to the academy the user is
 // currently viewing. Two sources, in priority order:
@@ -42,6 +46,12 @@ async function request(url, options = {}) {
     config.body = JSON.stringify(config.body);
   }
 
+  // Bearer token from the current Supabase session (null when signed out).
+  try {
+    const token = await getAccessToken();
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  } catch { /* no session — request goes out unauthenticated, backend 401s */ }
+
   const finalUrl = withActiveOrg(url);
 
   // Offline-aware: if the device reports no connection, fail fast with a
@@ -54,7 +64,8 @@ async function request(url, options = {}) {
   let response;
   try {
     response = await fetch(`${BASE_URL}${finalUrl}`, {
-      credentials: 'include', // include Catalyst session cookies
+      // Auth travels in the Authorization header (Bearer), not cookies, so this
+      // works cross-origin (Netlify frontend -> Cloud Run backend) with CORS.
       ...config,
     });
   } catch (networkErr) {

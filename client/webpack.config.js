@@ -16,6 +16,15 @@ const PUBLIC_URL = process.env.PUBLIC_URL || '/';
 const API_BASE = process.env.API_BASE || '/api';
 const ANALYZE = process.env.ANALYZE === 'true';
 
+// Supabase client config. The URL + anon key are PUBLIC (they ship in the
+// browser bundle by design — Supabase security relies on RLS + the server, not
+// on anon-key secrecy). Sourced from the gitignored functions/api/supabase-
+// config.json (single source of truth) or env, so nothing extra is committed.
+let _sb = {};
+try { _sb = require('../functions/api/supabase-config.json'); } catch (_) { _sb = {}; }
+const SUPABASE_URL = process.env.SUPABASE_URL || _sb.supabase_url || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || _sb.supabase_anon_key || '';
+
 module.exports = (_env, argv) => {
   const isProd = argv.mode === 'production';
 
@@ -68,6 +77,8 @@ module.exports = (_env, argv) => {
       new webpack.DefinePlugin({
         'process.env.API_BASE': JSON.stringify(API_BASE),
         'process.env.PUBLIC_URL': JSON.stringify(PUBLIC_URL),
+        'process.env.SUPABASE_URL': JSON.stringify(SUPABASE_URL),
+        'process.env.SUPABASE_ANON_KEY': JSON.stringify(SUPABASE_ANON_KEY),
       }),
       ...(ANALYZE ? [new BundleAnalyzerPlugin()] : []),
     ],

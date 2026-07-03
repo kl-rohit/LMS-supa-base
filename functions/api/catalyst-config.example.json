@@ -1,0 +1,16 @@
+{
+  "_README": "TEMPLATE. Steps: (1) copy your WORKING catalyst-config.json from the live veena repo into this folder so the deployment/stack keys are correct; (2) replace its env_variables with the block below; (3) fill in real values; (4) save as catalyst-config.json (gitignored — never commit). Keep supabase-config.json here too: the client build reads SUPABASE_URL + anon key from it at build time. Remove this _README line before deploying.",
+  "env_variables": {
+    "SUPABASE_URL": "https://YOUR-PROJECT-REF.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY": "PASTE-service_role-key",
+    "SUPABASE_DB_URL": "postgresql://postgres.YOUR-PROJECT-REF:YOUR-DB-PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres",
+    "SUPABASE_JWT_SECRET": "",
+    "SUPABASE_BUCKET": "student-photos-profile",
+    "CRON_SECRET": "GENERATE-a-long-random-string",
+    "PLATFORM_ADMIN_EMAILS": "you@example.com",
+    "VAPID_PUBLIC_KEY": "",
+    "VAPID_PRIVATE_KEY": "",
+    "VAPID_SUBJECT": "mailto:you@example.com",
+    "CERT_SECRET": "GENERATE-a-long-random-string"
+  }
+}

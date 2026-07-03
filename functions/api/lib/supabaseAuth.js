@@ -65,12 +65,17 @@ async function verifyToken(token) {
 // Platform super-admin(s) — the old Catalyst "App Administrator". Configured by
 // email in supabase-config.json (platform_admin_emails: []) or the
 // PLATFORM_ADMIN_EMAILS env (comma-separated). Case-insensitive.
+// Accept either an array (["a@x.com","b@y.com"]) or a comma-separated string
+// ("a@x.com, b@y.com") from config or env — whichever the operator wrote.
+function toEmailList(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') return v.split(',');
+  return [];
+}
 const PLATFORM_ADMIN_EMAILS = (
   process.env.PLATFORM_ADMIN_EMAILS
     ? process.env.PLATFORM_ADMIN_EMAILS.split(',')
-    : Array.isArray(C.platform_admin_emails)
-      ? C.platform_admin_emails
-      : []
+    : toEmailList(C.platform_admin_emails)
 ).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
 
 function isPlatformAdmin(email) {

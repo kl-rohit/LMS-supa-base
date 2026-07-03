@@ -124,7 +124,9 @@ async function createUserWithPassword({ email, password, first_name = '', last_n
     email: String(email).trim().toLowerCase(),
     password,
     email_confirm: true,
-    user_metadata: { first_name, last_name },
+    // must_set_password flags an admin-issued temp password; the app forces a
+    // password change on first sign-in and clears the flag afterwards.
+    user_metadata: { first_name, last_name, must_set_password: true },
   });
   if (error) throw new Error(error.message);
   return data.user;
@@ -189,7 +191,14 @@ async function createLogin({ email, first_name = '', last_name = '' }) {
 // it to share via WhatsApp.
 async function resetUserPassword(userId) {
   const tempPassword = generateTempPassword();
-  const { error } = await admin.auth.admin.updateUserById(String(userId), { password: tempPassword });
+  // Preserve existing metadata (name) and re-flag must_set_password so the user
+  // is prompted to choose their own password again after an admin reset.
+  const existing = await getUserById(userId);
+  const meta = { ...(existing?.user_metadata || {}), must_set_password: true };
+  const { error } = await admin.auth.admin.updateUserById(String(userId), {
+    password: tempPassword,
+    user_metadata: meta,
+  });
   if (error) throw new Error(error.message);
   return tempPassword;
 }

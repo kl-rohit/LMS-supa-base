@@ -9,6 +9,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import api from '../utils/api';
 import { supabase } from '../utils/supabaseClient';
+import ForcePasswordSet from '../components/ForcePasswordSet';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +20,18 @@ const ACTIVE_ORG_KEY = 'veena_active_org_id';
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True when the signed-in user still has an admin-issued temp password
+  // (user_metadata.must_set_password). Forces the set-password screen.
+  const [needsPasswordSet, setNeedsPasswordSet] = useState(false);
+
+  const readPasswordFlag = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getUser();
+      setNeedsPasswordSet(!!data?.user?.user_metadata?.must_set_password);
+    } catch {
+      setNeedsPasswordSet(false);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,13 +65,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let active = true;
     refresh();
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+    readPasswordFlag();
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if (event === 'SIGNED_OUT') {
         setUser(null);
+        setNeedsPasswordSet(false);
         setLoading(false);
       } else {
         // SIGNED_IN, TOKEN_REFRESHED, USER_UPDATED, INITIAL_SESSION, PASSWORD_RECOVERY
+        setNeedsPasswordSet(!!session?.user?.user_metadata?.must_set_password);
         refresh();
       }
     });
@@ -66,6 +82,17 @@ export function AuthProvider({ children }) {
       active = false;
       sub?.subscription?.unsubscribe?.();
     };
+  }, [refresh, readPasswordFlag]);
+
+  // Set the user's own password and clear the must_set_password flag.
+  const completePasswordSet = useCallback(async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: { must_set_password: false },
+    });
+    if (error) throw new Error(error.message);
+    setNeedsPasswordSet(false);
+    await refresh();
   }, [refresh]);
 
   // Switch the active academy. Persists the choice, then hard-reloads to the
@@ -95,11 +122,15 @@ export function AuthProvider({ children }) {
         refresh,
         signOut,
         switchOrg,
+        needsPasswordSet,
+        completePasswordSet,
         orgs: user?.orgs || [],
         activeOrgId: user?.active_org_id ?? null,
       }}
     >
       {children}
+      {/* Force a password change when signed in with a temp password. */}
+      {user && needsPasswordSet ? <ForcePasswordSet /> : null}
     </AuthContext.Provider>
   );
 }

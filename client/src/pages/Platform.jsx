@@ -934,6 +934,30 @@ export default function Platform() {
         </div>
       </div>
 
+      {/* Owner sign-in details to share (shown once, after create / reset) */}
+      {credModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCredModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 mb-1">Share these sign-in details</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {credModal.password
+                ? `Send these to the owner of ${credModal.academyName || 'the academy'} (e.g. on WhatsApp). The password is shown only once.`
+                : `${credModal.academyName || 'The academy'} is linked to an existing account — they sign in with their current password.`}
+            </p>
+            <CredentialShare
+              email={credModal.email}
+              password={credModal.password}
+              waLink={waSend(ownerCredMessage(credModal))}
+              copyText={ownerCredMessage(credModal)}
+              note={credModal.password ? 'Shown only once — copy or send it now.' : null}
+            />
+            <div className="flex justify-end pt-3 mt-3 border-t border-gray-100">
+              <button onClick={() => setCredModal(null)} className="btn-secondary btn-sm">Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Trial length picker — replaces the old window.prompt. */}
       {trialModal && (() => {
         const today = new Date();
@@ -1541,30 +1565,6 @@ function AcademiesSection({
             </button>
           </div>
         </form>
-      )}
-
-      {/* Owner sign-in details to share (shown once, after create / reset) */}
-      {credModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCredModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1">Share these sign-in details</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {credModal.password
-                ? `Send these to the owner of ${credModal.academyName || 'the academy'} (e.g. on WhatsApp). The password is shown only once.`
-                : `${credModal.academyName || 'The academy'} is linked to an existing account — they sign in with their current password.`}
-            </p>
-            <CredentialShare
-              email={credModal.email}
-              password={credModal.password}
-              waLink={waSend(ownerCredMessage(credModal))}
-              copyText={ownerCredMessage(credModal)}
-              note={credModal.password ? 'Shown only once — copy or send it now.' : null}
-            />
-            <div className="flex justify-end pt-3 mt-3 border-t border-gray-100">
-              <button onClick={() => setCredModal(null)} className="btn-secondary btn-sm">Done</button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Search bar */}

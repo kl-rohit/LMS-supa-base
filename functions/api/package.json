@@ -4,9 +4,11 @@
   "description": "Veena monolith API on Catalyst AdvancedIO + Data Store",
   "main": "index.js",
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
     "cors": "^2.8.5",
     "express": "^4.21.1",
     "jimp": "^1.6.1",
+    "jose": "^6.2.3",
     "pg": "^8.22.0",
     "web-push": "^3.6.7",
     "zcatalyst-sdk-node": "^3.4.0"

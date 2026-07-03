@@ -1,21 +1,41 @@
-// Auth middleware — gates API routes behind a logged-in Catalyst user.
+// Auth middleware — gates API routes behind a logged-in Supabase user.
 //
-// Flow: Catalyst sets session cookies on the *.catalystserverless.in domain
-// when the user signs in via the embedded auth form on the frontend.
-// Those cookies arrive with every /api/* request. `catalyst.initialize(req)`
-// (default user scope) reads them and returns the authenticated user.
+// PORTED FROM CATALYST. The frontend logs in via Supabase Auth and sends the
+// access token as `Authorization: Bearer <jwt>` on every /api/* request. We
+// verify that JWT (see lib/supabaseAuth.verifyToken) and build req.user.
 //
-// Routes still use { scope: 'admin' } from catalystDb.js for actual DB ops —
-// this middleware only verifies *who* is calling. Role checks gate access.
+// Exports are unchanged (loadUser / requireAuth / requireAdmin / publicUser),
+// so routes/auth.js and middleware/org.js keep working. req.user keeps the
+// Catalyst-compatible shape: user_id (now a Supabase UUID string), email, and
+// a role string ('App Administrator' for the platform super-admin, else
+// 'App User') so resolveAppRole()/resolveOrg()'s existing role checks still hold.
 
-const catalyst = require('zcatalyst-sdk-node');
+const { verifyToken, isPlatformAdmin } = require('../lib/supabaseAuth');
 
-// Pull the logged-in user (if any). Does NOT 401 — sets req.user = null instead.
+function bearer(req) {
+  const h = req.headers?.authorization || req.headers?.Authorization || '';
+  const m = /^Bearer\s+(.+)$/i.exec(h);
+  return m ? m[1].trim() : null;
+}
+
+// Pull the logged-in user (if any). Does NOT 401 — returns null instead.
 async function loadUser(req) {
+  if (req.user) return req.user;
+  const token = bearer(req);
+  if (!token) return null;
   try {
-    const app = catalyst.initialize(req); // user scope by default
-    const user = await app.userManagement().getCurrentUser();
-    return user || null;
+    const c = await verifyToken(token);
+    const email = String(c.email || '').toLowerCase();
+    return {
+      user_id: c.sub, // Supabase user UUID
+      email,
+      email_id: c.email, // Catalyst-compat alias
+      first_name: c.user_metadata?.first_name || '',
+      last_name: c.user_metadata?.last_name || '',
+      // Catalyst-compat role string used by resolveAppRole()/resolveOrg().
+      role: isPlatformAdmin(email) ? 'App Administrator' : 'App User',
+      claims: c,
+    };
   } catch {
     return null;
   }
@@ -29,18 +49,16 @@ async function requireAuth(req, res, next) {
   next();
 }
 
-// Require the logged-in user to be a Catalyst "App Administrator"
-// (teacher role for Veena). Parents will be "App User" and fail this check.
+// Require the platform super-admin (the old Catalyst "App Administrator").
+// Identified by configured platform_admin_emails (see lib/supabaseAuth).
 function requireAdmin(req, res, next) {
-  const role = req.user?.role_details?.role_name || req.user?.role || '';
-  // Catalyst returns "App Administrator" for admin users, "App User" for parents.
-  if (role !== 'App Administrator') {
+  if (!isPlatformAdmin(req.user?.email)) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
 }
 
-// Convenience: extract just the bits we expose to the React app.
+// Convenience: the bits we expose to the React app. Shape unchanged.
 function publicUser(u) {
   if (!u) return null;
   return {
@@ -48,7 +66,7 @@ function publicUser(u) {
     email: u.email_id || u.email,
     first_name: u.first_name || '',
     last_name: u.last_name || '',
-    role: u.role_details?.role_name || u.role || 'App User',
+    role: u.role || (isPlatformAdmin(u.email) ? 'App Administrator' : 'App User'),
   };
 }
 

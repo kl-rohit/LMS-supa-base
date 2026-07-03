@@ -51,3 +51,7 @@ npm-debug.log*
 # Synced from Platform Admin Plans editor at deploy time (scripts/sync-pricing.js)
 pricing.overrides.json
 
+
+# Catalyst CLI local project association (per-machine, never commit)
+.catalystrc
+catalyst.json.live.bak

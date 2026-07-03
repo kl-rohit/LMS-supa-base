@@ -55,3 +55,6 @@ pricing.overrides.json
 # Catalyst CLI local project association (per-machine, never commit)
 .catalystrc
 catalyst.json.live.bak
+
+# Never commit config backups (may contain secrets)
+*.bak

@@ -95,5 +95,6 @@ catalyst deploy
 
 green "✔ Deploy complete."
 echo
-echo "Quick smoke test (the 'commit' field should read ${GIT_SHA}${GIT_DIRTY}):"
-echo "  curl -s 'https://veena-attendance-60070745325.development.catalystserverless.in/server/api/api/health'"
+echo "Quick smoke test — use the FUNCTION URL that 'catalyst deploy' printed above"
+echo "(not a hardcoded one), e.g.:  curl -s '<FUNCTION_URL>/api/health'"
+echo "The 'commit' field should read ${GIT_SHA}${GIT_DIRTY}."

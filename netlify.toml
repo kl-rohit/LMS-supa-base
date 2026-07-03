@@ -1,9 +1,10 @@
 # Netlify build config for the VidyaSetu frontend.
-# The backend lives elsewhere (Catalyst / Cloud Run); this only hosts the SPA.
+# The backend runs on Catalyst; Netlify PROXIES /api/* to it (below) so the
+# browser makes same-origin requests — no CORS/preflight (Catalyst answers
+# OPTIONS preflights itself without CORS headers, so we sidestep it entirely).
 #
-# Set these environment variables in the Netlify UI (Site settings → Environment):
-#   API_BASE            = https://<your-backend-url>/server/api/api   (Catalyst)
-#                         or https://<your-cloud-run-url>/api          (Cloud Run)
+# Set these environment variables in the Netlify UI (Site config → Environment):
+#   API_BASE            = /api                        (same-origin; proxied below)
 #   SUPABASE_URL        = https://<your-ref>.supabase.co
 #   SUPABASE_ANON_KEY   = <anon public key>
 # PUBLIC_URL is forced to "/" by the build:netlify script.
@@ -12,6 +13,16 @@
   base = "client"
   command = "npm run build:netlify"
   publish = "dist"
+
+# Proxy API calls to the Catalyst backend, server-side. Because the browser
+# only ever talks to this same Netlify origin, there is no cross-origin
+# preflight. Netlify forwards the request (incl. the Authorization header) to
+# Catalyst. MUST come before the SPA fallback.
+[[redirects]]
+  from = "/api/*"
+  to = "https://academy-management-928044659.catalystserverless.com/server/api/api/:splat"
+  status = 200
+  force = true
 
 # SPA fallback: real files (landing.html, assets) are served directly; any
 # other path falls through to the React app so client-side routing works.

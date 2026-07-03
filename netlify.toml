@@ -20,7 +20,10 @@
 # Catalyst. MUST come before the SPA fallback.
 [[redirects]]
   from = "/api/*"
-  to = "https://academy-management-928044659.catalystserverless.com/server/api/api/:splat"
+  # DEVELOPMENT backend (has the X-Auth-Token fix + verified working). Once the
+  # Production promote succeeds, change ".development." out of this URL to switch
+  # to the production backend.
+  to = "https://academy-management-928044659.development.catalystserverless.com/server/api/api/:splat"
   status = 200
   force = true
 

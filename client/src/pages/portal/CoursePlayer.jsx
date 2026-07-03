@@ -43,12 +43,12 @@ function nativeFullscreenSupported(el) {
   return !!enabled && !!(el && (el.requestFullscreen || el.webkitRequestFullscreen));
 }
 
-// Final-save URL: sendBeacon needs the absolute API path because the beacon
-// fires after React has unmounted. PUBLIC_URL on Catalyst = '/app/', so
-// the API base is '/server/api/api'; in local dev fall back to '/api'.
+// Final-save URL: the beacon fires after React has unmounted, so it needs the
+// absolute API path. Use the same build-time API base as utils/api.js (the full
+// backend URL when the frontend is hosted separately, e.g. Netlify -> Cloud
+// Run / Catalyst), falling back to '/api' in local dev.
 function progressBeaconUrl(lessonId) {
-  const isCatalyst = (process.env.PUBLIC_URL || '/') !== '/';
-  const base = isCatalyst ? '/server/api/api' : '/api';
+  const base = process.env.API_BASE || '/api';
   return `${base}/portal/lessons/${lessonId}/progress`;
 }
 

@@ -77,4 +77,102 @@ function isPlatformAdmin(email) {
   return !!email && PLATFORM_ADMIN_EMAILS.includes(String(email).toLowerCase());
 }
 
-module.exports = { admin, verifyToken, isPlatformAdmin, SUPABASE_URL };
+// ---- user management (replaces Catalyst userManagement().*) ----------------
+// All return/accept a Supabase user UUID string as the id.
+
+// Find an auth user by email (case-insensitive). Pages through listUsers.
+async function findUserByEmail(email) {
+  const norm = String(email || '').trim().toLowerCase();
+  if (!norm) return null;
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) return null;
+    const users = data?.users || [];
+    const found = users.find((u) => String(u.email || '').toLowerCase() === norm);
+    if (found) return found;
+    if (users.length < 200) return null;
+  }
+  return null;
+}
+
+// Invite a user by email (Supabase emails them a set-password link), or reuse
+// their existing account if the email is already registered. Mirrors the
+// find-or-create semantics the Catalyst flow had.
+// Returns { userId, reusedExisting }.
+// NOTE: the invite EMAIL only sends once custom SMTP (Resend) is configured;
+// until then Supabase's built-in mailer is rate-limited to team addresses.
+async function inviteUser({ email, first_name = '', last_name = '' }) {
+  const norm = String(email || '').trim().toLowerCase();
+  const meta = { first_name, last_name };
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(norm, { data: meta });
+  if (!error && data?.user) return { userId: data.user.id, reusedExisting: false };
+  // Already registered (member of another academy, or already staff) → reuse.
+  const existing = await findUserByEmail(norm);
+  if (existing) return { userId: existing.id, reusedExisting: true };
+  throw new Error(error ? error.message : 'Could not invite or find user');
+}
+
+// Create a user directly with a password, no email sent. Used where the app
+// sets the credential itself rather than emailing an invite.
+async function createUserWithPassword({ email, password, first_name = '', last_name = '' }) {
+  const { data, error } = await admin.auth.admin.createUser({
+    email: String(email).trim().toLowerCase(),
+    password,
+    email_confirm: true,
+    user_metadata: { first_name, last_name },
+  });
+  if (error) throw new Error(error.message);
+  return data.user;
+}
+
+// Enable/disable a user (Catalyst updateUserStatus enable/disable). Disabling
+// bans the account so they can't sign in; enabling lifts the ban.
+async function setUserEnabled(userId, enabled) {
+  const { error } = await admin.auth.admin.updateUserById(String(userId), {
+    ban_duration: enabled ? 'none' : '876000h', // ~100 years = effectively disabled
+  });
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+async function getUserById(userId) {
+  const { data, error } = await admin.auth.admin.getUserById(String(userId));
+  if (error) return null;
+  return data?.user || null;
+}
+
+// Send a password-recovery email (Catalyst resetPassword equivalent). Used to
+// re-send an owner their access link. Needs custom SMTP (Resend) to deliver.
+async function sendPasswordReset(email, redirectTo) {
+  const opts = redirectTo ? { redirectTo } : undefined;
+  const { error } = await admin.auth.resetPasswordForEmail(String(email).trim().toLowerCase(), opts);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+// List every auth user (paged). For the rare admin screens that enumerate.
+async function listAllUsers() {
+  const out = [];
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) break;
+    const users = data?.users || [];
+    out.push(...users);
+    if (users.length < 200) break;
+  }
+  return out;
+}
+
+module.exports = {
+  admin,
+  verifyToken,
+  isPlatformAdmin,
+  SUPABASE_URL,
+  findUserByEmail,
+  inviteUser,
+  createUserWithPassword,
+  setUserEnabled,
+  getUserById,
+  sendPasswordReset,
+  listAllUsers,
+};

@@ -5,8 +5,8 @@
 // a Catalyst user + Organization + OrgMembership(owner) in one go.
 
 const router = require('express').Router();
-const catalyst = require('zcatalyst-sdk-node');
 const { loadUser, publicUser } = require('../middleware/auth');
+const { inviteUser, isPlatformAdmin } = require('../lib/supabaseAuth');
 const { insert, update, zcql, unwrap, normalize, q } = require('../db/catalystDb');
 const { ADMIN_KEY, SETUP_KEY, setFlag } = require('../lib/onboarding');
 const { writeAudit } = require('../lib/audit');
@@ -62,12 +62,11 @@ router.post('/logout', (req, res) => {
 // app_role → 'admin' (they have an owner membership).
 router.post('/signup', async (req, res) => {
   try {
-    // Gate: only the platform administrator (Catalyst "App Administrator")
-    // may create academies. Anyone else — including signed-out visitors — is
-    // refused. The endpoint stays mounted publicly, so we auth inline.
+    // Gate: only the platform administrator may create academies. Anyone else
+    // — including signed-out visitors — is refused. The endpoint stays mounted
+    // publicly, so we auth inline.
     const caller = await loadUser(req);
-    const callerRole = caller?.role_details?.role_name || caller?.role || '';
-    if (callerRole !== 'App Administrator') {
+    if (!isPlatformAdmin(caller?.email)) {
       return res.status(403).json({
         error: 'Academy creation is invite-only',
         detail: 'New academies are created by the platform administrator. Please contact them to get set up.',
@@ -96,39 +95,18 @@ router.post('/signup', async (req, res) => {
       });
     }
 
-    // 1. Create the Catalyst user FIRST. If this fails, we don't end up
-    //    with an orphan org row.
-    const adminApp = catalyst.initialize(req, { scope: 'admin' });
-    const userDetails = {
-      email_id: owner_email,
-      first_name,
-      last_name,
-    };
-    let catalystUser;
+    // 1. Create the Supabase auth user FIRST (email invite to set password).
+    //    If this fails, we don't end up with an orphan org row. inviteUser
+    //    reuses an existing account when the email is already registered.
+    let newUserId;
     try {
-      catalystUser = await adminApp.userManagement().registerUser(userDetails);
-    } catch (e1) {
-      // Fallback signature — same pattern student-logins uses
-      try {
-        catalystUser = await adminApp.userManagement().registerUser({ platform_type: 'web' }, userDetails);
-      } catch (e2) {
-        // Common failure: email already registered as a Catalyst user
-        const detail = `${e1.message} / fallback: ${e2.message}`;
-        if (/exists|already/i.test(detail)) {
-          return res.status(409).json({
-            error: 'Email already in use',
-            detail: 'A Catalyst user with this email already exists. Sign in instead, or use a different email to start a fresh academy.',
-          });
-        }
-        return res.status(500).json({ error: 'Failed to create Catalyst user', detail });
-      }
+      const r = await inviteUser({ email: owner_email, first_name, last_name });
+      newUserId = r.userId;
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to create the owner account', detail: e.message });
     }
-    const newUserId =
-      catalystUser?.user_id ||
-      catalystUser?.user_details?.user_id ||
-      catalystUser?.userId;
     if (!newUserId) {
-      return res.status(500).json({ error: 'Catalyst did not return a user_id', detail: JSON.stringify(catalystUser).slice(0, 500) });
+      return res.status(500).json({ error: 'No user id returned for the new owner' });
     }
 
     // 2. Create the Organization.
@@ -201,8 +179,7 @@ function slugify(s) {
 //   4. No active academy → fall back to a global scan (staff anywhere → admin,
 //      parent link anywhere → parent), then 'unlinked'.
 async function resolveAppRole(req, user, active) {
-  const catalystRole = user?.role_details?.role_name || user?.role || '';
-  if (catalystRole === 'App Administrator') return 'admin';
+  if (isPlatformAdmin(user?.email)) return 'admin';
 
   const userId = String(user?.user_id || '');
   if (!userId) return 'unlinked';

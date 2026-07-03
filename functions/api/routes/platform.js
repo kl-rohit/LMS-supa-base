@@ -8,10 +8,10 @@
 // so only Catalyst "App Administrator" users (i.e. you) can reach these.
 
 const router = require('express').Router();
-const catalyst = require('zcatalyst-sdk-node');
 const {
   insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor, readCount, mapLimit,
 } = require('../db/catalystDb');
+const { getUserById, sendPasswordReset } = require('../lib/supabaseAuth');
 const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION_DAYS } = require('../lib/plans');
 const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = require('../lib/onboarding');
 const { MODULES } = require('../db/migrationRegistry');
@@ -477,14 +477,12 @@ router.get('/orgs/:id/members', async (req, res) => {
       rows = unwrap(mr, 'OrgMemberships');
     } catch {}
 
-    const um = catalyst.initialize(req, { scope: 'admin' }).userManagement();
     const members = await mapLimit(rows, async (m) => {
       let email = '', name = '';
       try {
-        const d = await um.getUserDetails(String(m.user_id));
-        const det = d?.user_details || d || {};
-        email = det.email_id || '';
-        name = [det.first_name, det.last_name].filter(Boolean).join(' ').trim();
+        const u = await getUserById(String(m.user_id));
+        email = u?.email || '';
+        name = [u?.user_metadata?.first_name, u?.user_metadata?.last_name].filter(Boolean).join(' ').trim();
       } catch { /* user details unavailable — leave blank */ }
       return {
         user_id:    m.user_id,
@@ -532,22 +530,19 @@ router.post('/orgs/:id/resend-invite', async (req, res) => {
     }
     if (!ownerId) return res.status(400).json({ error: 'No owner on file for this academy' });
 
-    const adminApp = catalyst.initialize(req, { scope: 'admin' });
-    const um = adminApp.userManagement();
-
-    // Look up the owner's email from Catalyst user details.
+    // Look up the owner's email from Supabase user details.
     let email = '';
     try {
-      const details = await um.getUserDetails(ownerId);
-      email = details?.email_id || details?.user_details?.email_id || '';
+      const u = await getUserById(ownerId);
+      email = u?.email || '';
     } catch (e) {
-      return res.status(404).json({ error: 'Owner user not found in Catalyst', detail: e.message });
+      return res.status(404).json({ error: 'Owner user not found', detail: e.message });
     }
     if (!email) return res.status(400).json({ error: 'Owner has no email on file' });
 
-    // Send the reset / access email.
+    // Send the reset / access email (Supabase password-recovery email).
     try {
-      await um.resetPassword(email, { platform_type: 'web' });
+      await sendPasswordReset(email);
     } catch (e) {
       return res.status(502).json({ error: 'Could not send the access email', detail: e.message });
     }

@@ -8,8 +8,8 @@
 // not mutate.
 
 const router = require('express').Router();
-const catalyst = require('zcatalyst-sdk-node');
 const { insert, getById, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
+const { inviteUser, getUserById } = require('../lib/supabaseAuth');
 
 // Catalyst ROWIDs are 17-digit numbers — beyond JS Number.MAX_SAFE_INTEGER.
 // req.orgId is the lossy JS Number version (set by resolveOrg), so it can't
@@ -49,13 +49,12 @@ router.get('/', async (req, res) => {
 
     // Decorate with the Catalyst user's email/name (best-effort; if the
     // call fails we just return the user_id).
-    const adminApp = catalyst.initialize(req, { scope: 'admin' });
     const decorated = await Promise.all(memberships.map(async (m) => {
       let email = '', display = '';
       try {
-        const u = await adminApp.userManagement().getUserDetails(m.user_id);
-        email   = u?.email_id || u?.email || '';
-        display = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim();
+        const u = await getUserById(m.user_id);
+        email   = u?.email || '';
+        display = [u?.user_metadata?.first_name, u?.user_metadata?.last_name].filter(Boolean).join(' ').trim();
       } catch {}
       return { ...m, email, display };
     }));
@@ -108,38 +107,14 @@ router.post('/invite', requireOwner, async (req, res) => {
       return res.status(400).json({ error: 'role must be "teacher" (owners are set via /transfer-ownership)' });
     }
 
-    // 1. Find or create the Catalyst user.
-    const adminApp = catalyst.initialize(req, { scope: 'admin' });
+    // 1. Invite or reuse the Supabase user (emails a set-password link on
+    //    create; reuses the existing account if the email is already known).
     let userId = null;
     try {
-      const created = await adminApp.userManagement().registerUser({
-        email_id: email, first_name, last_name,
-      });
-      userId = created?.user_id || created?.user_details?.user_id || created?.userId;
-    } catch (e1) {
-      // Likely already exists — try the fallback signature.
-      try {
-        const created = await adminApp.userManagement().registerUser({ platform_type: 'web' }, {
-          email_id: email, first_name, last_name,
-        });
-        userId = created?.user_id || created?.user_details?.user_id || created?.userId;
-      } catch (e2) {
-        // Final fallback: search Catalyst users by email
-        try {
-          const userList = await adminApp.userManagement().getAllUsers();
-          const list = Array.isArray(userList) ? userList : (userList?.data || []);
-          const found = list.find((u) =>
-            String(u?.email_id || u?.email || '').toLowerCase() === email
-          );
-          if (found) userId = found.user_id || found.userId;
-        } catch {}
-        if (!userId) {
-          return res.status(500).json({
-            error: 'Could not invite — Catalyst user lookup/create failed',
-            detail: `${e1.message} / fallback: ${e2.message}`,
-          });
-        }
-      }
+      const r = await inviteUser({ email, first_name, last_name });
+      userId = r.userId;
+    } catch (e) {
+      return res.status(500).json({ error: 'Could not invite — user lookup/create failed', detail: e.message });
     }
 
     // 2. Already a member of this org? Don't duplicate.

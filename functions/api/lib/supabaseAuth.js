@@ -11,7 +11,7 @@
 // Config comes from env first, then functions/api/supabase-config.json.
 
 const { createRemoteJWKSet, jwtVerify } = require('jose');
-const { createSecretKey } = require('crypto');
+const { createSecretKey, randomBytes } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 function cfg() {
@@ -146,13 +146,52 @@ async function getUserById(userId) {
   return data?.user || null;
 }
 
-// Send a password-recovery email (Catalyst resetPassword equivalent). Used to
-// re-send an owner their access link. Needs custom SMTP (Resend) to deliver.
+// Send a password-recovery email (Catalyst resetPassword equivalent). Kept for
+// installs that DO configure custom SMTP; the WhatsApp flow uses
+// resetUserPassword() instead. Needs SMTP to deliver.
 async function sendPasswordReset(email, redirectTo) {
   const opts = redirectTo ? { redirectTo } : undefined;
   const { error } = await admin.auth.resetPasswordForEmail(String(email).trim().toLowerCase(), opts);
   if (error) throw new Error(error.message);
   return true;
+}
+
+// ---- WhatsApp-delivery credential flow (no email) --------------------------
+// Generate a short, readable temporary password (ambiguous chars removed) that
+// an admin can copy into WhatsApp / read out. ~59 bits at length 10.
+function generateTempPassword(len = 10) {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = randomBytes(len);
+  let out = '';
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+// Create a login with a generated temp password and NO email. Reuses an
+// existing account if the email is already registered (multi-academy parent /
+// existing staff) — then no new password is issued (they keep their current
+// one). Returns { userId, reusedExisting, tempPassword|null }. The caller
+// returns tempPassword to the admin UI to share out-of-band (WhatsApp).
+async function createLogin({ email, first_name = '', last_name = '' }) {
+  const norm = String(email).trim().toLowerCase();
+  const existing = await findUserByEmail(norm);
+  if (existing) {
+    // Make sure a reused account isn't left banned from a prior removal.
+    try { await setUserEnabled(existing.id, true); } catch { /* ignore */ }
+    return { userId: existing.id, reusedExisting: true, tempPassword: null };
+  }
+  const tempPassword = generateTempPassword();
+  const user = await createUserWithPassword({ email: norm, password: tempPassword, first_name, last_name });
+  return { userId: user.id, reusedExisting: false, tempPassword };
+}
+
+// Admin-initiated password reset (no email): set a new temp password and return
+// it to share via WhatsApp.
+async function resetUserPassword(userId) {
+  const tempPassword = generateTempPassword();
+  const { error } = await admin.auth.admin.updateUserById(String(userId), { password: tempPassword });
+  if (error) throw new Error(error.message);
+  return tempPassword;
 }
 
 // List every auth user (paged). For the rare admin screens that enumerate.
@@ -176,6 +215,9 @@ module.exports = {
   findUserByEmail,
   inviteUser,
   createUserWithPassword,
+  createLogin,
+  resetUserPassword,
+  generateTempPassword,
   setUserEnabled,
   getUserById,
   sendPasswordReset,

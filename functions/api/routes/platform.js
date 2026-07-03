@@ -11,7 +11,7 @@ const router = require('express').Router();
 const {
   insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor, readCount, mapLimit,
 } = require('../db/catalystDb');
-const { getUserById, sendPasswordReset } = require('../lib/supabaseAuth');
+const { getUserById, resetUserPassword } = require('../lib/supabaseAuth');
 const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION_DAYS } = require('../lib/plans');
 const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = require('../lib/onboarding');
 const { MODULES } = require('../db/migrationRegistry');
@@ -540,15 +540,20 @@ router.post('/orgs/:id/resend-invite', async (req, res) => {
     }
     if (!email) return res.status(400).json({ error: 'Owner has no email on file' });
 
-    // Send the reset / access email (Supabase password-recovery email).
+    // Reset to a new temp password to share out-of-band (WhatsApp) — no email.
+    let tempPassword;
     try {
-      await sendPasswordReset(email);
+      tempPassword = await resetUserPassword(ownerId);
     } catch (e) {
-      return res.status(502).json({ error: 'Could not send the access email', detail: e.message });
+      return res.status(502).json({ error: 'Could not reset the owner password', detail: e.message });
     }
 
     await writeAudit(req, { action: 'org.resend_invite', orgId: org.ROWID, orgName: org.name || '', detail: { email } });
-    res.json({ message: 'Access email sent', email });
+    res.json({
+      message: 'New password generated. Share these sign-in details with the owner (e.g. on WhatsApp).',
+      email,
+      temp_password: tempPassword,
+    });
   } catch (e) {
     res.status(500).json({ error: 'Failed to resend invite', detail: e.message });
   }

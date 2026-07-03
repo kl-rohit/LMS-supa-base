@@ -6,7 +6,7 @@
 
 const router = require('express').Router();
 const { loadUser, publicUser } = require('../middleware/auth');
-const { inviteUser, isPlatformAdmin } = require('../lib/supabaseAuth');
+const { createLogin, isPlatformAdmin } = require('../lib/supabaseAuth');
 const { insert, update, zcql, unwrap, normalize, q } = require('../db/catalystDb');
 const { ADMIN_KEY, SETUP_KEY, setFlag } = require('../lib/onboarding');
 const { writeAudit } = require('../lib/audit');
@@ -95,13 +95,15 @@ router.post('/signup', async (req, res) => {
       });
     }
 
-    // 1. Create the Supabase auth user FIRST (email invite to set password).
-    //    If this fails, we don't end up with an orphan org row. inviteUser
-    //    reuses an existing account when the email is already registered.
+    // 1. Create the Supabase owner account FIRST (temp password, no email). If
+    //    this fails, we don't end up with an orphan org row. createLogin reuses
+    //    an existing account when the email is already registered.
     let newUserId;
+    let ownerTempPassword = null;
     try {
-      const r = await inviteUser({ email: owner_email, first_name, last_name });
+      const r = await createLogin({ email: owner_email, first_name, last_name });
       newUserId = r.userId;
+      ownerTempPassword = r.tempPassword;
     } catch (e) {
       return res.status(500).json({ error: 'Failed to create the owner account', detail: e.message });
     }
@@ -147,10 +149,14 @@ router.post('/signup', async (req, res) => {
     });
 
     res.status(201).json({
-      message: 'Academy created. Check your email for the invite to set your password.',
+      message: ownerTempPassword
+        ? 'Academy created. Share these sign-in details with the owner (e.g. on WhatsApp).'
+        : 'Academy created and linked to the owner\'s existing account. They sign in with their current password.',
       org: { id: orgId, name: academy_name, slug },
       owner_user_id: String(newUserId),
-      next_step: 'check_email',
+      owner_email,
+      temp_password: ownerTempPassword, // null when reusing an existing account
+      next_step: 'share_credentials',
     });
   } catch (e) {
     res.status(500).json({ error: 'Signup failed', detail: e.message });

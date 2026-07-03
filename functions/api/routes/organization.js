@@ -9,7 +9,7 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, unwrap, normalize, q } = require('../db/catalystDb');
-const { inviteUser, getUserById } = require('../lib/supabaseAuth');
+const { createLogin, getUserById } = require('../lib/supabaseAuth');
 
 // Catalyst ROWIDs are 17-digit numbers — beyond JS Number.MAX_SAFE_INTEGER.
 // req.orgId is the lossy JS Number version (set by resolveOrg), so it can't
@@ -107,12 +107,14 @@ router.post('/invite', requireOwner, async (req, res) => {
       return res.status(400).json({ error: 'role must be "teacher" (owners are set via /transfer-ownership)' });
     }
 
-    // 1. Invite or reuse the Supabase user (emails a set-password link on
-    //    create; reuses the existing account if the email is already known).
+    // 1. Create the Supabase login with a temp password (no email), or reuse an
+    //    existing account if the email is already known.
     let userId = null;
+    let tempPassword = null;
     try {
-      const r = await inviteUser({ email, first_name, last_name });
+      const r = await createLogin({ email, first_name, last_name });
       userId = r.userId;
+      tempPassword = r.tempPassword;
     } catch (e) {
       return res.status(500).json({ error: 'Could not invite — user lookup/create failed', detail: e.message });
     }
@@ -133,7 +135,15 @@ router.post('/invite', requireOwner, async (req, res) => {
       status: 'invited',
     });
 
-    res.status(201).json({ message: 'Invite sent', membership: normalize(m), user_id: String(userId) });
+    res.status(201).json({
+      message: tempPassword
+        ? 'Teacher login created. Share these sign-in details with them (e.g. on WhatsApp).'
+        : 'Linked their existing account. They sign in with their current password.',
+      membership: normalize(m),
+      user_id: String(userId),
+      email,
+      temp_password: tempPassword, // null when reusing an existing account
+    });
   } catch (e) {
     res.status(500).json({ error: 'Invite failed', detail: e.message });
   }

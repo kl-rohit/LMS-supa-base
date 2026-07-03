@@ -14,7 +14,7 @@
 
 const router = require('express').Router();
 const { getById, update, zcql, unwrap } = require('../db/catalystDb');
-const { inviteUser, setUserEnabled } = require('../lib/supabaseAuth');
+const { createLogin, setUserEnabled } = require('../lib/supabaseAuth');
 const { parentKey, setFlag } = require('../lib/onboarding');
 
 // Shape we return to the React app for each login row.
@@ -60,23 +60,24 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'A login already exists for this student' });
     }
 
-    // Invite or reuse the Supabase user. A parent may already have an account
-    // because they are linked in ANOTHER academy (one parent can belong to
-    // several academies) or are also staff somewhere. inviteUser sends a
-    // set-password email on create, and reuses the existing account (keeping
-    // their current password) when the email is already registered — they
-    // simply gain access to this academy too. (Same helper the teacher-invite
-    // flow in organization.js uses.)
+    // Create the Supabase login with a temp password (no email), or reuse an
+    // existing account. A parent may already have an account because they are
+    // linked in ANOTHER academy (one parent can belong to several academies) or
+    // are also staff somewhere — then we reuse it (they keep their current
+    // password) and just grant access to this academy too. createLogin also
+    // re-enables a reused account that was disabled elsewhere.
     let userId = null;
     let reusedExisting = false;
+    let tempPassword = null;
     try {
-      const r = await inviteUser({
+      const r = await createLogin({
         email,
         first_name: first_name || student.parent_name || student.name || 'Parent',
         last_name: last_name || '',
       });
       userId = r.userId;
       reusedExisting = r.reusedExisting;
+      tempPassword = r.tempPassword;
     } catch (e) {
       return res.status(500).json({
         error: 'Could not create or find a user for this email',
@@ -85,15 +86,6 @@ router.post('/', async (req, res) => {
     }
     if (!userId) {
       return res.status(500).json({ error: 'No user id returned' });
-    }
-
-    // If we're reusing an existing account, make sure it is enabled — it may
-    // have been disabled when the parent was removed from another academy.
-    // Best-effort: a no-op if the account is already active.
-    if (reusedExisting) {
-      try {
-        await setUserEnabled(userId, true);
-      } catch { /* already enabled, or status change not permitted — ignore */ }
     }
 
     const updated = await update(req, 'Students', student_id, {
@@ -109,9 +101,11 @@ router.post('/', async (req, res) => {
     res.status(201).json({
       login: toLogin(updated),
       reused_existing: reusedExisting,
+      email,
+      temp_password: tempPassword, // null when reusing an existing account
       message: reusedExisting
-        ? 'Linked to the parent\'s existing account. They can sign in with their current password and switch to this academy from the academy menu.'
-        : 'Invitation email sent. Parent will set their password from the email link.',
+        ? 'Linked to the parent\'s existing account. They sign in with their current password and switch to this academy from the academy menu.'
+        : 'Login created. Share these sign-in details with the parent (e.g. on WhatsApp). They can change the password after signing in.',
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to create login', detail: e.message });

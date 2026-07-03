@@ -12,8 +12,8 @@
 // and returns it as a base64 data URL so the client can embed it without
 // hitting a cross-origin fetch on the signed Stratus URL.
 
-const { appFor } = require('../db/catalystDb');
 const { resizeAndCompress } = require('./image');
+const storage = require('./supabaseStorage');
 const config = require('../config');
 
 const BUCKET = config.PHOTO_BUCKET;
@@ -26,15 +26,6 @@ const KINDS = ['logo', 'signature', 'fee_qr'];
 
 function assetKey(orgId, kind) {
   return `org-${Number(orgId)}-${kind}.jpg`;
-}
-
-function streamToBuffer(stream) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-  });
 }
 
 // Validate + resize a base64 image and store it as the org's logo/signature.
@@ -69,16 +60,8 @@ async function uploadOrgAsset(req, kind, body) {
   }
 
   const key = assetKey(req.orgId, kind);
-  const bucket = appFor(req).stratus().bucket(BUCKET);
-  await bucket.putObject(key, processed, { contentType: 'image/jpeg', overwrite: true });
-
-  let signedUrl = '';
-  try {
-    const r = await bucket.generatePreSignedUrl(key, 'GET', { expiryIn: TTL });
-    signedUrl = r?.signature || '';
-  } catch (err) {
-    console.error('orgAsset generatePreSignedUrl failed', err.message);
-  }
+  await storage.putObject(key, processed, 'image/jpeg');
+  const signedUrl = await storage.signedUrl(key, TTL);
 
   return { status: 200, json: { object_key: key, url: signedUrl } };
 }
@@ -86,14 +69,7 @@ async function uploadOrgAsset(req, kind, body) {
 // Remove the stored object (best-effort). Used when an academy clears its logo.
 async function deleteOrgAsset(req, kind) {
   if (!KINDS.includes(kind)) return false;
-  try {
-    const bucket = appFor(req).stratus().bucket(BUCKET);
-    await bucket.deleteObject(assetKey(req.orgId, kind));
-    return true;
-  } catch (e) {
-    console.error('deleteOrgAsset failed', e.message);
-    return false;
-  }
+  return storage.removeObject(assetKey(req.orgId, kind));
 }
 
 // Stream a stored asset back as a base64 data URL (for PDF embedding). Returns
@@ -101,14 +77,8 @@ async function deleteOrgAsset(req, kind) {
 async function loadAssetDataUrl(req, key) {
   const k = String(key || '').trim();
   if (!k || k.startsWith('http')) return '';
-  try {
-    const bucket = appFor(req).stratus().bucket(BUCKET);
-    const stream = await bucket.getObject(k);
-    const buf = await streamToBuffer(stream);
-    if (buf && buf.length) return `data:image/jpeg;base64,${buf.toString('base64')}`;
-  } catch (e) {
-    // missing object / no bucket — degrade gracefully
-  }
+  const buf = await storage.downloadBuffer(k);
+  if (buf && buf.length) return `data:image/jpeg;base64,${buf.toString('base64')}`;
   return '';
 }
 

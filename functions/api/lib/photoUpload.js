@@ -9,8 +9,9 @@
 //   4. Patch Students.photo_url with the object KEY (not URL — URLs sign on demand)
 //   5. Return a short-lived signed URL for the immediate preview render
 
-const { appFor, update } = require('../db/catalystDb');
+const { update } = require('../db/catalystDb');
 const { resizeAndCompress } = require('./image');
+const storage = require('./supabaseStorage');
 const config = require('../config');
 
 // Bucket + thresholds come from the master config (functions/api/config.js) so
@@ -52,19 +53,9 @@ async function uploadStudentPhoto(req, studentId, body) {
   // Flat key — one object per student. Always JPEG after resize.
   const objectKey = `student-${studentId}.jpg`;
 
-  const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-  await bucket.putObject(objectKey, processed, {
-    contentType: 'image/jpeg',
-    overwrite: true,
-  });
+  await storage.putObject(objectKey, processed, 'image/jpeg');
 
-  let signedUrl = '';
-  try {
-    const r = await bucket.generatePreSignedUrl(objectKey, 'GET', { expiryIn: SIGNED_URL_TTL_SECS });
-    signedUrl = r?.signature || '';
-  } catch (err) {
-    console.error('generatePreSignedUrl failed', err.message);
-  }
+  const signedUrl = await storage.signedUrl(objectKey, SIGNED_URL_TTL_SECS);
 
   await update(req, 'Students', studentId, { photo_url: objectKey });
 
@@ -86,14 +77,7 @@ async function signStoredPhoto(req, value) {
   if (!key) return '';
   if (key.startsWith('http')) return key;               // legacy full URL
   if (key.startsWith('stratus://')) return '';          // legacy bogus fallback
-  const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-  try {
-    const r = await bucket.generatePreSignedUrl(key, 'GET', { expiryIn: SIGNED_URL_TTL_SECS });
-    return r?.signature || '';
-  } catch (err) {
-    console.error('signStoredPhoto failed for', key, err.message);
-    return '';
-  }
+  return storage.signedUrl(key, SIGNED_URL_TTL_SECS);
 }
 
 module.exports = {

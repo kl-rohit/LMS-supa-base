@@ -220,7 +220,8 @@ router.post('/transfer-ownership', requireOwner, async (req, res) => {
 // =============================================================================
 const { appFor } = require('../db/catalystDb');
 const { resizeAndCompress } = require('../lib/image');
-const { PHOTO_BUCKET, signStoredPhoto } = require('../lib/photoUpload');
+const { signStoredPhoto } = require('../lib/photoUpload');
+const storage = require('../lib/supabaseStorage');
 
 router.post('/logo', requireOwner, async (req, res) => {
   try {
@@ -244,8 +245,7 @@ router.post('/logo', requireOwner, async (req, res) => {
     catch (e) { return res.status(422).json({ error: 'Could not process image', detail: e.message }); }
 
     const objectKey = `org-${Number(req.orgId)}-logo.jpg`;
-    const bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-    await bucket.putObject(objectKey, processed, { contentType: 'image/jpeg', overwrite: true });
+    await storage.putObject(objectKey, processed, 'image/jpeg');
 
     // Write the object key to Organizations.logo_url (we sign on read for display).
     const orgRow = await findOrgByLossyId(req, req.orgId);

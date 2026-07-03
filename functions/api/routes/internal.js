@@ -17,6 +17,7 @@ const { alreadySent, pruneDuplicateDigests } = require('../lib/notifyDedup');
 const { zcql, zcqlAll, unwrap, normalize, remove, appFor } = require('../db/catalystDb');
 const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
 const config = require('../config');
+const storage = require('../lib/supabaseStorage');
 const { getOverrides } = require('../lib/pricingStore');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
@@ -465,13 +466,6 @@ async function backupHandler(req, res) {
       return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
     }
 
-    let bucket;
-    try {
-      bucket = appFor(req).stratus().bucket(config.PHOTO_BUCKET);
-    } catch (e) {
-      return res.status(503).json({ error: 'Stratus bucket unavailable', detail: e.message });
-    }
-
     const summary = [];
     for (const org of orgs) {
       const orgId = Number(org.id);
@@ -484,7 +478,7 @@ async function backupHandler(req, res) {
       }
       const key = `backups/org-${orgId}-${dateStr}.json`;
       try {
-        await bucket.putObject(key, Buffer.from(JSON.stringify(dump)), { contentType: 'application/json', overwrite: true });
+        await storage.putObject(key, Buffer.from(JSON.stringify(dump)), 'application/json');
         summary.push({ org_id: orgId, ok: true, key, tables: Object.keys(dump.tables).length });
       } catch (e) {
         summary.push({ org_id: orgId, ok: false, error: e.message });

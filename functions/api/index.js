@@ -53,6 +53,18 @@ app.get('/', (_req, res) => {
 });
 app.get('/api/health', (_req, res) => res.json({ ok: true, function: 'api', commit: version.commit, builtAt: version.builtAt }));
 
+// Public DB-reachability probe (SELECT 1 — no data). Confirms the host can open
+// a connection to Supabase Postgres. Safe to keep; remove later if desired.
+app.get('/api/health/db', async (_req, res) => {
+  try {
+    const { query } = require('./db/pg');
+    const r = await query('select 1 as ok');
+    res.json({ db: 'up', ok: r.rows[0].ok });
+  } catch (e) {
+    res.status(503).json({ db: 'down', error: e.message });
+  }
+});
+
 // /api/auth — public; /me returns 401 itself when logged out.
 app.use('/api/auth', require('./routes/auth'));
 

@@ -12,6 +12,15 @@
 
 const { createRemoteJWKSet, jwtVerify } = require('jose');
 const { createSecretKey, randomBytes } = require('crypto');
+
+// @supabase/supabase-js constructs a Realtime client on createClient(), which
+// needs a global WebSocket. Node 22+ has one built in; Catalyst's Node 20
+// runtime does not, so supply the `ws` polyfill before creating the client.
+// (We never use Realtime — this just stops the constructor throwing.)
+if (typeof globalThis.WebSocket === 'undefined') {
+  try { globalThis.WebSocket = require('ws'); } catch (_) { /* ws not installed (node 22+) */ }
+}
+
 const { createClient } = require('@supabase/supabase-js');
 
 function cfg() {

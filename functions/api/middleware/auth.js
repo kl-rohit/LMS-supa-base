@@ -13,7 +13,14 @@
 const { verifyToken, isPlatformAdmin } = require('../lib/supabaseAuth');
 
 function bearer(req) {
-  const h = req.headers?.authorization || req.headers?.Authorization || '';
+  // Catalyst reserves the Authorization header for its OWN OAuth and rejects a
+  // non-Catalyst Bearer token ("invalid oauth token") before the request even
+  // reaches this app. So the client sends the Supabase access token in a custom
+  // header (X-Auth-Token) that Catalyst passes through untouched. We still
+  // accept a standard Authorization: Bearer as a fallback (Cloud Run / local).
+  const x = req.headers && (req.headers['x-auth-token'] || req.headers['X-Auth-Token']);
+  if (x) return String(x).trim();
+  const h = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
   const m = /^Bearer\s+(.+)$/i.exec(h);
   return m ? m[1].trim() : null;
 }

@@ -46,10 +46,13 @@ async function request(url, options = {}) {
     config.body = JSON.stringify(config.body);
   }
 
-  // Bearer token from the current Supabase session (null when signed out).
+  // Supabase access token from the current session (null when signed out).
+  // Sent as X-Auth-Token, NOT Authorization: Catalyst reserves Authorization
+  // for its own OAuth and rejects a non-Catalyst Bearer token before it reaches
+  // the app. The backend reads X-Auth-Token (see middleware/auth.js).
   try {
     const token = await getAccessToken();
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token) config.headers['X-Auth-Token'] = token;
   } catch { /* no session — request goes out unauthenticated, backend 401s */ }
 
   const finalUrl = withActiveOrg(url);

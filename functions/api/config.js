@@ -25,8 +25,8 @@ const logoKeyForOrg      = (orgId) => `org-${orgId}-logo.jpg`;
 // ---- Photo upload pipeline -------------------------------------------------
 const PHOTO_MAX_RAW_BYTES   = Number(env.PHOTO_MAX_RAW_BYTES) || 8388608;
 const PHOTO_SIGNED_URL_TTL  = String(env.PHOTO_SIGNED_URL_TTL || '3600');
-const IMAGE_MAX_DIMENSION   = Number(env.IMAGE_MAX_DIMENSION) || 800;
-const IMAGE_JPEG_QUALITY    = Number(env.IMAGE_JPEG_QUALITY) || 85;
+const IMAGE_MAX_DIMENSION   = Number(env.IMAGE_MAX_DIMENSION) || 512;
+const IMAGE_JPEG_QUALITY    = Number(env.IMAGE_JPEG_QUALITY) || 72;
 
 // ---- Request / query limits ------------------------------------------------
 const JSON_BODY_LIMIT = env.JSON_BODY_LIMIT || '10mb';
@@ -55,7 +55,7 @@ const FEATURE_PLANS = {
     'students.contacts': { core: true, complete: true },
     'students.photos': { core: true, complete: true },
     'groups.batches': { core: true, complete: true },
-    'students.import': { core: false, complete: true },
+    'students.import': { core: true, complete: true },
     'attendance.daily': { core: true, complete: true },
     'attendance.rosters': { core: true, complete: true },
     'fees.tracking': { core: true, complete: true },
@@ -63,16 +63,16 @@ const FEATURE_PLANS = {
     'fees.additional': { core: true, complete: true },
     'fees.reminders': { core: true, complete: true },
     'fees.statements': { core: true, complete: true },
-    'fees.upi_qr': { core: false, complete: true },
+    'fees.upi_qr': { core: true, complete: true },
     'classes.timetable': { core: true, complete: true },
     'classes.types': { core: true, complete: true },
     'classes.join_links': { core: true, complete: true },
-    'classes.exceptions': { core: false, complete: true },
-    'camps.run': { core: false, complete: true },
+    'classes.exceptions': { core: true, complete: true },
+    'camps.run': { core: true, complete: true },
     'camps.roster': { core: true, complete: true },
     'messages.send': { core: true, complete: true },
-    'messages.bulk': { core: false, complete: true },
-    'messages.templates': { core: false, complete: true },
+    'messages.bulk': { core: true, complete: true },
+    'messages.templates': { core: true, complete: true },
     'notify.auto': { core: true, complete: true },
     'notify.bell': { core: true, complete: true },
     'notify.push': { core: true, complete: true },
@@ -102,7 +102,7 @@ const FEATURE_PLANS = {
     'pwa.theme': { core: true, complete: true },
     'multi.branches': { core: true, complete: true },
     'multi.isolated': { core: true, complete: true },
-    'data.export': { core: false, complete: true },
+    'data.export': { core: true, complete: true },
     'support.setup': { core: true, complete: true },
     'support.human': { core: true, complete: true },
   };

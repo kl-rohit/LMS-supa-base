@@ -14,12 +14,13 @@
 
 const router = require('express').Router();
 const {
-  zcql, zcqlAll, unwrap, insert, update, safeId, appFor, readCount,
+  zcql, zcqlAll, unwrap, update, safeId, readCount, bulkInsert, removeByOrg,
 } = require('../db/catalystDb');
 const {
   MODULES, SYSTEM_COLS, ALIAS_COLS, getModule, refTableFor,
 } = require('../db/migrationRegistry');
-const { PHOTO_BUCKET, uploadStudentPhoto } = require('../lib/photoUpload');
+const { uploadStudentPhoto } = require('../lib/photoUpload');
+const storage = require('../lib/supabaseStorage');
 const { requireFeature } = require('../middleware/entitlement');
 
 const SCHEMA_VERSION = 1;
@@ -33,38 +34,29 @@ const PHOTO_FIELD = '_photo_b64';
 // Columns we must never write back on import.
 const STRIP = new Set([...SYSTEM_COLS, ...ALIAS_COLS, 'source_id', 'org_id', PHOTO_FIELD]);
 
-// Drain a Stratus Readable stream into a Buffer.
-function streamToBuffer(stream) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-  });
-}
-
-// Best-effort: inline each student's Stratus photo as a base64 data URL so it
-// travels with the export. Failures (missing object, no bucket) are swallowed —
-// a student simply migrates without a photo rather than failing the export.
+// Best-effort: inline each student's stored photo as a base64 data URL so it
+// travels with the export. Reads from Supabase Storage (where photos actually
+// live — the object KEY is in photo_url). Failures (missing object, a legacy
+// full URL) are swallowed: a student simply migrates without a photo rather
+// than failing the whole export. Bounded concurrency keeps the export snappy.
+const EXPORT_PHOTO_CONCURRENCY = 5;
 async function attachStudentPhotos(req, rows) {
-  let bucket;
-  try {
-    bucket = appFor(req).stratus().bucket(PHOTO_BUCKET);
-  } catch {
-    return rows; // no Stratus / bucket in this project
-  }
-  for (const r of rows) {
+  const targets = rows.filter((r) => {
     const key = String(r.photo_url || '').trim();
-    if (!key || key.startsWith('http') || key.startsWith('stratus://')) continue;
-    try {
-      const stream = await bucket.getObject(key);
-      const buf = await streamToBuffer(stream);
-      if (buf && buf.length) {
-        r[PHOTO_FIELD] = `data:image/jpeg;base64,${buf.toString('base64')}`;
+    return key && !key.startsWith('http') && !key.startsWith('stratus://');
+  });
+  for (let i = 0; i < targets.length; i += EXPORT_PHOTO_CONCURRENCY) {
+    const chunk = targets.slice(i, i + EXPORT_PHOTO_CONCURRENCY);
+    await Promise.all(chunk.map(async (r) => {
+      try {
+        const buf = await storage.downloadBuffer(String(r.photo_url).trim());
+        if (buf && buf.length) {
+          r[PHOTO_FIELD] = `data:image/jpeg;base64,${buf.toString('base64')}`;
+        }
+      } catch {
+        // object missing / unreadable — skip this photo
       }
-    } catch {
-      // object missing / unreadable — skip this photo
-    }
+    }));
   }
   return rows;
 }
@@ -83,51 +75,81 @@ async function exportTable(req, table) {
   return rows;
 }
 
-// Find a row in `table` already carrying this source_id in this org.
-async function findBySource(req, table, oldId, orgId) {
-  const sid = safeId(oldId);
-  if (!sid) return null;
-  const rows = await zcql(
-    req,
-    `SELECT ROWID FROM ${table} WHERE ${table}.source_id = ${sid} AND ${table}.org_id = ${orgId} LIMIT 1`,
+// Rows that must never exceed the Postgres bind-parameter ceiling (65535) in a
+// single bulk INSERT: chunk generously below it (500 rows × up to ~30 cols).
+const INSERT_CHUNK = 500;
+
+// Load a `source_id → new ROWID` map for a parent table in this org, once.
+// Replaces the per-row findBySource SELECT that made imports O(rows) round-trips.
+async function loadSourceMap(req, table, orgId) {
+  const rows = unwrap(
+    await zcqlAll(req, `SELECT ROWID, source_id FROM ${table} WHERE ${table}.org_id = ${orgId}`, table),
+    table,
   );
-  const r = rows && rows[0] && rows[0][table];
-  return r ? r.ROWID : null;
+  const map = new Map();
+  for (const r of rows) {
+    const sid = safeId(r.source_id);
+    if (sid) map.set(sid, String(r.ROWID));
+  }
+  return map;
 }
 
-// Find an AppSettings row by its natural key (setting_key) in this org.
-async function findByNaturalKey(req, table, key, value, orgId) {
-  if (value === undefined || value === null) return null;
-  const rows = await zcql(
-    req,
-    `SELECT ROWID FROM ${table} WHERE ${table}.${key} = '${String(value).replace(/'/g, "''")}' AND ${table}.org_id = ${orgId} LIMIT 1`,
+// Set of source_ids already imported into this table in this org (idempotency).
+async function loadExistingSources(req, table, orgId) {
+  const rows = unwrap(
+    await zcqlAll(req, `SELECT source_id FROM ${table} WHERE ${table}.org_id = ${orgId}`, table),
+    table,
   );
-  const r = rows && rows[0] && rows[0][table];
-  return r ? r.ROWID : null;
+  const set = new Set();
+  for (const r of rows) {
+    const sid = safeId(r.source_id);
+    if (sid) set.add(sid);
+  }
+  return set;
 }
 
-// Import one module's rows. Caches parent lookups for the duration of the call.
+// Map an AppSettings-style natural key value → existing ROWID, once.
+async function loadNaturalKeyMap(req, table, key, orgId) {
+  const rows = unwrap(
+    await zcqlAll(req, `SELECT ROWID, ${key} FROM ${table} WHERE ${table}.org_id = ${orgId}`, table),
+    table,
+  );
+  const map = new Map();
+  for (const r of rows) {
+    if (r[key] !== undefined && r[key] !== null) map.set(String(r[key]), String(r.ROWID));
+  }
+  return map;
+}
+
+// Bulk-insert payloads in chunks so a large module never exceeds the bind-param
+// ceiling. Returns the number of rows actually written.
+async function bulkInsertChunked(req, table, payloads) {
+  let n = 0;
+  for (let i = 0; i < payloads.length; i += INSERT_CHUNK) {
+    const chunk = payloads.slice(i, i + INSERT_CHUNK);
+    const out = await bulkInsert(req, table, chunk);
+    n += out.length;
+  }
+  return n;
+}
+
+// Import one module's rows. All parent lookups and the idempotency check are
+// pre-loaded into memory in a handful of queries, then every writable row is
+// bulk-inserted — so a module costs a few round-trips regardless of row count
+// (the old per-row SELECT+INSERT design blew past the gateway timeout at scale).
 async function importModule(req, mod, rows) {
   const orgId = safeId(req.orgId);
+  const orgNum = Number(req.orgId);
   const result = { module: mod.key, table: mod.table, imported: 0, skipped: 0, errors: [] };
   if (!Array.isArray(rows) || rows.length === 0) return result;
 
-  const parentCache = new Map(); // `${refTable}:${oldId}` → newRowId | null
-
-  async function resolveParent(refTable, oldId) {
-    const cacheKey = `${refTable}:${oldId}`;
-    if (parentCache.has(cacheKey)) return parentCache.get(cacheKey);
-    const newId = await findBySource(req, refTable, oldId, orgId);
-    parentCache.set(cacheKey, newId);
-    return newId;
-  }
-
-  for (const raw of rows) {
-    const oldId = raw.ROWID || raw.source_id || raw.id;
-    try {
-      // ---- AppSettings: upsert on natural key, no source_id / FKs ----
-      if (mod.naturalKey) {
-        const keyVal = raw[mod.naturalKey];
+  // ---- AppSettings: upsert on natural key, no source_id / FKs ----
+  if (mod.naturalKey) {
+    const existingMap = await loadNaturalKeyMap(req, mod.table, mod.naturalKey, orgId);
+    const toInsert = [];
+    for (const raw of rows) {
+      const keyVal = raw[mod.naturalKey];
+      try {
         // Never carry these across a migration. appearance.* is a look-and-feel
         // choice that belongs to the destination academy (importing it would
         // flip the live theme out from under whoever is viewing); onboarding.*
@@ -137,43 +159,65 @@ async function importModule(req, mod, rows) {
           result.skipped++;
           continue;
         }
-        const existing = await findByNaturalKey(req, mod.table, mod.naturalKey, keyVal, orgId);
         const payload = {};
         for (const [k, v] of Object.entries(raw)) {
           if (STRIP.has(k)) continue;
           payload[k] = v;
         }
-        payload.org_id = Number(req.orgId);
-        if (existing) {
-          await update(req, mod.table, existing, payload);
+        payload.org_id = orgNum;
+        const existingId = keyVal !== undefined && keyVal !== null ? existingMap.get(String(keyVal)) : null;
+        if (existingId) {
+          await update(req, mod.table, existingId, payload);
           result.skipped++; // updated in place rather than duplicated
         } else {
-          await insert(req, mod.table, payload);
-          result.imported++;
+          toInsert.push(payload);
         }
-        continue;
+      } catch (err) {
+        result.errors.push({ source_id: String(keyVal || ''), error: err.message });
       }
+    }
+    if (toInsert.length) result.imported += await bulkInsertChunked(req, mod.table, toInsert);
+    return result;
+  }
 
-      // ---- Idempotency: already imported this source row? ----
-      if (oldId) {
-        const dup = await findBySource(req, mod.table, oldId, orgId);
-        if (dup) { result.skipped++; continue; }
+  // ---- Pre-load idempotency set + every parent table's source→id map ----
+  const existing = await loadExistingSources(req, mod.table, orgId);
+
+  const parentMaps = new Map(); // refTable → Map(sourceId → newRowId)
+  const refTables = new Set();
+  for (const fkSpec of Object.values(mod.fks)) {
+    if (typeof fkSpec === 'string') refTables.add(fkSpec);
+  }
+  // Polymorphic FKs (functions) resolve per-row — discover the tables they hit.
+  for (const raw of rows) {
+    for (const fkSpec of Object.values(mod.fks)) {
+      if (typeof fkSpec === 'function') {
+        const t = refTableFor(fkSpec, raw);
+        if (t) refTables.add(t);
       }
+    }
+  }
+  for (const t of refTables) parentMaps.set(t, await loadSourceMap(req, t, orgId));
 
-      // ---- Build the payload: copy plain columns, remap FKs ----
+  const isRequiredFk = (fkCol) =>
+    (Array.isArray(mod.requiredFks) ? mod.requiredFks.includes(fkCol) : true);
+
+  // ---- Build every writable payload in memory, then bulk-insert ----
+  const toInsert = [];
+  for (const raw of rows) {
+    const oldId = raw.ROWID || raw.source_id || raw.id;
+    const sid = safeId(oldId);
+    try {
+      // Idempotency: already imported this source row?
+      if (sid && existing.has(sid)) { result.skipped++; continue; }
+
+      // Copy plain columns; FK columns are remapped below.
       const payload = {};
       for (const [k, v] of Object.entries(raw)) {
         if (STRIP.has(k)) continue;
-        if (mod.fks[k] !== undefined) continue; // FK handled below
+        if (mod.fks[k] !== undefined) continue;
         payload[k] = v;
       }
-
-      // Which FK columns MUST resolve. Omitted → all required (strict);
-      // [] → none; [cols] → only those. Non-required FKs whose parent is
-      // missing are nulled and the row is kept (a stale/orphaned link is
-      // dropped rather than skipping the whole row).
-      const isRequiredFk = (fkCol) =>
-        (Array.isArray(mod.requiredFks) ? mod.requiredFks.includes(fkCol) : true);
 
       let missingParent = null;
       for (const [fkCol, fkSpec] of Object.entries(mod.fks)) {
@@ -184,7 +228,7 @@ async function importModule(req, mod, rows) {
         }
         const refTable = refTableFor(fkSpec, raw);
         if (!refTable) { payload[fkCol] = null; continue; }
-        const newId = await resolveParent(refTable, oldVal);
+        const newId = (parentMaps.get(refTable) || new Map()).get(safeId(oldVal));
         if (!newId) {
           if (isRequiredFk(fkCol)) {
             missingParent = { fkCol, refTable, oldVal: String(oldVal) };
@@ -206,13 +250,11 @@ async function importModule(req, mod, rows) {
         continue;
       }
 
-      payload.org_id = Number(req.orgId);
+      payload.org_id = orgNum;
       // IMPORTANT: source_id must be stored as the exact digit-string, NOT
       // Number(oldId). Catalyst ROWIDs are 17 digits and exceed JS's safe
-      // integer limit (2^53), so Number() silently rounds them — and the
-      // child FK lookup (findBySource, which uses the exact value via safeId)
-      // would then never match the rounded stored value. Keep full precision.
-      const sid = safeId(oldId);
+      // integer limit (2^53), so Number() silently rounds them — and the parent
+      // source→id map (keyed via safeId) would then never match. Keep precision.
       if (sid) payload.source_id = sid;
 
       // Students: photo_url holds an old-ROWID/old-bucket object key that is
@@ -221,47 +263,48 @@ async function importModule(req, mod, rows) {
       // — clear the column so we never store a dangling reference.
       if (mod.table === 'Students') payload.photo_url = '';
 
-      await insert(req, mod.table, payload);
-      result.imported++;
+      toInsert.push(payload);
     } catch (err) {
       result.errors.push({ source_id: String(oldId || ''), error: err.message });
     }
   }
 
+  if (toInsert.length) result.imported += await bulkInsertChunked(req, mod.table, toInsert);
   return result;
 }
 
 // Second-pass photo import. Takes Students export rows (each carrying its old
 // ROWID + inlined `_photo_b64`), finds the already-imported student by
-// source_id, and uploads the photo under their NEW ROWID. Run this AFTER the
-// Students rows are imported and the Stratus bucket exists.
+// source_id, and uploads the photo under their NEW ROWID via Supabase Storage.
+// Run this AFTER the Students rows are imported.
+const PHOTO_CONCURRENCY = 5;
 async function importPhotos(req, rows) {
   const orgId = safeId(req.orgId);
   const result = { module: 'students-photos', imported: 0, skipped: 0, errors: [] };
   if (!Array.isArray(rows) || rows.length === 0) return result;
 
-  // Surface a missing-bucket problem once, clearly, instead of per row.
-  try {
-    appFor(req).stratus().bucket(PHOTO_BUCKET);
-  } catch (e) {
-    result.errors.push({ source_id: '', error: `Stratus bucket "${PHOTO_BUCKET}" is unavailable: ${e.message}` });
-    return result;
-  }
+  // Resolve every student once, then upload photos with bounded concurrency.
+  const studentMap = await loadSourceMap(req, 'Students', orgId);
+  const withPhoto = rows.filter((r) => r[PHOTO_FIELD]);
+  result.skipped += rows.length - withPhoto.length; // students with no photo
 
-  for (const raw of rows) {
-    const oldId = raw.ROWID || raw.source_id || raw.id;
-    if (!raw[PHOTO_FIELD]) { result.skipped++; continue; } // no photo on this student
-    try {
-      const newId = await findBySource(req, 'Students', oldId, orgId);
+  for (let i = 0; i < withPhoto.length; i += PHOTO_CONCURRENCY) {
+    const chunk = withPhoto.slice(i, i + PHOTO_CONCURRENCY);
+    await Promise.all(chunk.map(async (raw) => {
+      const oldId = raw.ROWID || raw.source_id || raw.id;
+      const newId = studentMap.get(safeId(oldId));
       if (!newId) {
         result.errors.push({ source_id: String(oldId || ''), error: 'Student not imported yet — import Students first, then re-run photos.' });
-        continue;
+        return;
       }
-      await uploadStudentPhoto(req, newId, { data: raw[PHOTO_FIELD] });
-      result.imported++;
-    } catch (err) {
-      result.errors.push({ source_id: String(oldId || ''), error: err.message });
-    }
+      try {
+        const up = await uploadStudentPhoto(req, newId, { data: raw[PHOTO_FIELD] });
+        if (up && up.status === 200) result.imported++;
+        else result.errors.push({ source_id: String(oldId || ''), error: (up && up.json && up.json.error) || 'Photo upload rejected' });
+      } catch (err) {
+        result.errors.push({ source_id: String(oldId || ''), error: err.message });
+      }
+    }));
   }
   return result;
 }
@@ -458,36 +501,23 @@ router.post('/purge', async (req, res) => {
       });
     }
 
-    // 3) Drain each table, children first. Read up to 300 ROWIDs at a time and
-    //    bulk-delete that page; because deleted rows are gone, re-reading the
-    //    first page walks the table to empty. The guard caps a runaway loop.
+    // 3) Delete each table's rows for this org, children first (reverse import
+    //    order) so a partial failure never strands a child whose parent already
+    //    vanished. One statement per table via the Supabase-aware helper.
     const order = [...MODULES].reverse();
-    const ds = appFor(req).datastore();
     const summary = [];
     let totalDeleted = 0;
 
     for (const m of order) {
-      let deleted = 0;
       try {
-        for (let guard = 0; guard < 1000; guard++) {
-          const page = await zcql(
-            req,
-            `SELECT ROWID FROM ${m.table} WHERE ${m.table}.org_id = ${orgId} LIMIT 0, 300`,
-          );
-          if (!page || page.length === 0) break;
-          const ids = page.map((r) => r[m.table] && r[m.table].ROWID).filter(Boolean);
-          if (!ids.length) break;
-          await ds.table(m.table).deleteRows(ids);
-          deleted += ids.length;
-          if (page.length < 300) break;
-        }
+        const deleted = await removeByOrg(req, m.table, orgId);
         summary.push({ module: m.key, table: m.table, deleted });
+        totalDeleted += deleted;
       } catch (e) {
         // Keep going — a missing table or one failed table shouldn't abort the
         // rest of the purge. Report it in the summary instead.
-        summary.push({ module: m.key, table: m.table, deleted, error: e.message });
+        summary.push({ module: m.key, table: m.table, deleted: 0, error: e.message });
       }
-      totalDeleted += deleted;
     }
 
     res.json({ ok: true, org_id: Number(orgId), total_deleted: totalDeleted, summary });

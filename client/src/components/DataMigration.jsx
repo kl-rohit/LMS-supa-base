@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react';
 import {
   Download, Upload, Loader2, CheckCircle2, AlertTriangle,
   Database, RefreshCw, FileJson, FileSpreadsheet, Image as ImageIcon,
-  Trash2, ShieldAlert,
+  Trash2, ShieldAlert, X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -113,6 +113,8 @@ export default function DataMigration() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null); // module key or 'ALL' currently working
   const [results, setResults] = useState({}); // key → import result summary
+  const [progress, setProgress] = useState(null); // { done, total, label } during a run
+  const [summary, setSummary] = useState(null); // completion popup: { kind, totals, rows }
   // Delete-all is gated behind a successful "Export everything" in THIS session
   // so a full backup always exists before any data is wiped.
   const [exportedThisSession, setExportedThisSession] = useState(false);
@@ -163,13 +165,25 @@ export default function DataMigration() {
   // academy name matches. The backend re-validates both before deleting.
   async function purgeAll() {
     setBusy('PURGE');
+    setSummary(null);
     try {
       const res = await api.post('/migration/purge', { confirm: confirmText.trim() });
-      toast.success(`Deleted ${res?.total_deleted ?? 0} rows. The academy is now empty.`);
+      const rows = (res?.summary || []).map((s) => ({
+        label: s.table,
+        deleted: s.deleted || 0,
+        errors: s.error ? 1 : 0,
+        failed: s.error,
+      }));
       setConfirmText('');
       setExportedThisSession(false);
       setResults({});
       await loadCounts();
+      setSummary({
+        kind: 'purge',
+        totals: { deleted: res?.total_deleted ?? 0, errors: rows.filter((r) => r.errors).length },
+        rows,
+      });
+      toast.success(`Deleted ${res?.total_deleted ?? 0} rows. The academy is now empty.`);
     } catch (e) {
       toast.error('Delete failed: ' + e.message);
     } finally {
@@ -195,24 +209,73 @@ export default function DataMigration() {
     }
   }
 
-  // ---- import ----
+  // ---- import everything (client-orchestrated, module by module) ----
+  // Each module goes through its own endpoint in dependency order, so every
+  // request stays well under the gateway timeout, the row-by-row results fill in
+  // live, and the run ends with a summary popup. A single module failing is
+  // recorded and the rest continue. Photos upload last.
   async function importAll() {
     const file = await pickFile('.json,application/json');
     if (!file) return;
-    setBusy('IMPORT_ALL');
+    let bundle;
     try {
-      const bundle = JSON.parse(await readText(file));
-      if (!bundle.modules) throw new Error('Not a full-academy export bundle (missing modules)');
-      const res = await api.post('/migration/import', bundle);
-      const t = res?.totals || {};
-      toast.success(`Imported ${t.imported || 0}, skipped ${t.skipped || 0}, errors ${t.errors || 0}`);
-      const map = {};
-      (res?.results || []).forEach((r) => { map[r.module] = r; });
-      setResults((prev) => ({ ...prev, ...map }));
-      await loadCounts();
+      bundle = JSON.parse(await readText(file));
     } catch (e) {
-      toast.error('Import failed: ' + e.message);
+      toast.error('Could not read the file: ' + e.message);
+      return;
+    }
+    if (!bundle.modules) { toast.error('Not a full-academy export bundle (missing modules)'); return; }
+
+    const labelFor = (k) => modules.find((m) => m.key === k)?.label || k;
+    const order = (bundle.order || Object.keys(bundle.modules))
+      .filter((k) => Array.isArray(bundle.modules[k]) && bundle.modules[k].length > 0);
+    const hasPhotos = Array.isArray(bundle.modules.students) && bundle.modules.students.length > 0;
+    const total = order.length + (hasPhotos ? 1 : 0);
+
+    setBusy('IMPORT_ALL');
+    setSummary(null);
+    const rows = [];
+    const totals = { imported: 0, skipped: 0, errors: 0 };
+    let done = 0;
+
+    const record = (label, res, failed) => {
+      const imported = res?.imported || 0;
+      const skipped = res?.skipped || 0;
+      const errors = failed ? 1 : (res?.errors?.length || 0);
+      totals.imported += imported;
+      totals.skipped += skipped;
+      totals.errors += errors;
+      rows.push({ label, imported, skipped, errors, failed });
+    };
+
+    try {
+      for (const key of order) {
+        setProgress({ done, total, label: labelFor(key) });
+        try {
+          const res = await api.post(`/migration/import/${key}`, { rows: bundle.modules[key] });
+          setResults((prev) => ({ ...prev, [key]: res }));
+          record(labelFor(key), res);
+        } catch (e) {
+          record(labelFor(key), null, e.message);
+        }
+        done += 1;
+      }
+      if (hasPhotos) {
+        setProgress({ done, total, label: 'Student photos' });
+        try {
+          const res = await api.post('/migration/import-photos', { rows: bundle.modules.students });
+          setResults((prev) => ({ ...prev, students: { ...(prev.students || {}), photos: res } }));
+          record('Student photos', res);
+        } catch (e) {
+          record('Student photos', null, e.message);
+        }
+        done += 1;
+      }
+      await loadCounts();
+      setSummary({ kind: 'import', totals, rows });
+      toast.success(`Import complete — ${totals.imported} imported, ${totals.errors} errors`);
     } finally {
+      setProgress(null);
       setBusy(null);
     }
   }
@@ -318,6 +381,25 @@ export default function DataMigration() {
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
+
+      {/* Live progress while importing everything */}
+      {progress && (
+        <div className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-gray-900 p-3">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="inline-flex items-center gap-2 text-gray-700 dark:text-gray-200">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+              Importing {progress.label}…
+            </span>
+            <span className="text-xs text-gray-500">{progress.done} / {progress.total}</span>
+          </div>
+          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+            <div
+              className="h-full bg-indigo-600 transition-all"
+              style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Per-module list */}
       <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
@@ -459,6 +541,73 @@ export default function DataMigration() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Completion popup — shown when an Import-all or Delete-all run finishes */}
+      {summary && (() => {
+        const isImport = summary.kind === 'import';
+        const clean = (summary.totals.errors || 0) === 0;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSummary(null)}>
+            <div
+              className="w-full max-w-md rounded-xl bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-800 max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  {clean
+                    ? <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    : <AlertTriangle className="w-5 h-5 text-amber-600" />}
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white">
+                      {isImport ? 'Import complete' : 'Delete complete'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {isImport
+                        ? `${summary.totals.imported} imported · ${summary.totals.skipped} skipped · ${summary.totals.errors} errors`
+                        : `${summary.totals.deleted} rows deleted · ${summary.totals.errors} errors`}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSummary(null)}
+                  className="text-gray-400 hover:text-gray-600 shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto p-2">
+                {summary.rows.map((r, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 px-2 py-1.5 text-sm">
+                    <span className="text-gray-700 dark:text-gray-200 truncate">{r.label}</span>
+                    <span className="text-xs shrink-0">
+                      {r.failed ? (
+                        <span className="text-red-600" title={r.failed}>failed</span>
+                      ) : isImport ? (
+                        <span className="text-gray-500">
+                          <span className="text-green-600 font-medium">{r.imported}</span> in
+                          {r.skipped > 0 && <> · {r.skipped} skip</>}
+                          {r.errors > 0 && <> · <span className="text-amber-600">{r.errors} err</span></>}
+                        </span>
+                      ) : (
+                        <span className="text-green-600 font-medium">{r.deleted}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-gray-100 dark:border-gray-800">
+                <button
+                  onClick={() => setSummary(null)}
+                  className="w-full rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-medium hover:bg-indigo-700"
+                >
+                  Done
+                </button>
               </div>
             </div>
           </div>

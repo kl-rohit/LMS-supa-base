@@ -198,6 +198,15 @@ async function remove(req, table, id) {
   return { ROWID: String(id), deleted: rowCount };
 }
 
+// Delete EVERY row an org owns in a table, in a single statement. Used by the
+// migration purge (offboarding / reset). Returns the number of rows removed.
+async function removeByOrg(req, table, orgId) {
+  const t = table.toLowerCase();
+  const sid = safeId(orgId);
+  const { rowCount } = await query(`delete from ${qi(t)} where org_id = $1`, [sid]);
+  return rowCount;
+}
+
 // ---------- ZCQL-compatibility layer -----------------------------------------
 // Translate the app's existing ZCQL strings to Postgres SQL. Only a few things
 // differ; table/column case-folding is handled by Postgres itself (our tables
@@ -289,6 +298,7 @@ module.exports = {
   getAll,
   update,
   remove,
+  removeByOrg,
   zcql,
   zcqlAll,
   unwrap,

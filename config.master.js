@@ -174,8 +174,8 @@ const master = {
     photoBucket:        'student-photos-profile', // Stratus bucket name
     photoMaxRawBytes:   8 * 1024 * 1024,          // 8 MB pre-resize
     photoSignedUrlTtl:  '3600',                   // seconds (string for SDK)
-    imageMaxDimension:  800,                       // px, longest side
-    imageJpegQuality:   85,                        // 0-100
+    imageMaxDimension:  512,                       // px, longest side (profile avatars — crisp on retina, ~1/3 the bytes of 800)
+    imageJpegQuality:   72,                        // 0-100 (clean for portraits at display size)
     jsonBodyLimit:      '10mb',                     // express.json limit
     zcqlPageSize:       300,                         // hard platform cap
     quizPassThreshold:  70,                          // percent to pass a quiz

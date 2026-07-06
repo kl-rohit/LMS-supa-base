@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -24,13 +24,29 @@ import { useOrgBranding } from '../hooks/useOrgBranding';
 import InstallAppButton from '../components/InstallAppButton';
 import SeatLimitNotice from '../components/SeatLimitNotice';
 
+// Hot-wire: persist the last dashboard payload per org so counts (Total Students,
+// etc.) render INSTANTLY on the next visit while we revalidate in the background.
+function dashCacheKey() {
+  let org = '0';
+  try { org = localStorage.getItem('veena_impersonate_org_id') || localStorage.getItem('veena_active_org_id') || '0'; } catch {}
+  return `veena_dash_${org}`;
+}
+function readDashCache() {
+  try { const raw = localStorage.getItem(dashCacheKey()); if (raw) return JSON.parse(raw); } catch {}
+  return null;
+}
+
 export default function Dashboard() {
   // Bank-style mask for the financial stat. Auto-hides 20s after toggle.
   const amountReveal = useRevealTimer(20000);
   const branding = useOrgBranding();
-  const [data, setData] = useState(null);
-  const [birthdays, setBirthdays] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cached = useRef(readDashCache()).current; // read once, synchronously
+  const [data, setData] = useState(cached?.data || null);
+  const [birthdays, setBirthdays] = useState(cached?.birthdays || []);
+  // Only block the whole screen with a loader when we have nothing to show yet.
+  // With cached data we render instantly and refresh silently in the background.
+  const [loading, setLoading] = useState(!cached);
+  const hadData = useRef(!!cached);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,15 +55,18 @@ export default function Dashboard() {
 
   const fetchDashboard = async () => {
     try {
-      setLoading(true);
       const [result, bday] = await Promise.all([
         api.get('/dashboard'),
         api.get('/dashboard/birthdays?days=30').catch(() => ({ birthdays: [] })),
       ]);
       setData(result);
       setBirthdays(bday.birthdays || []);
+      hadData.current = true;
+      try { localStorage.setItem(dashCacheKey(), JSON.stringify({ data: result, birthdays: bday.birthdays || [] })); } catch {}
     } catch (err) {
-      toast.error('Failed to load dashboard: ' + err.message);
+      // Stay quiet if we already have cached data on screen (e.g. a background
+      // refresh failed) — only surface an error when there's nothing to show.
+      if (!hadData.current) toast.error('Failed to load dashboard: ' + err.message);
     } finally {
       setLoading(false);
     }

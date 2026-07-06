@@ -47,8 +47,8 @@ select cron.schedule('morning-digest', '0 1 * * *', $$
     url := 'https://academy-management.netlify.app/api/internal/cron-morning-digest',
     headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);
 
--- Notification cleanup — weekly, Sunday 07:00 IST
-select cron.schedule('cleanup-notifications', '30 1 * * 0', $$
+-- Notification cleanup — weekly, Sunday 03:00 IST (Sat 21:30 UTC), before backup
+select cron.schedule('cleanup-notifications', '30 21 * * 6', $$
   select net.http_get(
     url := 'https://academy-management.netlify.app/api/internal/cron-cleanup-notifications',
     headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);

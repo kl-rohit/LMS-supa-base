@@ -13,7 +13,6 @@ import { useEffect, useState } from 'react';
 import { Plus, Trash2, Check, Loader2, X, ListChecks, Copy, ArrowUp, ArrowDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
-import Modal from './Modal';
 
 const MAX_OPTIONS = 6;
 const MIN_OPTIONS = 2;
@@ -275,8 +274,19 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
   };
 
   return (
-    <Modal isOpen onClose={onClose} title={`Quiz — ${lesson.title}`} size="lg">
-      <div className="space-y-4">
+    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+      {/* Full-screen editor — spacious, sticky header with a single Done action. */}
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <ListChecks className="w-5 h-5 text-indigo-500 shrink-0" />
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Quiz — {lesson.title}</h2>
+        </div>
+        <button type="button" onClick={onClose} className="btn-primary btn-sm">
+          <Check className="w-4 h-4" /> Done
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
         <p className="text-sm text-gray-500 flex items-center gap-2">
           <ListChecks className="w-4 h-4 text-indigo-500" />
           Score is weighted by marks; students need 70% to pass. Mark the lesson "required" to gate the certificate on it.
@@ -313,7 +323,8 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
             </button>
           </>
         )}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }

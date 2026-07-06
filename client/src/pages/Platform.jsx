@@ -726,7 +726,7 @@ export default function Platform() {
       <div className="card flex items-center gap-3 text-red-600">
         <Shield className="w-5 h-5" />
         Platform Admin access required. This page is only visible to the
-        Catalyst project's App Administrator.
+        platform owner.
       </div>
     );
   }
@@ -2016,7 +2016,7 @@ function ActivitySection({ audit }) {
       {!audit.available ? (
         <div className="px-4 py-6 text-sm text-gray-500">
           The audit log is not set up yet. Create an <code className="font-mono text-gray-700">AuditLog</code> table
-          in the Catalyst console (Data Store) and actions you take here will start being recorded.
+          in Supabase (SQL editor) and actions you take here will start being recorded.
         </div>
       ) : audit.entries.length === 0 ? (
         <div className="px-4 py-6 text-sm text-gray-500">No activity recorded yet.</div>
@@ -2200,7 +2200,7 @@ function BillingSection({ orgs, invoices, available, loaded, invoiceForm, setIF,
         <div className="text-sm text-gray-600">
           <p className="font-medium text-gray-800">Billing ledger not set up yet</p>
           <p className="mt-1">
-            Create an <code className="font-mono text-gray-700">Invoices</code> table in the Catalyst console (Data Store)
+            Create an <code className="font-mono text-gray-700">Invoices</code> table in Supabase (SQL editor)
             with columns <code className="font-mono text-gray-700">org_id</code> (bigint),
             {' '}<code className="font-mono text-gray-700">amount</code> (double),
             {' '}<code className="font-mono text-gray-700">period</code>, <code className="font-mono text-gray-700">status</code>,
@@ -2490,7 +2490,7 @@ function LeadsSection({ leads, available, loaded, leadBusy, setLeadStatus, saveL
         <div className="text-sm text-gray-600">
           <p className="font-medium text-gray-800">Requests inbox not set up yet</p>
           <p className="mt-1">
-            Create a <code className="font-mono text-gray-700">Leads</code> table in the Catalyst console (Data Store)
+            Create a <code className="font-mono text-gray-700">Leads</code> table in Supabase (SQL editor)
             with columns <code className="font-mono text-gray-700">name</code>, <code className="font-mono text-gray-700">email</code>,
             {' '}<code className="font-mono text-gray-700">phone</code>, <code className="font-mono text-gray-700">academy_type</code>,
             {' '}<code className="font-mono text-gray-700">academy_name</code>, <code className="font-mono text-gray-700">student_count</code>,

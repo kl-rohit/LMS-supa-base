@@ -405,7 +405,7 @@ export default function App() {
           }
         />
         {/* Platform Admin — its own path + guard, outside the academy shell.
-            Only the Catalyst App Administrator (platform owner) can enter; it
+            Only the platform owner can enter; it
             is intentionally absent from the academy sidebar. */}
         <Route
           path="/platform/*"

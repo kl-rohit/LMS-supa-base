@@ -1,6 +1,6 @@
 // Data migration panel (Settings → Backup & migrate).
 //
-// Moves an academy's data between two separate Catalyst deployments. Export
+// Moves an academy's data between two separate deployments. Export
 // from the OLD app, import into the NEW app — either the whole academy in one
 // click, or module by module in dependency order (recommended for a careful,
 // verifiable migration).

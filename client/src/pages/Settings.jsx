@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useModuleFlags } from '../hooks/useModuleFlags';
+import ChangePassword from '../components/ChangePassword';
 import {
   School,
   IndianRupee,
@@ -1246,7 +1247,7 @@ function OrganizationTab() {
   const removeMember = async (m) => {
     const ok = await confirm({
       title: `Remove ${m.display || m.email || 'this member'}?`,
-      message: 'They will lose access to this academy immediately. Their Catalyst login isn\'t deleted — only the org membership is.',
+      message: 'They will no longer have access to this academy. Their login account stays; only their membership in this academy is removed.',
       confirmText: 'Remove',
     });
     if (!ok) return;
@@ -1476,6 +1477,8 @@ function OrganizationTab() {
           ))}
         </div>
       </div>
+
+      <ChangePassword />
     </div>
   );
 }

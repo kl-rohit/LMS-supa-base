@@ -6,7 +6,7 @@
 // in functions/api/routes/portal.js):
 //   name, mobile_number, date_of_birth, email, address,
 //   father_name, mother_name
-// Plus photo upload via Catalyst Stratus.
+// Plus photo upload via Supabase Storage.
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -25,6 +25,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
+import ChangePassword from '../../components/ChangePassword';
 
 const EMPTY = {
   name: '',
@@ -314,6 +315,9 @@ export default function PortalProfile() {
           </button>
         </div>
       </form>
+
+      {/* Sign-in security — self-service password change */}
+      <ChangePassword />
     </div>
   );
 }

@@ -1204,11 +1204,6 @@ export default function Fees() {
             <button type="button" onClick={() => setAddFeeModalOpen(false)} className="btn-secondary">
               Cancel
             </button>
-            <button type="submit" className="btn-primary" disabled={savingFee || feeForm.student_ids.length === 0}>
-              {savingFee
-                ? 'Saving...'
-                : `${feeForm.adjustment_type === 'discount' ? 'Apply Discount' : 'Add Fee'}${feeForm.student_ids.length > 1 ? ` (${feeForm.student_ids.length} students)` : ''}`}
-            </button>
           </div>
         </form>
       </Modal>
@@ -1249,7 +1244,6 @@ export default function Fees() {
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={closeEditFee} className="btn-secondary btn-sm">Cancel</button>
-            <button type="button" onClick={saveEditFee} className="btn-primary btn-sm">Save</button>
           </div>
         </div>
       </Modal>

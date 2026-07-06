@@ -410,9 +410,6 @@ export default function Groups() {
             <button type="button" onClick={() => { setModalOpen(false); setEditingGroup(null); }} className="btn-secondary">
               Cancel
             </button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingGroup ? 'Update' : 'Create Group'}
-            </button>
           </div>
         </form>
       </Modal>

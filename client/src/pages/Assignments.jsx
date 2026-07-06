@@ -337,9 +337,6 @@ export default function Assignments() {
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : editing ? 'Update' : 'Create'}
-            </button>
           </div>
         </form>
       </Modal>

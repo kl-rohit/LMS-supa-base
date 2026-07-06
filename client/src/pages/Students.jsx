@@ -1213,9 +1213,6 @@ export default function Students() {
             <button type="button" onClick={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); }} className="btn-secondary">
               Cancel
             </button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingStudent ? 'Update' : 'Add Student'}
-            </button>
           </div>
         </form>
       </Modal>
@@ -1272,7 +1269,6 @@ export default function Students() {
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
             <button onClick={() => setBulkEditOpen(false)} className="btn-secondary btn-sm">Cancel</button>
-            <button onClick={handleBulkEdit} className="btn-primary btn-sm">Apply to {selectedIds.size}</button>
           </div>
         </div>
       </Modal>

@@ -1443,9 +1443,6 @@ export default function Classes() {
             <button type="button" onClick={() => { setModalOpen(false); setEditingClass(null); }} className="btn-secondary">
               Cancel
             </button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingClass ? 'Update' : 'Create Class'}
-            </button>
           </div>
         </form>
       </Modal>

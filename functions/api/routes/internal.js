@@ -18,6 +18,7 @@ const { zcql, zcqlAll, unwrap, normalize, remove, appFor } = require('../db/cata
 const { createNotifications, createAdminNotifications, pushToStudents, pushToAdmins } = require('../lib/notify');
 const config = require('../config');
 const storage = require('../lib/supabaseStorage');
+const { MODULES } = require('../db/migrationRegistry');
 const { getOverrides } = require('../lib/pricingStore');
 
 // Shared-secret middleware. Returns 401 unless the X-Cron-Secret header
@@ -447,11 +448,13 @@ router.post('/cron-weekly-digest', weeklyDigestHandler);
 // bucket under backups/org-<id>-<YYYY-MM-DD>.json. Schedule in the Catalyst
 // console pointed at /api/internal/cron-backup with the X-Cron-Secret header.
 //
-// COST NOTE: this scans full tables (incl. Attendance + LessonProgress) per
-// run. On the free Data Store SELECT tier prefer a WEEKLY cadence; nightly is
-// best once on a paid plan. The cron schedule decides cadence; the code is the
-// same either way.
-const BACKUP_TABLES = ['Students', 'Classes', 'Attendance', 'Groups', 'GroupStudents', 'ClassStudents', 'CourseEnrollments', 'LessonProgress', 'Fees', 'AppSettings'];
+// Backs up the SAME tables the migration export covers (from the migration
+// registry) so a backup is a full, restorable snapshot. Critically this now
+// includes Payments + AdditionalFees — the old hand-written list referenced a
+// non-existent `Fees` table and silently omitted all fee/payment data. Old
+// backups are pruned to BACKUP_RETENTION_DAYS below to bound storage.
+const BACKUP_TABLES = MODULES.map((m) => m.table);
+const BACKUP_RETENTION_DAYS = 30;
 async function backupHandler(req, res) {
   try {
     const now = new Date();
@@ -466,6 +469,13 @@ async function backupHandler(req, res) {
       return res.status(503).json({ error: 'Organizations table missing', detail: e.message });
     }
 
+    // Snapshot existing backups once (pre-write) so we can prune each org's old
+    // files without ever deleting the one we write today. cutoff is a date
+    // string so it compares directly against the YYYY-MM-DD in each filename.
+    let existingBackups = [];
+    try { existingBackups = await storage.listObjects('backups'); } catch { /* best-effort */ }
+    const cutoff = new Date(ist.getTime() - BACKUP_RETENTION_DAYS * 86400000).toISOString().slice(0, 10);
+
     const summary = [];
     for (const org of orgs) {
       const orgId = Number(org.id);
@@ -479,7 +489,14 @@ async function backupHandler(req, res) {
       const key = `backups/org-${orgId}-${dateStr}.json`;
       try {
         await storage.putObject(key, Buffer.from(JSON.stringify(dump)), 'application/json');
-        summary.push({ org_id: orgId, ok: true, key, tables: Object.keys(dump.tables).length });
+        // Retention: prune this org's backups older than the window.
+        let pruned = 0;
+        try {
+          const re = new RegExp(`^backups/org-${orgId}-(\\d{4}-\\d{2}-\\d{2})\\.json$`);
+          const stale = existingBackups.filter((k) => { const m = k.match(re); return m && m[1] < cutoff; });
+          if (stale.length) { await storage.removeObjects(stale); pruned = stale.length; }
+        } catch { /* pruning is best-effort — never fail the backup over it */ }
+        summary.push({ org_id: orgId, ok: true, key, tables: Object.keys(dump.tables).length, pruned });
       } catch (e) {
         summary.push({ org_id: orgId, ok: false, error: e.message });
       }

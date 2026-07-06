@@ -51,6 +51,27 @@ async function removeObject(key) {
   }
 }
 
+// List object keys directly under a folder prefix (e.g. 'backups'). Returns
+// full keys (prefix + name). Non-recursive — Supabase returns direct children.
+async function listObjects(prefix = '') {
+  const { data, error } = await admin.storage.from(BUCKET).list(prefix, { limit: 1000 });
+  if (error || !data) return [];
+  return data
+    .filter((o) => o && o.name && o.id) // drop pseudo-folder entries (id null)
+    .map((o) => (prefix ? `${prefix}/${o.name}` : o.name));
+}
+
+// Remove many objects in one call. Best-effort; returns true on success.
+async function removeObjects(keys) {
+  if (!keys || !keys.length) return true;
+  try {
+    await admin.storage.from(BUCKET).remove(keys);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Download an object as a Buffer (for certificate PDF embedding / backups read).
 async function downloadBuffer(key) {
   try {
@@ -63,4 +84,4 @@ async function downloadBuffer(key) {
   }
 }
 
-module.exports = { BUCKET, ensureBucket, putObject, signedUrl, removeObject, downloadBuffer };
+module.exports = { BUCKET, ensureBucket, putObject, signedUrl, removeObject, removeObjects, listObjects, downloadBuffer };

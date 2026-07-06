@@ -264,6 +264,33 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// POST /api/quizzes/standalone — create a course-less quiz (a quiz Lesson with
+// no course_id). It shows up in the assignment quiz picker (quiz-list is
+// org-wide) but never in a course/CoursePlayer (those filter by course_id).
+// Lets admins create a quiz straight from the Assignment modal.
+router.post('/standalone', async (req, res) => {
+  try {
+    const title = String(req.body.title ?? '').trim();
+    if (!title) return res.status(400).json({ error: 'A quiz title is required' });
+    const row = await insert(req, 'Lessons', {
+      course_id: null,
+      title,
+      content_type: 'quiz',
+      description: '',
+      video_url: '',
+      content_url: '',
+      order_index: 0,
+      quiz_required: false,
+      quiz_shuffle: (req.body.quiz_shuffle === true || req.body.quiz_shuffle === 'true'),
+      org_id: Number(req.orgId),
+    });
+    const n = normalize(row);
+    res.status(201).json({ quiz: { id: n.id, title: n.title } });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to create quiz', detail: e.message });
+  }
+});
+
 module.exports = router;
 module.exports.loadLessonQuiz = loadLessonQuiz;
 module.exports.parseOptions = parseOptions;

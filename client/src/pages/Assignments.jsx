@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, Edit2, Trash2, ClipboardList, ListChecks, CalendarClock,
-  Users, UserRound, UsersRound, ExternalLink, CheckCircle2,
+  Users, UserRound, UsersRound, ExternalLink, CheckCircle2, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -21,6 +21,7 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
 import TargetPicker from '../components/TargetPicker';
+import QuizEditor from '../components/QuizEditor';
 
 const BLANK = {
   title: '', kind: 'task', instructions: '', link: '', due_date: '',
@@ -37,6 +38,11 @@ export default function Assignments() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
+  // Inline "create quiz" from the assignment modal (standalone, course-less quiz).
+  const [quizEditorLesson, setQuizEditorLesson] = useState(null);
+  const [showNewQuiz, setShowNewQuiz] = useState(false);
+  const [newQuizTitle, setNewQuizTitle] = useState('');
+  const [creatingQuiz, setCreatingQuiz] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, assignment: null });
 
   useEffect(() => { fetchData(); }, []);
@@ -129,6 +135,35 @@ export default function Assignments() {
     } catch (err) {
       toast.error(err.message);
     }
+  };
+
+  const refetchQuizzes = async () => {
+    try { const d = await api.getFresh('/lessons/quiz-list'); setQuizzes(d.quizzes || []); } catch { /* keep old list */ }
+  };
+
+  // Create a standalone (course-less) quiz, then open the editor for it.
+  const createNewQuiz = async () => {
+    const title = newQuizTitle.trim();
+    if (!title) { toast.error('Give the quiz a title'); return; }
+    setCreatingQuiz(true);
+    try {
+      const { quiz } = await api.post('/quizzes/standalone', { title });
+      setShowNewQuiz(false);
+      setNewQuizTitle('');
+      setQuizEditorLesson({ id: quiz.id, title: quiz.title });
+    } catch (err) {
+      toast.error(err?.response?.data?.error || err.message || 'Failed to create quiz');
+    } finally {
+      setCreatingQuiz(false);
+    }
+  };
+
+  // On closing the editor, refresh the quiz list and auto-select the new one.
+  const closeQuizEditor = async () => {
+    const created = quizEditorLesson;
+    setQuizEditorLesson(null);
+    await refetchQuizzes();
+    if (created) setForm((f) => ({ ...f, quiz_lesson_id: String(created.id) }));
   };
 
   const targetLabel = (a) => {
@@ -276,9 +311,7 @@ export default function Assignments() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Quiz *</label>
               {quizzes.length === 0 ? (
-                <p className="text-sm text-amber-600 bg-amber-50 rounded-lg p-3">
-                  No quizzes found. Create a quiz lesson first in <span className="font-medium">Lessons</span> (set its type to Quiz and add questions), then assign it here.
-                </p>
+                <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">No quizzes yet — create one below.</p>
               ) : (
                 <select value={form.quiz_lesson_id} onChange={set('quiz_lesson_id')} className="input-field" required>
                   <option value="">Select a quiz…</option>
@@ -289,6 +322,27 @@ export default function Assignments() {
                   ))}
                 </select>
               )}
+
+              {showNewQuiz ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    value={newQuizTitle}
+                    onChange={(e) => setNewQuizTitle(e.target.value)}
+                    placeholder="New quiz title…"
+                    className="input-field flex-1"
+                    autoFocus
+                  />
+                  <button type="button" onClick={createNewQuiz} disabled={creatingQuiz} className="btn-primary btn-sm disabled:opacity-50">
+                    {creatingQuiz ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create & add questions'}
+                  </button>
+                  <button type="button" onClick={() => { setShowNewQuiz(false); setNewQuizTitle(''); }} className="btn-secondary btn-sm">Cancel</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowNewQuiz(true)} className="mt-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> New quiz
+                </button>
+              )}
+
               <p className="text-xs text-gray-400 mt-1">Students take it through the normal quiz flow; scoring is automatic.</p>
             </div>
           ) : (
@@ -332,6 +386,11 @@ export default function Assignments() {
         message={`Delete "${deleteDialog.assignment?.title}"? This removes it for all students. Quiz scores are kept. This cannot be undone.`}
         confirmText="Delete"
       />
+
+      {/* Inline quiz editor — opened by "+ New quiz" in the assignment modal */}
+      {quizEditorLesson && (
+        <QuizEditor lesson={quizEditorLesson} onClose={closeQuizEditor} />
+      )}
     </div>
   );
 }

@@ -90,7 +90,16 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
   }, [base]);
 
   const total = questions.length;
-  const answeredCount = questions.filter((q) => answers[String(q.id)] !== undefined).length;
+  // "Answered" depends on the question type: an index for choice, a non-empty
+  // array for multi, a non-empty string for short.
+  const isAnswered = (q) => {
+    const a = answers[String(q.id)];
+    const t = q.question_type || 'single';
+    if (t === 'multi') return Array.isArray(a) && a.length > 0;
+    if (t === 'short') return typeof a === 'string' && a.trim().length > 0;
+    return a !== undefined && a !== null;
+  };
+  const answeredCount = questions.filter(isAnswered).length;
   const allAnswered = total > 0 && answeredCount === total;
 
   const startQuiz = () => {
@@ -216,6 +225,7 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
     const q = questions[order[step] ?? step];
     const qid = String(q.id);
     const selected = answers[qid];
+    const qtype = q.question_type || 'single';
     const isLast = step === total - 1;
     const progressPct = Math.round((answeredCount / total) * 100);
     // Display order of this question's options (original indices). Falls back to
@@ -237,31 +247,47 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
         {/* Question */}
         <p className="text-base sm:text-lg font-semibold text-gray-900 mb-4">{q.question}</p>
 
-        {/* Options — big tap targets. Rendered in display order, but we store the
-            ORIGINAL option index so server scoring stays correct. */}
-        <div className="space-y-2.5">
-          {optOrder.map((oi) => {
-            const opt = q.options[oi];
-            const active = selected === oi;
-            return (
-              <button
-                key={oi}
-                type="button"
-                onClick={() => setAnswers((prev) => ({ ...prev, [qid]: oi }))}
-                className={`w-full text-left flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-sm sm:text-base transition-colors ${
-                  active ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-gray-200 hover:border-indigo-300 text-gray-800'
-                }`}
-              >
-                <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                  active ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-gray-300 text-transparent'
-                }`}>
-                  <Check className="w-3 h-3" />
-                </span>
-                <span className="flex-1">{opt}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Answer input by type. Choice types render in display order but store
+            the ORIGINAL option index so server scoring stays correct. */}
+        {qtype === 'short' ? (
+          <input
+            type="text"
+            value={typeof selected === 'string' ? selected : ''}
+            onChange={(e) => setAnswers((prev) => ({ ...prev, [qid]: e.target.value }))}
+            placeholder="Type your answer…"
+            className="input-field w-full text-base"
+          />
+        ) : (
+          <div className="space-y-2.5">
+            {optOrder.map((oi) => {
+              const opt = q.options[oi];
+              const isMulti = qtype === 'multi';
+              const active = isMulti ? (Array.isArray(selected) && selected.includes(oi)) : selected === oi;
+              return (
+                <button
+                  key={oi}
+                  type="button"
+                  onClick={() => setAnswers((prev) => {
+                    if (!isMulti) return { ...prev, [qid]: oi };
+                    const cur = Array.isArray(prev[qid]) ? prev[qid] : [];
+                    return { ...prev, [qid]: cur.includes(oi) ? cur.filter((x) => x !== oi) : [...cur, oi] };
+                  })}
+                  className={`w-full text-left flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-sm sm:text-base transition-colors ${
+                    active ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-gray-200 hover:border-indigo-300 text-gray-800'
+                  }`}
+                >
+                  <span className={`w-5 h-5 ${isMulti ? 'rounded' : 'rounded-full'} border-2 flex items-center justify-center flex-shrink-0 ${
+                    active ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-gray-300 text-transparent'
+                  }`}>
+                    <Check className="w-3 h-3" />
+                  </span>
+                  <span className="flex-1">{opt}</span>
+                </button>
+              );
+            })}
+            {qtype === 'multi' && <p className="text-xs text-gray-400 pt-1">Select all that apply.</p>}
+          </div>
+        )}
 
         {/* Nav */}
         <div className="mt-6 flex items-center justify-between gap-2">
@@ -285,7 +311,7 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
           ) : (
             <button
               onClick={() => setStep((s) => Math.min(total - 1, s + 1))}
-              disabled={selected === undefined}
+              disabled={!isAnswered(q)}
               className="btn-primary disabled:opacity-40"
             >
               Next <ChevronRight className="w-4 h-4" />
@@ -298,7 +324,7 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
           {order.map((qIdx, i) => {
             const qq = questions[qIdx];
             if (!qq) return null;
-            const ans = answers[String(qq.id)] !== undefined;
+            const ans = isAnswered(qq);
             return (
               <button
                 key={qq.id}
@@ -349,30 +375,48 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
               <p className="text-sm font-medium text-gray-900 mb-2">
                 <span className="text-gray-400 mr-1">Q{qi + 1}.</span>{q.question}
               </p>
-              <div className="space-y-1.5">
-                {q.options.map((opt, oi) => {
-                  let optClass = 'border-gray-200';
-                  let icon = null;
-                  if (r) {
-                    if (oi === r.correct_index) {
-                      optClass = 'border-green-400 bg-green-50';
-                      icon = <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />;
-                    } else if (oi === r.selected_index) {
-                      optClass = 'border-red-400 bg-red-50';
-                      icon = <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />;
+              {q.question_type === 'short' ? (
+                <div className="space-y-1.5">
+                  <div className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-2 ${r?.is_correct ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50'}`}>
+                    <span className="flex-1 text-gray-800">
+                      <span className="text-gray-500">Your answer: </span>
+                      {typeof r?.selected === 'string' && r.selected ? r.selected : <em className="text-gray-400">blank</em>}
+                    </span>
+                    {r?.is_correct
+                      ? <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      : <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />}
+                  </div>
+                  {!r?.is_correct && (r?.correct_answers?.length > 0) && (
+                    <p className="text-xs text-green-700">Accepted: {r.correct_answers.join(', ')}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {q.options.map((opt, oi) => {
+                    const correctSet = q.question_type === 'multi'
+                      ? new Set((r?.correct_answers || []).map(Number))
+                      : new Set([Number(r?.correct_index)]);
+                    const selSet = q.question_type === 'multi'
+                      ? new Set((Array.isArray(r?.selected) ? r.selected : []).map(Number))
+                      : new Set([Number(r?.selected_index)]);
+                    let optClass = 'border-gray-200';
+                    let icon = null;
+                    if (r) {
+                      if (correctSet.has(oi)) { optClass = 'border-green-400 bg-green-50'; icon = <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />; }
+                      else if (selSet.has(oi)) { optClass = 'border-red-400 bg-red-50'; icon = <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />; }
                     }
-                  }
-                  return (
-                    <div
-                      key={oi}
-                      className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm ${optClass}`}
-                    >
-                      <span className="flex-1 text-gray-800">{opt}</span>
-                      {icon}
-                    </div>
-                  );
-                })}
-              </div>
+                    return (
+                      <div
+                        key={oi}
+                        className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm ${optClass}`}
+                      >
+                        <span className="flex-1 text-gray-800">{opt}</span>
+                        {icon}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {r?.explanation && (
                 <p className="text-xs text-gray-500 mt-2 border-l-2 border-indigo-200 pl-3">
                   {r.explanation}

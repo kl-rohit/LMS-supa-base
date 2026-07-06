@@ -53,9 +53,9 @@ select cron.schedule('cleanup-notifications', '30 21 * * 6', $$
     url := 'https://academy-management.netlify.app/api/internal/cron-cleanup-notifications',
     headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);
 
--- Per-org backup — weekly, Sunday 06:00 IST (your real safety net on the Free
+-- Per-org backup — Mon/Wed/Fri 06:00 IST (your real safety net on the Free
 -- tier, which has no self-serve restore; drop once on Pro's 7-day backups)
-select cron.schedule('backup', '30 0 * * 0', $$
+select cron.schedule('backup', '30 0 * * 1,3,5', $$
   select net.http_get(
     url := 'https://academy-management.netlify.app/api/internal/cron-backup',
     headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);

@@ -955,29 +955,33 @@ export default function Students() {
         onSave={handleSubmit}
         saving={saving}
         saveLabel={editingStudent ? 'Update' : 'Add Student'}
+        size="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="input-field"
-              placeholder="Student name"
-              required
-            />
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="input-field"
+                placeholder="Student name"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Parent Name</label>
+              <input
+                type="text"
+                value={form.parent_name}
+                onChange={(e) => setForm({ ...form, parent_name: e.target.value })}
+                className="input-field"
+                placeholder="Parent name"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Parent Name</label>
-            <input
-              type="text"
-              value={form.parent_name}
-              onChange={(e) => setForm({ ...form, parent_name: e.target.value })}
-              className="input-field"
-              placeholder="Parent name"
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number</label>
             <div className="flex items-stretch">
@@ -1005,6 +1009,18 @@ export default function Students() {
               />
             </div>
             <p className="text-xs text-gray-400 mt-1">10-digit Indian mobile. +91 added automatically when sending.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
+            <input
+              type="date"
+              value={form.date_of_birth}
+              onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
+              className="input-field"
+              max={new Date().toISOString().slice(0, 10)}
+            />
+            <p className="text-xs text-gray-400 mt-1">Shown on the Dashboard birthdays card. Optional.</p>
+          </div>
           </div>
           {feeMode === 'per_month' ? (
             <div>
@@ -1074,19 +1090,6 @@ export default function Students() {
               )}
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
-            <input
-              type="date"
-              value={form.date_of_birth}
-              onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
-              className="input-field"
-              max={new Date().toISOString().slice(0, 10)}
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Shown in the Upcoming Birthdays card on the Dashboard. Optional.
-            </p>
-          </div>
           {feeMode !== 'per_month' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Minimum classes per month</label>

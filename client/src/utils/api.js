@@ -128,8 +128,49 @@ function cacheKeyFor(name) {
   return `${CACHE_PREFIX}${org}_${name}`;
 }
 
+// ---- In-memory GET cache + in-flight dedupe -------------------------------
+// Cuts redundant network calls app-wide without touching call sites:
+//   • dedupe: concurrent identical GETs share ONE request (e.g. two components
+//     both loading /students on the same screen → one round-trip).
+//   • short-TTL cache: revisiting a screen within GET_TTL_MS serves from memory
+//     (e.g. hopping between modules that each read /groups or /settings/app).
+// Any mutation (POST/PUT/PATCH/DELETE) clears the cache so writes are never
+// masked by a stale read. Auth/platform are never cached (must be live).
+const GET_TTL_MS = 30000;
+const _getCache = new Map();  // finalUrl → { data, exp }
+const _inflight = new Map();  // finalUrl → Promise
+
+function cacheKeyForGet(url) {
+  if (url.startsWith('/auth/') || url.startsWith('/platform')) return null;
+  return withActiveOrg(url);
+}
+
+function invalidateGetCache() {
+  _getCache.clear();
+  _inflight.clear();
+}
+
+async function cachedGet(url) {
+  const key = cacheKeyForGet(url);
+  if (!key) return request(url, { method: 'GET' });          // never cache auth/platform
+  const hit = _getCache.get(key);
+  if (hit && hit.exp > Date.now()) return hit.data;          // fresh cache hit
+  if (_inflight.has(key)) return _inflight.get(key);         // ride an in-flight request
+  const p = request(url, { method: 'GET' })
+    .then((data) => { _getCache.set(key, { data, exp: Date.now() + GET_TTL_MS }); _inflight.delete(key); return data; })
+    .catch((err) => { _inflight.delete(key); throw err; });
+  _inflight.set(key, p);
+  return p;
+}
+
 const api = {
-  get: (url) => request(url, { method: 'GET' }),
+  get: (url) => cachedGet(url),
+
+  // Force a fresh fetch, bypassing the cache (and refreshing it).
+  getFresh: (url) => { const k = cacheKeyForGet(url); if (k) { _getCache.delete(k); _inflight.delete(k); } return cachedGet(url); },
+
+  // Manually drop the in-memory GET cache (e.g. after an out-of-band change).
+  invalidate: () => invalidateGetCache(),
 
   // GET that falls back to the last cached response when the network is down.
   getCached: async (url, name) => {
@@ -147,8 +188,9 @@ const api = {
     }
   },
 
-  // Drop every cached portal response. Call on sign-out.
+  // Drop every cached portal response + the in-memory GET cache. Call on sign-out.
   clearCache: () => {
+    invalidateGetCache();
     try {
       const keys = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -159,22 +201,14 @@ const api = {
     } catch {}
   },
 
-  post: (url, data) => request(url, {
-    method: 'POST',
-    body: data,
-  }),
+  // Mutations invalidate the GET cache so a write is never masked by a stale read.
+  post: (url, data) => request(url, { method: 'POST', body: data }).then((r) => { invalidateGetCache(); return r; }),
 
-  put: (url, data) => request(url, {
-    method: 'PUT',
-    body: data,
-  }),
+  put: (url, data) => request(url, { method: 'PUT', body: data }).then((r) => { invalidateGetCache(); return r; }),
 
-  patch: (url, data) => request(url, {
-    method: 'PATCH',
-    body: data,
-  }),
+  patch: (url, data) => request(url, { method: 'PATCH', body: data }).then((r) => { invalidateGetCache(); return r; }),
 
-  delete: (url) => request(url, { method: 'DELETE' }),
+  delete: (url) => request(url, { method: 'DELETE' }).then((r) => { invalidateGetCache(); return r; }),
 };
 
 export default api;

@@ -7,7 +7,7 @@ const { getById, zcql, zcqlAll, unwrap, normalize, q, safeId, insert, update, re
 const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 const { loadAssetDataUrl } = require('../lib/orgAsset');
 const { codeFor } = require('../lib/certVerify');
-const { loadLessonQuiz, PASS_THRESHOLD } = require('./quizzes');
+const { loadLessonQuiz, gradeAttempt, PASS_THRESHOLD } = require('./quizzes');
 const { loadAssignments } = require('./assignments');
 const { loadPapers } = require('./questionpapers');
 const { isFeatureEnabled, requireFeature } = require('../middleware/entitlement');
@@ -779,6 +779,8 @@ router.get('/lessons/:id/quiz', async (req, res) => {
     const safeQuestions = questions.map((qz) => ({
       id: qz.id,
       question: qz.question || '',
+      question_type: qz.question_type || 'single',
+      points: Number(qz.points) > 0 ? Number(qz.points) : 1,
       options: (() => { try { return JSON.parse(qz.options); } catch { return []; } })(),
     }));
     res.json({
@@ -819,24 +821,9 @@ router.post('/lessons/:id/quiz/submit', async (req, res) => {
     if (questions.length === 0) return res.status(400).json({ error: 'This lesson has no quiz' });
 
     const answers = req.body?.answers || {};
-    let correct = 0;
-    const results = questions.map((qz) => {
-      const correctIndex = Number(qz.correct_index) || 0;
-      const selected = answers[String(qz.id)];
-      const selectedIndex = (selected === undefined || selected === null) ? -1 : Number(selected);
-      const isCorrect = selectedIndex === correctIndex;
-      if (isCorrect) correct++;
-      return {
-        id: qz.id,
-        correct_index: correctIndex,
-        selected_index: selectedIndex,
-        is_correct: isCorrect,
-        explanation: qz.explanation || '',
-      };
-    });
-
+    const graded = gradeAttempt(questions, answers);
+    const { score, results, correctCount: correct } = graded;
     const total = questions.length;
-    const score = total > 0 ? Math.round((correct / total) * 100) : 0;
     const passedNow = score >= PASS_THRESHOLD;
 
     // Upsert QuizAttempts. passed is sticky (stays true once earned). Best-effort:
@@ -1051,6 +1038,8 @@ router.get('/assignments/:id/quiz', async (req, res) => {
     const safeQuestions = questions.map((qz) => ({
       id: qz.id,
       question: qz.question || '',
+      question_type: qz.question_type || 'single',
+      points: Number(qz.points) > 0 ? Number(qz.points) : 1,
       options: (() => { try { return JSON.parse(qz.options); } catch { return []; } })(),
     }));
     res.json({
@@ -1091,24 +1080,9 @@ router.post('/assignments/:id/quiz/submit', async (req, res) => {
     if (questions.length === 0) return res.status(400).json({ error: 'This quiz has no questions' });
 
     const answers = req.body?.answers || {};
-    let correct = 0;
-    const results = questions.map((qz) => {
-      const correctIndex = Number(qz.correct_index) || 0;
-      const selected = answers[String(qz.id)];
-      const selectedIndex = (selected === undefined || selected === null) ? -1 : Number(selected);
-      const isCorrect = selectedIndex === correctIndex;
-      if (isCorrect) correct++;
-      return {
-        id: qz.id,
-        correct_index: correctIndex,
-        selected_index: selectedIndex,
-        is_correct: isCorrect,
-        explanation: qz.explanation || '',
-      };
-    });
-
+    const graded = gradeAttempt(questions, answers);
+    const { score, results, correctCount: correct } = graded;
     const total = questions.length;
-    const score = total > 0 ? Math.round((correct / total) * 100) : 0;
     const passedNow = score >= PASS_THRESHOLD;
 
     try {

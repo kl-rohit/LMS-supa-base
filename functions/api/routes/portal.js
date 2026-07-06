@@ -891,10 +891,17 @@ async function studentGroupIds(req, sid) {
 }
 
 // Whether an assignment is targeted at this student.
+// Reused for assignments AND question papers — both carry the same targeting
+// shape (target_type + target_id/target_ids). Anything without a target_type
+// (e.g. legacy papers) reads as 'all' → visible to everyone, as before.
 function assignmentAppliesTo(asg, sid, groupSet) {
   const t = asg.target_type || 'all';
   if (t === 'all') return true;
   if (t === 'student') return String(asg.target_id) === String(sid);
+  if (t === 'students') {
+    try { const a = JSON.parse(asg.target_ids || '[]'); return Array.isArray(a) && a.map(String).includes(String(sid)); }
+    catch { return false; }
+  }
   if (t === 'group') return groupSet.has(String(asg.target_id));
   return false;
 }
@@ -1150,22 +1157,27 @@ router.get('/flags', async (req, res) => {
   }
 });
 
-// GET /api/portal/question-papers — list papers shared with the academy.
+// GET /api/portal/question-papers — papers targeted at this student. Papers with
+// no targeting (target_type 'all' or unset — e.g. legacy rows) show to everyone.
 router.get('/question-papers', async (req, res) => {
   try {
-    const rows = await loadPapers(req);
-    rows.sort((a, b) => String(b.CREATEDTIME || '').localeCompare(String(a.CREATEDTIME || '')));
+    const sid = safeId(req.studentId);
+    const [rows, groupSet] = await Promise.all([
+      loadPapers(req),
+      studentGroupIds(req, sid),
+    ]);
+    const mine = rows
+      .map(normalize)
+      .filter((p) => assignmentAppliesTo(p, sid, groupSet));
+    mine.sort((a, b) => String(b.CREATEDTIME || '').localeCompare(String(a.CREATEDTIME || '')));
     res.json({
-      papers: rows.map((r) => {
-        const n = normalize(r);
-        return {
-          id: n.id,
-          title: n.title || '',
-          description: n.description || '',
-          link: n.link || '',
-          category: n.category || '',
-        };
-      }),
+      papers: mine.map((n) => ({
+        id: n.id,
+        title: n.title || '',
+        description: n.description || '',
+        link: n.link || '',
+        category: n.category || '',
+      })),
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch question papers', detail: e.message });

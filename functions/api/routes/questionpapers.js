@@ -16,6 +16,28 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
 
+// Targeting (who sees the paper) mirrors Assignments: all / group / student /
+// students (multi). Stored as target_type + target_id (group/single) or
+// target_ids (JSON array for the multi-select). Legacy rows have no target_type
+// → treated as 'all' (visible to everyone), so nothing changes for old papers.
+const VALID_TARGETS = ['all', 'group', 'student', 'students'];
+function parseTargetIds(v) {
+  if (Array.isArray(v)) return v.map(String);
+  if (!v) return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
+}
+// Resolve the targeting columns to persist from a request body.
+function targetingFromBody(body) {
+  const t = VALID_TARGETS.includes(body.target_type) ? body.target_type : 'all';
+  const out = { target_type: t, target_id: null, target_ids: null };
+  if (t === 'group' || t === 'student') out.target_id = body.target_id ? String(body.target_id) : null;
+  if (t === 'students') {
+    const ids = Array.isArray(body.target_ids) ? body.target_ids.map(String).filter(Boolean) : [];
+    out.target_ids = ids.length ? JSON.stringify(ids) : null;
+  }
+  return out;
+}
+
 function shape(row) {
   const n = normalize(row);
   return {
@@ -24,6 +46,9 @@ function shape(row) {
     description: n.description || '',
     link: n.link || '',
     category: n.category || '',
+    target_type: VALID_TARGETS.includes(n.target_type) ? n.target_type : 'all',
+    target_id: n.target_id ? String(n.target_id) : '',
+    target_ids: parseTargetIds(n.target_ids),
     created_time: n.CREATEDTIME || n.created_time || '',
   };
 }
@@ -64,6 +89,7 @@ router.post('/', async (req, res) => {
       description: String(req.body.description ?? '').trim(),
       link,
       category: String(req.body.category ?? '').trim(),
+      ...targetingFromBody(req.body),
       org_id: Number(req.orgId),
     });
     res.status(201).json({ paper: shape(row) });
@@ -92,6 +118,7 @@ router.put('/:id', async (req, res) => {
     }
     if (req.body.description !== undefined) patch.description = String(req.body.description).trim();
     if (req.body.category !== undefined) patch.category = String(req.body.category).trim();
+    if (req.body.target_type !== undefined) Object.assign(patch, targetingFromBody(req.body));
     const updated = await update(req, 'QuestionPapers', req.params.id, patch);
     res.json({ paper: shape(updated) });
   } catch (e) {

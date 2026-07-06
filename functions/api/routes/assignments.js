@@ -35,7 +35,16 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeI
 const { createNotifications } = require('../lib/notify');
 
 const VALID_KINDS = ['task', 'quiz'];
-const VALID_TARGETS = ['all', 'group', 'student'];
+// 'students' (plural) = a hand-picked multi-select list, stored as a JSON array
+// of student ids in target_ids. 'student' (singular) is kept for legacy rows.
+const VALID_TARGETS = ['all', 'group', 'student', 'students'];
+
+// Parse the JSON student-id array in target_ids → array of id strings.
+function parseTargetIds(v) {
+  if (Array.isArray(v)) return v.map(String);
+  if (!v) return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
+}
 
 // Shape a stored row for the admin side.
 function shape(row) {
@@ -50,6 +59,7 @@ function shape(row) {
     quiz_lesson_id: n.quiz_lesson_id ? String(n.quiz_lesson_id) : '',
     target_type: VALID_TARGETS.includes(n.target_type) ? n.target_type : 'all',
     target_id: n.target_id ? String(n.target_id) : '',
+    target_ids: parseTargetIds(n.target_ids),
     created_time: n.CREATEDTIME || n.created_time || '',
   };
 }
@@ -73,6 +83,9 @@ async function loadAssignments(req) {
 async function recipientStudentIds(req, asg) {
   const orgId = Number(req.orgId);
   try {
+    if (asg.target_type === 'students') {
+      return parseTargetIds(asg.target_ids);
+    }
     if (asg.target_type === 'student' && asg.target_id) {
       return [String(asg.target_id)];
     }
@@ -174,6 +187,10 @@ async function buildPatch(req, body, { partial }) {
   if (has('target_id')) {
     patch.target_id = body.target_id ? String(body.target_id) : null;
   }
+  if (has('target_ids')) {
+    const ids = Array.isArray(body.target_ids) ? body.target_ids.map(String).filter(Boolean) : [];
+    patch.target_ids = ids.length ? JSON.stringify(ids) : null;
+  }
   if (has('quiz_lesson_id')) {
     patch.quiz_lesson_id = body.quiz_lesson_id ? String(body.quiz_lesson_id) : null;
   }
@@ -182,10 +199,23 @@ async function buildPatch(req, body, { partial }) {
   const kind = patch.kind ?? body.kind;
   const targetType = patch.target_type ?? body.target_type;
   const targetId = patch.target_id !== undefined ? patch.target_id : body.target_id;
+  const targetIds = patch.target_ids !== undefined
+    ? parseTargetIds(patch.target_ids)
+    : (Array.isArray(body.target_ids) ? body.target_ids.map(String).filter(Boolean) : []);
   const quizLessonId = patch.quiz_lesson_id !== undefined ? patch.quiz_lesson_id : body.quiz_lesson_id;
 
   if ((targetType === 'group' || targetType === 'student') && !targetId) {
     return { error: 'Select who this assignment is for' };
+  }
+  if (targetType === 'students' && targetIds.length === 0) {
+    return { error: 'Pick at least one student' };
+  }
+
+  // Keep target fields consistent with the chosen type (clear stale values).
+  if (patch.target_type !== undefined) {
+    if (patch.target_type === 'students') patch.target_id = null;
+    else if (patch.target_type === 'all') { patch.target_id = null; patch.target_ids = null; }
+    else patch.target_ids = null; // group / student
   }
   if (kind === 'quiz') {
     if (!quizLessonId) return { error: 'Select a quiz for this assignment' };
@@ -219,6 +249,7 @@ router.post('/', async (req, res) => {
       quiz_lesson_id: patch.kind === 'quiz' ? patch.quiz_lesson_id : null,
       target_type: patch.target_type || 'all',
       target_id: (patch.target_type === 'group' || patch.target_type === 'student') ? patch.target_id : null,
+      target_ids: patch.target_type === 'students' ? (patch.target_ids || null) : null,
       org_id: Number(req.orgId),
     });
 

@@ -1,82 +1,110 @@
-# Data Migration — Handoff & Next Steps
+# VidyaSetu — Supabase Migration: Handover & Operations Runbook
 
-In-app **Export / Import** that moves one academy's data between Catalyst
-deployments (or between orgs), preserving relationships across the re-keying.
+The app (multi-tenant academy SaaS) has moved its **database, auth, and file
+storage to Supabase**, frontend to **Netlify**, with the **backend still running
+on Catalyst** (Advanced I/O function, talking to Supabase via a rewritten
+`db/catalystDb.js`). This doc is the single source of truth for the current
+state and how to operate / cut a real academy over.
 
-- UI: **Settings → Backup & migrate** (`client/src/components/DataMigration.jsx`)
-- API: `functions/api/routes/migration.js` (mounted at `/api/migration`)
-- Plan/registry: `functions/api/db/migrationRegistry.js`
+## Architecture (current)
 
-## How it works (the short version)
+| Layer | Where | Notes |
+|---|---|---|
+| Frontend (React SPA) | **Netlify** | `academy-management.netlify.app`; builds from git `main` (`base=client`, `build:netlify`) |
+| Backend (Node/Express) | **Catalyst** Advanced I/O | deploy with `./deploy.sh`; Netlify proxies `/api/*` here |
+| Database | **Supabase Postgres** | `db/schema.sql` (30 tables); bigint PKs, `org_id`, `source_id` |
+| Auth | **Supabase Auth** (ES256 JWT) | `lib/supabaseAuth.js`; verified via Supabase JWKS |
+| File storage | **Supabase Storage** | `lib/supabaseStorage.js`; photos resized to 512px / q72 |
 
-- **Export** filters every table by the caller's active `org_id` and downloads
-  JSON (per-module or a full bundle). CSV is offered per module for readable
-  backups only — JSON is the format that preserves types + relationships.
-- **Import** stamps the caller's `org_id` on every row and re-links children to
-  their new parents via a **`source_id`** column: each imported row stores its
-  old ROWID in `source_id`; a child's FK is remapped by
-  `SELECT ROWID FROM <RefTable> WHERE source_id = <oldFk> AND org_id = <org>`.
-- Idempotent: re-importing skips rows whose `source_id` already exists.
-- **Student photos** migrate in a SEPARATE second pass (the **Photos** button on
-  the Students row) so a missing bucket never pollutes the row import.
+## Migration status
 
-## Current status (as of this handoff)
+- ✅ Phases 0–4, 6 (setup, schema, data-access, auth, storage, Netlify) — done.
+- ✅ Phase 7 mechanics — Export / Import / Purge / Photos built, fixed, verified
+  (a dry-run academy migrated cleanly; row counts matched, photos confirmed).
+- ⏳ Phase 5 — schedule the 4 cron jobs (below). Handlers exist; only the
+  external schedule is outstanding.
+- 🅿️ Parked by choice — Cloud Run (staying on Catalyst), custom domain, and the
+  fire-and-forget job queue.
 
-- Feature built and **deployed to the veena Development environment**
-  (`https://veena-attendance-60070745325.development.catalystserverless.in/app/`).
-- **Precision bug fixed + deployed.** 17-digit Catalyst ROWIDs exceed JS's safe
-  integer limit, so the old `Number(oldId)` rounded `source_id` on insert while
-  the lookup used the exact value — causing false "Parent not found". Now stored
-  as the exact digit-string via `safeId(oldId)`.
-- `source_id` column has been added to **Students** and **Groups** so far.
-- Error messages now render inline in the panel (not just a tooltip).
+## Cron setup (Supabase Cron — 4 jobs)
 
-## NEXT STEPS
+Handlers live in `routes/internal.js`, secured by the `X-Cron-Secret` header
+(value is `CRON_SECRET` in `functions/api/catalyst-config.json` — never commit
+it). Schedule them in **Supabase Dashboard → Integrations → Cron**, or paste the
+SQL below into the SQL editor. Substitute the real secret for `<CRON_SECRET>`.
+Cron times are **UTC**; the comments show the IST intent.
 
-### 1. Clean re-test (do this first)
-The Students/Groups already imported carry the *old corrupted* `source_id`, and
-re-import won't overwrite them (dedupe won't match) → duplicates. So:
-- Use a **fresh empty destination org** (simplest), OR delete the already-imported
-  rows from the test org.
-- Re-import **top to bottom**: Students → Groups → Group memberships.
-- Verify a group's member list shows the right students. No "Parent not found".
+```sql
+-- Fee reminder — daily 08:00 IST (self-checks each academy's reminder day)
+select cron.schedule('fee-reminder', '30 2 * * *', $$
+  select net.http_get(
+    url := 'https://academy-management.netlify.app/api/internal/cron-fee-reminder',
+    headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);
 
-### 2. Add `source_id` (BigInt, nullable) to the remaining tables
-Console → Data Store → table → New Column → name `source_id`, type **BigInt**,
-NOT mandatory. Still needed on:
+-- Morning class digest — daily 06:30 IST
+select cron.schedule('morning-digest', '0 1 * * *', $$
+  select net.http_get(
+    url := 'https://academy-management.netlify.app/api/internal/cron-morning-digest',
+    headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);
 
+-- Notification cleanup — weekly, Sunday 07:00 IST
+select cron.schedule('cleanup-notifications', '30 1 * * 0', $$
+  select net.http_get(
+    url := 'https://academy-management.netlify.app/api/internal/cron-cleanup-notifications',
+    headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);
+
+-- Per-org backup — weekly, Sunday 06:00 IST (your real safety net on the Free
+-- tier, which has no self-serve restore; drop once on Pro's 7-day backups)
+select cron.schedule('backup', '30 0 * * 0', $$
+  select net.http_get(
+    url := 'https://academy-management.netlify.app/api/internal/cron-backup',
+    headers := '{"X-Cron-Secret":"<CRON_SECRET>"}'::jsonb) $$);
 ```
-Courses, QuestionPapers,
-Camps, Lessons, GroupStudents, Classes, CourseEnrollments,
-ClassStudents, CampDays, LessonQuizzes, Assignments,
-Attendance, AdditionalFees, Payments, Messages,
-LessonProgress, QuizAttempts, AssignmentCompletions
-```
-(Students + Groups done. `AppSettings` does NOT need it — matched on `setting_key`.)
 
-### 3. Full module-by-module migration, in panel order
-Parents before children. Then run the **Photos** pass (feed the Students JSON)
-once the `student-photos-profile` bucket exists in the destination.
+Dropped on purpose: `cron-weekly-digest` (low value; re-enable later if wanted).
+Requires the `pg_cron` and `pg_net` extensions (enable once in the dashboard).
+`net.http_get` fires async and doesn't block on the response — expected.
 
-### 4. Optional helper (offered, not built)
-A scoped **"clear this org's migrated data"** button — deletes only rows with a
-`source_id` in the current org — to make re-test cleanup one click.
+## Cutover runbook (flip a real academy)
 
-### 5. Real cross-project move (later — currently parked)
-Target was vidyasethu (separate account/DC). Destination tables need `source_id`
-+ the photo bucket; the import endpoint runs on the receiving side. Parked per
-"forget about vidyasethu for now."
+1. **Export from the source** (old Catalyst app): Settings → Backup & migrate →
+   **Export everything** → save the JSON bundle (includes base64 photos).
+2. **Prep the destination org** on the Supabase stack (fresh org via signup, or
+   an existing empty one). If it has partial/old data: **Delete all data**
+   (now deletes from Supabase correctly) or clear it in the SQL editor.
+3. **Import everything** → pick the bundle. Runs module-by-module with a live
+   progress bar; photos upload last; a completion popup summarizes the run.
+4. **Verify**: row counts vs the source; open a few students (photos load);
+   attendance / fees look right. Re-export and compare counts if you want proof.
+5. **Relink parent logins** (auth doesn't migrate — see below): Settings →
+   Parent Logins. For each migrated student that had a login, its old Catalyst
+   `login_user_id` is stale, so: **unlink** it, then **create** a fresh login →
+   share the returned temp password with the parent (e.g. WhatsApp). No email
+   needed, so deliverability/domain is not a blocker here.
+6. **Owner/admin**: already has a Supabase account from signup — no action.
 
-## Gotchas to remember
-- **IDs are 17-digit strings** — never `Number()` a ROWID/`source_id`. Use the
-  exact string (`safeId`). `org_id` is the one exception: `req.orgId` is already a
-  `Number` app-wide, so it stays consistent.
-- Don't feed migration exports to the **Students page** importer — it expects a
-  flat `[{name,...}]` array and reports "No valid students found in JSON". Use the
-  migration panel's Import buttons.
-- `catalyst deploy` wipes Console-set env vars — all env vars live in
-  `functions/api/catalyst-config.json` (gitignored).
+## Gotchas (read before editing/deploying)
 
-## Separate, unrelated pending work
-- Landing-page introductory pricing (plan: `~/.claude/plans/starry-snuggling-tome.md`).
-- Replace fictional testimonials before public launch.
+- **`functions/api/config.js` is GENERATED** from `config.master.js` — edit the
+  master, not the generated file (a deploy will overwrite hand edits).
+- **Deploy with `./deploy.sh`** (foreground). It builds the client, regenerates
+  configs, stamps the git SHA into `/api/health`, and runs `catalyst deploy`.
+  Verify with `curl .../api/health` — the `commit` should match.
+- **Netlify frontend builds from git push**, NOT from `./deploy.sh`. Backend and
+  frontend deploy by different paths: `./deploy.sh` updates the Catalyst-hosted
+  copy + backend; a `git push` to `main` rebuilds the Netlify frontend.
+- **Secrets** live only in `functions/api/catalyst-config.json` (gitignored);
+  `catalyst deploy` wipes any Console-set env vars not in that file.
+- **17-digit IDs are strings** — never `Number()` a ROWID / `source_id` (use
+  `safeId`). `org_id` is the exception: it stays a small JS number, and the
+  importer re-stamps it — relationships survive via `source_id`, not `org_id`.
+- **Auth users are NOT migrated** (Organizations/OrgMemberships excluded by
+  design) — hence the relink step above.
+
+## Backups
+
+Supabase **Free tier has no self-serve restore**; managed daily backups (7-day
+retention) start at **Pro** ($25/mo), longer/point-in-time is a paid add-on.
+Until then the `cron-backup` job (per-org JSON to Storage) is the safety net.
+Also: **Free projects pause after ~7 days idle** — the daily crons hitting the
+DB keep it active.

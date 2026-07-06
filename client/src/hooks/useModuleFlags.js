@@ -41,7 +41,11 @@ const PREMIUM = (Array.isArray(GEN_PREMIUM) && GEN_PREMIUM.length)
   ? GEN_PREMIUM
   : ['lessons', 'assignments', 'question_papers'];
 
-export function useModuleFlags() {
+// `endpoint` lets the parent portal read flags from a parent-scoped route
+// (/portal/flags) instead of the admin /settings/app, which can't resolve a
+// parent's org (parents have no OrgMembership) and would otherwise fail →
+// falling back to DEFAULTS that hide opt-in modules like Assignments.
+export function useModuleFlags(endpoint = '/settings/app') {
   const [flags, setFlags] = useState(DEFAULTS);
   const [plan, setPlan] = useState('complete');           // grandfather default
   const [entitlements, setEntitlements] = useState({});   // { lessons: bool, ... }
@@ -51,7 +55,7 @@ export function useModuleFlags() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get('/settings/app');
+        const res = await api.get(endpoint);
         if (cancelled) return;
         const settings = res?.settings || {};
         const ent = res?.entitlements || {};

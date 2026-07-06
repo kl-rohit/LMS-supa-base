@@ -1135,6 +1135,21 @@ router.post('/assignments/:id/quiz/submit', async (req, res) => {
   }
 });
 
+// GET /api/portal/flags — the academy's module + portal-visibility flags,
+// resolved via the parent's OWN org. The admin /settings/app can't resolve a
+// parent (parents have no OrgMembership), so if the portal nav read flags from
+// there it would fail and fall back to defaults (hiding Assignments / Question
+// Papers even when the academy enabled them). The portal reads flags from here
+// instead. Client: useModuleFlags('/portal/flags').
+router.get('/flags', async (req, res) => {
+  try {
+    const settings = await loadAppSettings(req);
+    res.json({ settings });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load flags', detail: e.message });
+  }
+});
+
 // GET /api/portal/question-papers — list papers shared with the academy.
 router.get('/question-papers', async (req, res) => {
   try {

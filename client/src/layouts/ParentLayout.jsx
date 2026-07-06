@@ -58,7 +58,7 @@ export default function ParentLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
-  const { flags, featureOn } = useModuleFlags();
+  const { flags, featureOn } = useModuleFlags('/portal/flags');
   const navItems = visibleNav(flags);
   const branding = useOrgBranding();
   const displayName = branding.name || BRAND_NAME;

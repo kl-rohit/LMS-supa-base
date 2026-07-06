@@ -10,11 +10,14 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
+import TargetPicker from '../components/TargetPicker';
 
-const BLANK = { title: '', description: '', link: '', category: '' };
+const BLANK = { title: '', description: '', link: '', category: '', target_type: 'all', target_id: '', target_ids: [] };
 
 export default function QuestionPapers() {
   const [papers, setPapers] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -27,8 +30,14 @@ export default function QuestionPapers() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await api.get('/question-papers');
+      const [data, gData, sData] = await Promise.all([
+        api.get('/question-papers'),
+        api.get('/groups').catch(() => ({ groups: [] })),
+        api.get('/students').catch(() => ({ students: [] })),
+      ]);
       setPapers(data.papers || []);
+      setGroups((gData.groups || []).filter((g) => (g.status || 'active') === 'active'));
+      setStudents((sData.students || []).filter((s) => s.status === 'active'));
     } catch (err) {
       toast.error('Failed to load: ' + err.message);
     } finally {
@@ -40,7 +49,11 @@ export default function QuestionPapers() {
   const openAdd = () => { setEditing(null); setForm(BLANK); setModalOpen(true); };
   const openEdit = (p) => {
     setEditing(p);
-    setForm({ title: p.title || '', description: p.description || '', link: p.link || '', category: p.category || '' });
+    setForm({
+      title: p.title || '', description: p.description || '', link: p.link || '', category: p.category || '',
+      target_type: p.target_type || 'all', target_id: p.target_id || '',
+      target_ids: Array.isArray(p.target_ids) ? p.target_ids : [],
+    });
     setModalOpen(true);
   };
 
@@ -179,6 +192,13 @@ export default function QuestionPapers() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea value={form.description} onChange={set('description')} className="input-field" rows={3} placeholder="Optional notes for students…" />
           </div>
+          <TargetPicker
+            value={{ target_type: form.target_type, target_id: form.target_id, target_ids: form.target_ids }}
+            groups={groups}
+            students={students}
+            onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+            label="Share with"
+          />
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }} className="btn-secondary">Cancel</button>
           </div>

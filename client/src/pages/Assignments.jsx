@@ -20,10 +20,11 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
+import TargetPicker from '../components/TargetPicker';
 
 const BLANK = {
   title: '', kind: 'task', instructions: '', link: '', due_date: '',
-  target_type: 'all', target_id: '', quiz_lesson_id: '',
+  target_type: 'all', target_id: '', target_ids: [], quiz_lesson_id: '',
 };
 
 export default function Assignments() {
@@ -73,6 +74,7 @@ export default function Assignments() {
       due_date: a.due_date || '',
       target_type: a.target_type || 'all',
       target_id: a.target_id || '',
+      target_ids: Array.isArray(a.target_ids) ? a.target_ids : [],
       quiz_lesson_id: a.quiz_lesson_id || '',
     });
     setModalOpen(true);
@@ -82,8 +84,9 @@ export default function Assignments() {
     e.preventDefault();
     if (!form.title.trim()) { toast.error('Title is required'); return; }
     if (form.kind === 'quiz' && !form.quiz_lesson_id) { toast.error('Pick a quiz to assign'); return; }
-    if ((form.target_type === 'group' || form.target_type === 'student') && !form.target_id) {
-      toast.error('Choose who this is for'); return;
+    if (form.target_type === 'group' && !form.target_id) { toast.error('Choose a group'); return; }
+    if (form.target_type === 'students' && (form.target_ids || []).length === 0) {
+      toast.error('Pick at least one student'); return;
     }
     const payload = {
       title: form.title.trim(),
@@ -92,7 +95,8 @@ export default function Assignments() {
       link: form.link,
       due_date: form.due_date,
       target_type: form.target_type,
-      target_id: form.target_type === 'all' ? '' : form.target_id,
+      target_id: (form.target_type === 'group' || form.target_type === 'student') ? form.target_id : '',
+      target_ids: form.target_type === 'students' ? form.target_ids : [],
       quiz_lesson_id: form.kind === 'quiz' ? form.quiz_lesson_id : '',
     };
     try {
@@ -132,6 +136,10 @@ export default function Assignments() {
     if (a.target_type === 'group') {
       const g = groups.find((x) => String(x.id) === String(a.target_id));
       return g ? `Group: ${g.name}` : 'Group';
+    }
+    if (a.target_type === 'students') {
+      const n = Array.isArray(a.target_ids) ? a.target_ids.length : 0;
+      return `${n} student${n === 1 ? '' : 's'}`;
     }
     if (a.target_type === 'student') {
       const s = students.find((x) => String(x.id) === String(a.target_id));
@@ -302,38 +310,13 @@ export default function Assignments() {
             <input type="date" value={form.due_date} onChange={set('due_date')} className="input-field" />
           </div>
 
-          {/* Targeting */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Assign to</label>
-            <div className="grid grid-cols-3 gap-2 mb-2">
-              {[
-                { key: 'all', label: 'Everyone', icon: Users },
-                { key: 'group', label: 'A group', icon: UsersRound },
-                { key: 'student', label: 'One student', icon: UserRound },
-              ].map((opt) => {
-                const Icon = opt.icon;
-                const active = form.target_type === opt.key;
-                return (
-                  <button key={opt.key} type="button" onClick={() => setForm((f) => ({ ...f, target_type: opt.key, target_id: '' }))}
-                    className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg border-2 text-xs transition-colors ${active ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-gray-200 text-gray-600 hover:border-indigo-300'}`}>
-                    <Icon className="w-4 h-4" /> {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-            {form.target_type === 'group' && (
-              <select value={form.target_id} onChange={set('target_id')} className="input-field" required>
-                <option value="">Select a group…</option>
-                {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0})</option>)}
-              </select>
-            )}
-            {form.target_type === 'student' && (
-              <select value={form.target_id} onChange={set('target_id')} className="input-field" required>
-                <option value="">Select a student…</option>
-                {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            )}
-          </div>
+          {/* Targeting — shared picker (Everyone / group / specific students) */}
+          <TargetPicker
+            value={{ target_type: form.target_type, target_id: form.target_id, target_ids: form.target_ids }}
+            groups={groups}
+            students={students}
+            onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+          />
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }} className="btn-secondary">Cancel</button>

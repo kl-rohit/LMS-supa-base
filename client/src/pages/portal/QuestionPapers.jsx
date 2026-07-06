@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import EmptyState from '../../components/EmptyState';
-import { driveEmbedUrl } from '../../utils/youtube';
+import EmbeddedDoc from '../../components/EmbeddedDoc';
 
 export default function PortalQuestionPapers() {
   const [papers, setPapers] = useState([]);
@@ -41,10 +41,6 @@ export default function PortalQuestionPapers() {
       />
     );
   }
-
-  // Prefer Drive's in-app preview embed; fall back to the raw link for anything
-  // that isn't a Drive file (best-effort embed, still no redirect).
-  const embedUrl = viewing ? (driveEmbedUrl(viewing.link) || viewing.link) : null;
 
   return (
     <>
@@ -97,16 +93,7 @@ export default function PortalQuestionPapers() {
             </button>
           </div>
           <div className="flex-1 bg-gray-100 dark:bg-gray-950" onClick={(e) => e.stopPropagation()}>
-            {embedUrl ? (
-              <iframe
-                src={embedUrl}
-                title={viewing.title}
-                className="w-full h-full border-0"
-                allowFullScreen
-              />
-            ) : (
-              <div className="p-6 text-sm text-gray-500">This paper can't be previewed.</div>
-            )}
+            <EmbeddedDoc url={viewing.link} title={viewing.title} />
           </div>
         </div>
       )}

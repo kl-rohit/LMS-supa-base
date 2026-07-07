@@ -208,7 +208,8 @@ router.post('/', async (req, res) => {
   try {
     const { course_id, title, description, video_url, duration_seconds, order_index,
             section_name, start_seconds, end_seconds,
-            content_type, content_url, quiz_required, quiz_shuffle } = req.body;
+            content_type, content_url, quiz_required, quiz_shuffle,
+            quiz_shuffle_options, quiz_pass_mark } = req.body;
     const type = content_type || 'video';
     const isQuiz = type === 'quiz';
     const url = type === 'document' ? content_url : video_url;
@@ -248,6 +249,9 @@ router.post('/', async (req, res) => {
     if (isQuiz) {
       payload.quiz_required = (quiz_required === true || quiz_required === 'true');
       payload.quiz_shuffle = (quiz_shuffle === true || quiz_shuffle === 'true');
+      payload.quiz_shuffle_options = (quiz_shuffle_options === true || quiz_shuffle_options === 'true');
+      const pm = Number(quiz_pass_mark);
+      if (Number.isFinite(pm) && pm >= 1 && pm <= 100) payload.quiz_pass_mark = Math.round(pm);
     }
     const row = await insert(req, 'Lessons', payload);
 
@@ -354,7 +358,8 @@ router.put('/:id', async (req, res) => {
     }
     const { title, description, video_url, duration_seconds, order_index,
             section_name, start_seconds, end_seconds,
-            content_type, content_url, quiz_required, quiz_shuffle } = req.body;
+            content_type, content_url, quiz_required, quiz_shuffle,
+            quiz_shuffle_options, quiz_pass_mark } = req.body;
     const patch = {};
     if (title !== undefined)            patch.title = title;
     if (description !== undefined)      patch.description = description;
@@ -369,6 +374,11 @@ router.put('/:id', async (req, res) => {
     // quiz_required / quiz_shuffle are only sent by the client for quiz lessons.
     if (quiz_required !== undefined)    patch.quiz_required = (quiz_required === true || quiz_required === 'true');
     if (quiz_shuffle !== undefined)     patch.quiz_shuffle = (quiz_shuffle === true || quiz_shuffle === 'true');
+    if (quiz_shuffle_options !== undefined) patch.quiz_shuffle_options = (quiz_shuffle_options === true || quiz_shuffle_options === 'true');
+    if (quiz_pass_mark !== undefined) {
+      const n = Number(quiz_pass_mark);
+      patch.quiz_pass_mark = (Number.isFinite(n) && n >= 1 && n <= 100) ? Math.round(n) : null;
+    }
     const updated = await update(req, 'Lessons', req.params.id, patch);
     res.json({ lesson: normalize(updated) });
   } catch (e) {

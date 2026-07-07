@@ -181,9 +181,19 @@ router.get('/', async (req, res) => {
   try {
     const lid = safeId(req.query.lesson_id);
     if (!lid) return res.status(400).json({ error: 'lesson_id is required' });
-    if (!(await lessonInOrg(req, lid))) return res.json({ questions: [] });
+    const lesson = await getById(req, 'Lessons', lid);
+    if (!lesson || Number(lesson.org_id) !== Number(req.orgId)) return res.json({ questions: [], settings: null });
     const rows = await loadLessonQuiz(req, lid);
-    res.json({ questions: rows.map(shapeForAdmin) });
+    const n = normalize(lesson);
+    res.json({
+      questions: rows.map(shapeForAdmin),
+      settings: {
+        quiz_required: n.quiz_required === true || n.quiz_required === 1,
+        quiz_shuffle: n.quiz_shuffle === true || n.quiz_shuffle === 1,
+        quiz_shuffle_options: n.quiz_shuffle_options === true || n.quiz_shuffle_options === 1,
+        quiz_pass_mark: Number(n.quiz_pass_mark) > 0 ? Number(n.quiz_pass_mark) : null,
+      },
+    });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch quiz', detail: e.message });
   }

@@ -27,6 +27,14 @@ function shuffleCopy(arr) {
   return a;
 }
 
+// Fixed grade ladder shown alongside a passing score.
+function gradeLabel(score) {
+  if (score >= 90) return 'Excellent';
+  if (score >= 80) return 'Great';
+  if (score >= 70) return 'Good';
+  return 'Passed';
+}
+
 export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onNext, endpointBase }) {
   const id = lessonId ?? lesson?.id;
   // Where to load/submit. Defaults to the course-lesson flow; an assignment
@@ -54,9 +62,11 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
   // Shuffle flag can come from the lesson prop (course flow) or the quiz
   // response (assignment flow, where there's no lesson object on the client).
   const [shuffleFlag, setShuffleFlag] = useState(lesson?.quiz_shuffle === true || lesson?.quiz_shuffle === 1);
+  const [shuffleOptsFlag, setShuffleOptsFlag] = useState(lesson?.quiz_shuffle_options === true || lesson?.quiz_shuffle_options === 1);
 
   const required = lesson?.quiz_required === true || lesson?.quiz_required === 1;
-  const shuffleOn = shuffleFlag;
+  const shuffleQOn = shuffleFlag;       // shuffle question order
+  const shuffleOptsOn = shuffleOptsFlag; // shuffle answer options
 
   // Load (or reload on lesson change). Reset all interaction state.
   useEffect(() => {
@@ -78,6 +88,9 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
         // otherwise keep the value derived from the lesson prop.
         if (data.quiz_shuffle !== undefined) {
           setShuffleFlag(data.quiz_shuffle === true || data.quiz_shuffle === 1);
+        }
+        if (data.quiz_shuffle_options !== undefined) {
+          setShuffleOptsFlag(data.quiz_shuffle_options === true || data.quiz_shuffle_options === 1);
         }
         if (data.attempt?.passed) passedNotifiedRef.current = true;
       } catch {
@@ -112,9 +125,9 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
     const optMap = {};
     questions.forEach((q) => {
       const base = (q.options || []).map((_, i) => i);
-      optMap[String(q.id)] = shuffleOn ? shuffleCopy(base) : base;
+      optMap[String(q.id)] = shuffleOptsOn ? shuffleCopy(base) : base;
     });
-    setOrder(shuffleOn ? shuffleCopy(qIdx) : qIdx);
+    setOrder(shuffleQOn ? shuffleCopy(qIdx) : qIdx);
     setOptOrders(optMap);
     setPhase('taking');
   };
@@ -362,6 +375,11 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
             {result.correct_count}/{result.total} correct · {result.score}%
             {!result.passed && ` · need ${result.pass_threshold}%`}
           </p>
+          {result.passed && (
+            <span className="inline-block mt-2 text-xs font-semibold text-green-700 bg-green-100 px-3 py-1 rounded-full">
+              {gradeLabel(result.score)}
+            </span>
+          )}
         </div>
       )}
 

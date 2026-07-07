@@ -149,6 +149,9 @@ function QuestionCard({ index, count, draft, onChange, onSave, onDelete, onDupli
 export default function QuizEditor({ lesson, onClose, onCountChange }) {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState([]);
+  // Quiz-level settings (stored on the lesson). Edited here so a standalone
+  // quiz — which has no Lessons-page form — can still be configured.
+  const [settings, setSettings] = useState({ quiz_required: false, quiz_shuffle: false, quiz_shuffle_options: false, quiz_pass_mark: '' });
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +172,13 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
           _dirty: false,
           _saving: false,
         })));
+        const s = data.settings || {};
+        setSettings({
+          quiz_required: !!s.quiz_required,
+          quiz_shuffle: !!s.quiz_shuffle,
+          quiz_shuffle_options: !!s.quiz_shuffle_options,
+          quiz_pass_mark: s.quiz_pass_mark || '',
+        });
       } catch {
         toast.error('Failed to load quiz');
       } finally {
@@ -254,6 +264,20 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
     setDrafts((prev) => [...prev, copy]);
   };
 
+  // Persist quiz-level settings to the lesson (fire-and-forget per change).
+  const saveSettings = async (patch) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    try {
+      await api.put(`/lessons/${lesson.id}`, {
+        quiz_required: next.quiz_required,
+        quiz_shuffle: next.quiz_shuffle,
+        quiz_shuffle_options: next.quiz_shuffle_options,
+        quiz_pass_mark: next.quiz_pass_mark === '' ? null : Number(next.quiz_pass_mark),
+      });
+    } catch { toast.error('Could not save quiz settings'); }
+  };
+
   const addQuestion = () => setDrafts((prev) => [...prev, blankDraft()]);
 
   // Move a card up/down; persist the new order_index of every saved question.
@@ -287,10 +311,35 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
       </div>
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
-        <p className="text-sm text-gray-500 flex items-center gap-2">
-          <ListChecks className="w-4 h-4 text-indigo-500" />
-          Score is weighted by marks; students need 70% to pass. Mark the lesson "required" to gate the certificate on it.
-        </p>
+        {/* Quiz-level settings */}
+        <div className="border border-gray-200 rounded-lg p-3 bg-white space-y-2.5">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={settings.quiz_shuffle} onChange={(e) => saveSettings({ quiz_shuffle: e.target.checked })} />
+              Shuffle question order
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={settings.quiz_shuffle_options} onChange={(e) => saveSettings({ quiz_shuffle_options: e.target.checked })} />
+              Shuffle answer options
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={settings.quiz_required} onChange={(e) => saveSettings({ quiz_required: e.target.checked })} />
+              Required for certificate
+            </label>
+            <span className="inline-flex items-center gap-2">
+              Pass mark
+              <input
+                type="number" min="1" max="100"
+                value={settings.quiz_pass_mark}
+                onChange={(e) => setSettings((s) => ({ ...s, quiz_pass_mark: e.target.value }))}
+                onBlur={(e) => saveSettings({ quiz_pass_mark: e.target.value })}
+                placeholder="70"
+                className="input-field !py-1 w-16"
+              />%
+            </span>
+          </div>
+          <p className="text-xs text-gray-400">Score is weighted by each question's marks. Leave pass mark blank for the default 70%.</p>
+        </div>
 
         {loading ? (
           <div className="py-10 text-center text-gray-400"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div>

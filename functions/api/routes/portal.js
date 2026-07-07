@@ -8,6 +8,12 @@ const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 const { loadAssetDataUrl } = require('../lib/orgAsset');
 const { codeFor } = require('../lib/certVerify');
 const { loadLessonQuiz, gradeAttempt, PASS_THRESHOLD } = require('./quizzes');
+
+// A quiz's own pass mark (1-100) if set on the lesson, else the global default.
+function effectivePassMark(lesson) {
+  const n = Number(lesson?.quiz_pass_mark);
+  return (Number.isFinite(n) && n >= 1 && n <= 100) ? n : PASS_THRESHOLD;
+}
 const { loadAssignments } = require('./assignments');
 const { loadPapers } = require('./questionpapers');
 const { isFeatureEnabled, requireFeature } = require('../middleware/entitlement');
@@ -785,7 +791,9 @@ router.get('/lessons/:id/quiz', async (req, res) => {
     }));
     res.json({
       questions: safeQuestions,
-      pass_threshold: PASS_THRESHOLD,
+      pass_threshold: effectivePassMark(lesson),
+      quiz_shuffle: lesson.quiz_shuffle === true || lesson.quiz_shuffle === 1,
+      quiz_shuffle_options: lesson.quiz_shuffle_options === true || lesson.quiz_shuffle_options === 1,
       attempt: attempt ? {
         score: Number(attempt.score) || 0,
         attempts: Number(attempt.attempts) || 0,
@@ -824,7 +832,7 @@ router.post('/lessons/:id/quiz/submit', async (req, res) => {
     const graded = gradeAttempt(questions, answers);
     const { score, results, correctCount: correct } = graded;
     const total = questions.length;
-    const passedNow = score >= PASS_THRESHOLD;
+    const passedNow = score >= effectivePassMark(lesson);
 
     // Upsert QuizAttempts. passed is sticky (stays true once earned). Best-effort:
     // if the table is missing we still return the score so the UI works.
@@ -1044,10 +1052,11 @@ router.get('/assignments/:id/quiz', async (req, res) => {
     }));
     res.json({
       questions: safeQuestions,
-      pass_threshold: PASS_THRESHOLD,
+      pass_threshold: effectivePassMark(lesson),
       // Player reads these off the synthesized lesson; a quiz assignment is never
       // certificate-gating, and shuffle follows the underlying quiz lesson.
       quiz_shuffle: lesson.quiz_shuffle === true || lesson.quiz_shuffle === 1,
+      quiz_shuffle_options: lesson.quiz_shuffle_options === true || lesson.quiz_shuffle_options === 1,
       attempt: attempt ? {
         score: Number(attempt.score) || 0,
         attempts: Number(attempt.attempts) || 0,
@@ -1083,7 +1092,7 @@ router.post('/assignments/:id/quiz/submit', async (req, res) => {
     const graded = gradeAttempt(questions, answers);
     const { score, results, correctCount: correct } = graded;
     const total = questions.length;
-    const passedNow = score >= PASS_THRESHOLD;
+    const passedNow = score >= effectivePassMark(lesson);
 
     try {
       const prev = await loadQuizAttempt(req, sid, lid);

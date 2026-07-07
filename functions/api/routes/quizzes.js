@@ -277,6 +277,61 @@ router.get('/:lessonId/detail', async (req, res) => {
   }
 });
 
+// GET /api/quizzes/:lessonId/attempt/:studentId — one student's per-question
+// breakdown (what they answered vs. the correct answer). Rebuilt from the raw
+// answers stored on their QuizAttempts row. Returns has_answers=false for older
+// attempts saved before answer capture (only the score was kept then).
+router.get('/:lessonId/attempt/:studentId', async (req, res) => {
+  try {
+    const lid = safeId(req.params.lessonId);
+    const sid = safeId(req.params.studentId);
+    if (!lid || !sid) return res.status(400).json({ error: 'lesson_id and student_id are required' });
+    const lesson = await getById(req, 'Lessons', lid);
+    if (!lesson || Number(lesson.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Quiz not found' });
+
+    let attempt = null;
+    try {
+      const rows = await zcql(req, `SELECT * FROM QuizAttempts WHERE QuizAttempts.lesson_id = ${lid} AND QuizAttempts.student_id = ${sid} AND QuizAttempts.org_id = ${Number(req.orgId)}`);
+      attempt = unwrap(rows, 'QuizAttempts').map(normalize)[0] || null;
+    } catch { /* table absent */ }
+    if (!attempt) return res.status(404).json({ error: 'No attempt found' });
+
+    let answersMap = {};
+    try { const a = attempt.answers ? JSON.parse(attempt.answers) : {}; if (a && typeof a === 'object' && !Array.isArray(a)) answersMap = a; } catch { /* ignore */ }
+    const hasAnswers = Object.keys(answersMap).length > 0;
+
+    const questions = (await loadLessonQuiz(req, lid)).map(shapeForAdmin);
+    const graded = gradeAttempt(questions, answersMap);
+    const byId = new Map(questions.map((q) => [String(q.id), q]));
+    const breakdown = graded.results.map((r) => {
+      const q = byId.get(String(r.id)) || {};
+      return {
+        id: r.id,
+        question: q.question || '',
+        question_type: r.question_type,
+        options: q.options || [],
+        points: r.points,
+        earned: r.earned,
+        is_correct: r.is_correct,
+        correct_index: r.correct_index,
+        correct_answers: r.correct_answers,
+        selected: r.selected,
+        explanation: r.explanation,
+      };
+    });
+
+    res.json({
+      student_id: String(sid),
+      score: Number(attempt.score) || graded.score,
+      passed: attempt.passed === true || attempt.passed === 1,
+      has_answers: hasAnswers,
+      breakdown,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load attempt', detail: e.message });
+  }
+});
+
 // POST /api/quizzes — create one question.
 // Body: { lesson_id, question, question_type, options[], correct_index,
 //         correct_answers[], points, explanation, order_index }

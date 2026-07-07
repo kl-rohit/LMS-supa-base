@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { quizGrade } from '../utils/quizGrade';
 
 // Fisher–Yates — returns a new shuffled copy, leaving the input untouched.
 function shuffleCopy(arr) {
@@ -27,12 +28,9 @@ function shuffleCopy(arr) {
   return a;
 }
 
-// Fixed grade ladder shown alongside a passing score.
+// Grade ladder shown alongside a passing score — shared with the admin panel.
 function gradeLabel(score) {
-  if (score >= 90) return 'Excellent';
-  if (score >= 80) return 'Great';
-  if (score >= 70) return 'Good';
-  return 'Passed';
+  return quizGrade(score, true).label;
 }
 
 export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onNext, endpointBase }) {

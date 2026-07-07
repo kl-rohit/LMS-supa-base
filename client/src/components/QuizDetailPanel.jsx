@@ -8,10 +8,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   X, Edit2, ListChecks, BookOpen, ClipboardList, FileQuestion,
-  CheckCircle2, Circle, Loader2, Users,
+  CheckCircle2, Circle, XCircle, Loader2, Users, ChevronDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { quizGrade } from '../utils/quizGrade';
 
 const TYPE_LABEL = { single: 'Single choice', truefalse: 'True / False', multi: 'Multiple answers', short: 'Short answer' };
 
@@ -126,24 +127,7 @@ export default function QuizDetailPanel({ lessonId, onClose, onEdit }) {
                 ) : (
                   <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
                     {attempts.map((a) => (
-                      <div key={a.student_id} className="flex items-center gap-3 px-3 py-2.5">
-                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                          {(a.student_name || '?').slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">{a.student_name}</p>
-                          <p className="text-xs text-gray-500">
-                            {a.correct_count}/{a.total_questions} correct
-                            {a.attempts > 1 ? ` · ${a.attempts} attempts` : ''}
-                          </p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-semibold text-gray-900">{a.score}%</p>
-                          <span className={a.passed ? 'text-xs font-medium text-green-600' : 'text-xs font-medium text-amber-600'}>
-                            {a.passed ? 'Passed' : 'Not yet'}
-                          </span>
-                        </div>
-                      </div>
+                      <StudentAttemptRow key={a.student_id} lessonId={lessonId} attempt={a} />
                     ))}
                   </div>
                 )}
@@ -170,6 +154,99 @@ export default function QuizDetailPanel({ lessonId, onClose, onEdit }) {
       </aside>
     </>
   );
+}
+
+// One student's response row, expandable to a per-question breakdown fetched on
+// demand (so opening the panel stays a single read; details load per student).
+function StudentAttemptRow({ lessonId, attempt }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const grade = quizGrade(attempt.score, attempt.passed);
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !detail && !loading) {
+      setLoading(true);
+      try {
+        const d = await api.getFresh(`/quizzes/${lessonId}/attempt/${attempt.student_id}`);
+        setDetail(d);
+      } catch {
+        toast.error('Could not load this response');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={toggle} className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors">
+        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+          {(attempt.student_name || '?').slice(0, 1).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900 truncate">{attempt.student_name}</p>
+          <p className="text-xs text-gray-500">
+            {attempt.correct_count}/{attempt.total_questions} correct
+            {attempt.attempts > 1 ? ` · ${attempt.attempts} attempts` : ''}
+          </p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-semibold text-gray-900">{attempt.score}%</p>
+          <span className={`inline-block text-[11px] font-medium px-1.5 py-0.5 rounded ${grade.badgeClass}`}>{grade.label}</span>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 bg-gray-50/60">
+          {loading ? (
+            <div className="py-3 text-center text-gray-400"><Loader2 className="w-4 h-4 animate-spin mx-auto" /></div>
+          ) : !detail ? null : !detail.has_answers ? (
+            <p className="text-xs text-gray-500 py-2">Detailed answers were not recorded for this attempt (it predates answer capture).</p>
+          ) : (
+            <div className="space-y-2 pt-1">
+              {detail.breakdown.map((r, i) => (
+                <div key={r.id || i} className="text-sm border-t border-gray-100 pt-2 first:border-t-0">
+                  <p className="text-gray-800"><span className="text-gray-400 mr-1">{i + 1}.</span>{r.question}</p>
+                  <p className={`mt-0.5 flex items-start gap-1.5 ${r.is_correct ? 'text-green-700' : 'text-red-600'}`}>
+                    {r.is_correct ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                    <span>{answerText(r, r.selected)}</span>
+                  </p>
+                  {!r.is_correct && (
+                    <p className="text-xs text-gray-500 ml-5">Correct: {correctText(r)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Render the student's submitted answer as text, by question type.
+function answerText(q, value) {
+  if (value === null || value === undefined || value === '') return 'No answer';
+  const type = q.question_type || 'single';
+  if (type === 'short') return String(value);
+  if (type === 'multi') {
+    const idxs = Array.isArray(value) ? value : [];
+    const picked = idxs.map((i) => (q.options || [])[i]).filter(Boolean);
+    return picked.length ? picked.join(', ') : 'No answer';
+  }
+  return (q.options || [])[Number(value)] || 'No answer';
+}
+
+// Render the correct answer(s) as text, by question type.
+function correctText(q) {
+  const type = q.question_type || 'single';
+  if (type === 'short') return (q.correct_answers || []).join(' / ');
+  if (type === 'multi') return (q.correct_answers || []).map((i) => (q.options || [])[i]).filter(Boolean).join(', ');
+  return (q.options || [])[q.correct_index] || '';
 }
 
 // Read-only render of one question with the correct answer(s) highlighted.

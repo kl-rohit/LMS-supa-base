@@ -846,10 +846,21 @@ router.post('/lessons/:id/quiz/submit', async (req, res) => {
         correct_count: correct,
         attempts: (Number(prev?.attempts) || 0) + 1,
         passed: passedNow || prev?.passed === true || prev?.passed === 1,
+        // Store the raw submitted answers so the admin can see a per-question
+        // breakdown later. Column is optional — degrades gracefully if absent.
+        answers: JSON.stringify(answers || {}),
         org_id: Number(req.orgId),
       };
-      if (prev) await update(req, 'QuizAttempts', prev.id, payload);
-      else await insert(req, 'QuizAttempts', payload);
+      try {
+        if (prev) await update(req, 'QuizAttempts', prev.id, payload);
+        else await insert(req, 'QuizAttempts', payload);
+      } catch (e1) {
+        // The answers column may not exist yet — retry without it so the
+        // attempt is still recorded (answers populate once the column is added).
+        const { answers: _omit, ...rest } = payload;
+        if (prev) await update(req, 'QuizAttempts', prev.id, rest);
+        else await insert(req, 'QuizAttempts', rest);
+      }
     } catch (err) {
       console.error('QuizAttempts upsert failed (table missing?)', err.message);
     }
@@ -1104,10 +1115,21 @@ router.post('/assignments/:id/quiz/submit', async (req, res) => {
         correct_count: correct,
         attempts: (Number(prev?.attempts) || 0) + 1,
         passed: passedNow || prev?.passed === true || prev?.passed === 1,
+        // Store the raw submitted answers so the admin can see a per-question
+        // breakdown later. Column is optional — degrades gracefully if absent.
+        answers: JSON.stringify(answers || {}),
         org_id: Number(req.orgId),
       };
-      if (prev) await update(req, 'QuizAttempts', prev.id, payload);
-      else await insert(req, 'QuizAttempts', payload);
+      try {
+        if (prev) await update(req, 'QuizAttempts', prev.id, payload);
+        else await insert(req, 'QuizAttempts', payload);
+      } catch (e1) {
+        // The answers column may not exist yet — retry without it so the
+        // attempt is still recorded (answers populate once the column is added).
+        const { answers: _omit, ...rest } = payload;
+        if (prev) await update(req, 'QuizAttempts', prev.id, rest);
+        else await insert(req, 'QuizAttempts', rest);
+      }
     } catch (err) {
       console.error('QuizAttempts upsert failed (table missing?)', err.message);
     }

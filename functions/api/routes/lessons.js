@@ -399,6 +399,13 @@ router.delete('/:id', async (req, res) => {
         try { await remove(req, 'LessonProgress', p.ROWID); } catch {}
       }
     } catch {}
+    // Remove the quiz questions attached to this lesson so they are not orphaned.
+    try {
+      const qq = await zcql(req, `SELECT ROWID FROM LessonQuizzes WHERE LessonQuizzes.lesson_id = ${req.params.id} AND LessonQuizzes.org_id = ${Number(req.orgId)}`);
+      for (const q of unwrap(qq, 'LessonQuizzes')) {
+        try { await remove(req, 'LessonQuizzes', q.ROWID); } catch {}
+      }
+    } catch {}
     await remove(req, 'Lessons', req.params.id);
     res.json({ message: 'Lesson deleted' });
   } catch (e) {

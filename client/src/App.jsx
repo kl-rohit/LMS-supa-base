@@ -18,6 +18,7 @@ import {
   Video,
   ClipboardList,
   FileText,
+  ListChecks,
   HelpCircle,
 } from 'lucide-react';
 
@@ -74,6 +75,7 @@ const StudentLogins  = lazyWithReload(() => import('./pages/StudentLogins'));
 const Lessons        = lazyWithReload(() => import('./pages/Lessons'));
 const Assignments    = lazyWithReload(() => import('./pages/Assignments'));
 const QuestionPapers = lazyWithReload(() => import('./pages/QuestionPapers'));
+const Quizzes = lazyWithReload(() => import('./pages/Quizzes'));
 const Help           = lazyWithReload(() => import('./pages/Help'));
 const VerifyCertificate = lazyWithReload(() => import('./pages/VerifyCertificate'));
 
@@ -101,6 +103,7 @@ const BASE_NAV = [
   { to: '/lessons',        label: 'Lessons',       icon: Video,           flag: 'modules.lessons' },
   { to: '/assignments',    label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
   { to: '/question-papers',label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
+  { to: '/quizzes',        label: 'Quizzes',       icon: ListChecks,      flag: 'modules.assignments' },
   { to: '/student-logins', label: 'Parent Logins', icon: KeyRound,        flag: null },
 ];
 // Maps the first URL segment to the Help article slug that documents it, so the
@@ -119,6 +122,7 @@ const HELP_SLUG_BY_PATH = {
   lessons: 'lessons',
   assignments: 'assignments',
   'question-papers': 'question-papers',
+  quizzes: 'assignments',
   'student-logins': 'parent-logins',
   settings: 'settings',
 };
@@ -306,6 +310,7 @@ function TeacherLayout() {
               <Route path="/lessons" element={<Lessons />} />
               <Route path="/assignments" element={<Assignments />} />
               <Route path="/question-papers" element={<QuestionPapers />} />
+              <Route path="/quizzes" element={<Quizzes />} />
               <Route path="/student-logins" element={<StudentLogins />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />

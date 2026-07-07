@@ -98,11 +98,35 @@ router.get('/quiz-list', async (req, res) => {
       } catch { /* ignore */ }
     }
 
+    // Assignment links (batched) — a course-less quiz may be attached to one or
+    // more assignments via quiz_lesson_id. Used to label such quizzes as
+    // "Assignment" rather than the misleading "Standalone".
+    const assignmentByLesson = new Map();
+    if (ids.length > 0) {
+      try {
+        const arows = await zcql(req, `SELECT quiz_lesson_id, title FROM Assignments WHERE Assignments.org_id = ${Number(req.orgId)} AND Assignments.quiz_lesson_id IN (${ids.join(',')})`);
+        for (const a of unwrap(arows, 'Assignments').map(normalize)) {
+          const k = String(a.quiz_lesson_id);
+          if (!assignmentByLesson.has(k)) assignmentByLesson.set(k, []);
+          if (a.title) assignmentByLesson.get(k).push(a.title);
+        }
+      } catch { /* assignments table absent */ }
+    }
+
+    // Resolve each quiz's association: course > assignment > standalone.
+    const associationFor = (l) => {
+      if (l.course_id) return { kind: 'course', name: courseTitle.get(String(l.course_id)) || 'Course' };
+      const a = assignmentByLesson.get(String(l.id));
+      if (a && a.length) return { kind: 'assignment', name: a.join(', ') };
+      return { kind: 'standalone', name: '' };
+    };
+
     res.json({ quizzes: quizzes.map((l) => ({
       id: l.id,
       title: l.title || 'Untitled quiz',
       course_id: l.course_id ? String(l.course_id) : '',
       course_title: courseTitle.get(String(l.course_id)) || '',
+      association: associationFor(l),
       question_count: counts.get(String(l.id)) || 0,
     })) });
   } catch (e) {

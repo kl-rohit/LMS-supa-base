@@ -4,18 +4,20 @@
 // created here can be attached to an assignment; course quizzes stay linked to
 // their course. Base Tailwind classes auto-theme (light + dark) via index.css.
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, ListChecks, Loader2, BookOpen } from 'lucide-react';
+import { Plus, Edit2, Trash2, ListChecks, Loader2, BookOpen, ClipboardList, FileQuestion } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import QuizEditor from '../components/QuizEditor';
+import QuizDetailPanel from '../components/QuizDetailPanel';
 
 export default function Quizzes() {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editorLesson, setEditorLesson] = useState(null);
+  const [detailLessonId, setDetailLessonId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
@@ -121,20 +123,14 @@ export default function Quizzes() {
                 <ListChecks className="w-5 h-5 text-indigo-600" />
               </div>
               <button
-                onClick={() => setEditorLesson({ id: q.id, title: q.title })}
+                onClick={() => setDetailLessonId(q.id)}
                 className="flex-1 min-w-0 text-left"
               >
                 <p className="font-medium text-gray-900 truncate">{q.title}</p>
                 <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
                   <span>{q.question_count} question{q.question_count === 1 ? '' : 's'}</span>
                   <span className="text-gray-300">·</span>
-                  {q.course_title ? (
-                    <span className="inline-flex items-center gap-1">
-                      <BookOpen className="w-3 h-3" /> {q.course_title}
-                    </span>
-                  ) : (
-                    <span>Standalone</span>
-                  )}
+                  <QuizAssociation association={q.association} courseTitle={q.course_title} />
                 </p>
               </button>
               <button
@@ -155,6 +151,14 @@ export default function Quizzes() {
         </div>
       )}
 
+      {detailLessonId && (
+        <QuizDetailPanel
+          lessonId={detailLessonId}
+          onClose={() => setDetailLessonId(null)}
+          onEdit={(quiz) => { setDetailLessonId(null); setEditorLesson({ id: quiz.id, title: quiz.title }); }}
+        />
+      )}
+
       {editorLesson && <QuizEditor lesson={editorLesson} onClose={closeEditor} />}
 
       <ConfirmDialog
@@ -167,4 +171,17 @@ export default function Quizzes() {
       />
     </div>
   );
+}
+
+// Small label showing what a quiz is attached to. Falls back to course_title
+// for older list payloads that predate the `association` field.
+function QuizAssociation({ association, courseTitle }) {
+  const a = association || (courseTitle ? { kind: 'course', name: courseTitle } : { kind: 'standalone', name: '' });
+  if (a.kind === 'course') {
+    return <span className="inline-flex items-center gap-1"><BookOpen className="w-3 h-3" /> {a.name}</span>;
+  }
+  if (a.kind === 'assignment') {
+    return <span className="inline-flex items-center gap-1"><ClipboardList className="w-3 h-3" /> {a.name}</span>;
+  }
+  return <span className="inline-flex items-center gap-1"><FileQuestion className="w-3 h-3" /> Standalone</span>;
 }

@@ -199,6 +199,84 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/quizzes/:lessonId/detail — everything for the admin detail panel:
+// the questions (with answer key), what the quiz is attached to (course /
+// assignment / standalone), and every student who has attempted it.
+router.get('/:lessonId/detail', async (req, res) => {
+  try {
+    const lid = safeId(req.params.lessonId);
+    if (!lid) return res.status(400).json({ error: 'lesson_id is required' });
+    const lesson = await getById(req, 'Lessons', lid);
+    if (!lesson || Number(lesson.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Quiz not found' });
+    const n = normalize(lesson);
+
+    const questions = (await loadLessonQuiz(req, lid)).map(shapeForAdmin);
+
+    // Association: a quiz belongs to a course (course_id), else to whatever
+    // assignment(s) reference it (quiz_lesson_id), else it is standalone.
+    let association = { kind: 'standalone', name: '' };
+    if (n.course_id) {
+      let courseTitle = '';
+      try {
+        const c = await getById(req, 'Courses', n.course_id);
+        if (c && Number(c.org_id) === Number(req.orgId)) courseTitle = normalize(c).title || '';
+      } catch { /* deleted course */ }
+      association = { kind: 'course', name: courseTitle || 'Course' };
+    } else {
+      try {
+        const arows = await zcql(req, `SELECT ROWID, title FROM Assignments WHERE Assignments.quiz_lesson_id = ${lid} AND Assignments.org_id = ${Number(req.orgId)}`);
+        const names = unwrap(arows, 'Assignments').map(normalize).map((a) => a.title).filter(Boolean);
+        if (names.length) association = { kind: 'assignment', name: names.join(', ') };
+      } catch { /* assignments table absent */ }
+    }
+
+    // Attempts — one row per student who has answered (QuizAttempts).
+    let attempts = [];
+    try {
+      const rows = await zcql(req, `SELECT * FROM QuizAttempts WHERE QuizAttempts.lesson_id = ${lid} AND QuizAttempts.org_id = ${Number(req.orgId)} ORDER BY QuizAttempts.MODIFIEDTIME DESC`);
+      const list = unwrap(rows, 'QuizAttempts').map(normalize);
+      const sids = [...new Set(list.map((a) => safeId(a.student_id)).filter(Boolean))];
+      const nameById = new Map();
+      if (sids.length) {
+        try {
+          const srows = await zcql(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.ROWID IN (${sids.join(',')})`);
+          for (const s of unwrap(srows, 'Students').map(normalize)) nameById.set(String(s.id), s.name || '');
+        } catch { /* ignore */ }
+      }
+      attempts = list.map((a) => ({
+        student_id: String(a.student_id),
+        student_name: nameById.get(String(a.student_id)) || 'Student',
+        score: Number(a.score) || 0,
+        correct_count: Number(a.correct_count) || 0,
+        total_questions: Number(a.total_questions) || 0,
+        attempts: Number(a.attempts) || 0,
+        passed: a.passed === true || a.passed === 1,
+        submitted_at: a.updated_at || a.created_at || null,
+      }));
+    } catch { /* QuizAttempts absent */ }
+
+    res.json({
+      quiz: {
+        id: n.id,
+        title: n.title || 'Untitled quiz',
+        course_id: n.course_id ? String(n.course_id) : '',
+        association,
+        question_count: questions.length,
+        settings: {
+          quiz_required: n.quiz_required === true || n.quiz_required === 1,
+          quiz_shuffle: n.quiz_shuffle === true || n.quiz_shuffle === 1,
+          quiz_shuffle_options: n.quiz_shuffle_options === true || n.quiz_shuffle_options === 1,
+          quiz_pass_mark: Number(n.quiz_pass_mark) > 0 ? Number(n.quiz_pass_mark) : null,
+        },
+      },
+      questions,
+      attempts,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load quiz detail', detail: e.message });
+  }
+});
+
 // POST /api/quizzes — create one question.
 // Body: { lesson_id, question, question_type, options[], correct_index,
 //         correct_answers[], points, explanation, order_index }

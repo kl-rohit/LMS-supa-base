@@ -413,6 +413,7 @@ create table if not exists quizattempts (          -- QuizAttempts
   correct_count    integer default 0,
   attempts         integer default 0,
   passed           boolean default false,
+  answers          text,                            -- JSON map { questionId: answer } for per-question review
   source_id        bigint,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz

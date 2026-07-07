@@ -166,6 +166,13 @@ export default function Assignments() {
     if (created) setForm((f) => ({ ...f, quiz_lesson_id: String(created.id) }));
   };
 
+  // Open the editor for the quiz currently selected in the dropdown. This is the
+  // edit path for standalone quizzes (they don't appear under Lessons).
+  const editSelectedQuiz = () => {
+    const q = quizzes.find((x) => String(x.id) === String(form.quiz_lesson_id));
+    if (q) setQuizEditorLesson({ id: q.id, title: q.title });
+  };
+
   const targetLabel = (a) => {
     if (a.target_type === 'all') return 'All students';
     if (a.target_type === 'group') {
@@ -338,9 +345,16 @@ export default function Assignments() {
                   <button type="button" onClick={() => { setShowNewQuiz(false); setNewQuizTitle(''); }} className="btn-secondary btn-sm">Cancel</button>
                 </div>
               ) : (
-                <button type="button" onClick={() => setShowNewQuiz(true)} className="mt-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> New quiz
-                </button>
+                <div className="mt-2 flex items-center gap-4">
+                  <button type="button" onClick={() => setShowNewQuiz(true)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> New quiz
+                  </button>
+                  {form.quiz_lesson_id && (
+                    <button type="button" onClick={editSelectedQuiz} className="text-xs text-gray-600 hover:text-gray-800 font-medium inline-flex items-center gap-1">
+                      <Edit2 className="w-3.5 h-3.5" /> Edit questions
+                    </button>
+                  )}
+                </div>
               )}
 
               <p className="text-xs text-gray-400 mt-1">Students take it through the normal quiz flow; scoring is automatic.</p>

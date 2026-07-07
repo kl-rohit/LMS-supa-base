@@ -23,6 +23,19 @@ function detectLinkMode() {
   return 'signin';
 }
 
+// Pull a human-readable message out of a Supabase/auth error. Guards against
+// the case where the error's message is empty or a stringified object like
+// "{}" (happens when the response body can't be parsed) — never show that to
+// the user; fall back to our own copy instead.
+function messageFromError(err, fallback) {
+  if (!err) return fallback;
+  if (typeof err === 'string') return err.trim() || fallback;
+  const raw = err.message || err.error_description || err.msg || err.error;
+  const msg = typeof raw === 'string' ? raw.trim() : '';
+  if (!msg || msg === '{}' || msg === '[]' || msg === 'null') return fallback;
+  return msg;
+}
+
 export default function Login() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -57,7 +70,8 @@ export default function Login() {
       // onAuthStateChange in AuthContext refreshes the user; the effect above
       // then redirects to the right home.
     } catch (err) {
-      setError(err?.message || 'Could not sign in. Please check your details.');
+      console.error('[login] sign-in failed:', err);
+      setError(messageFromError(err, 'Could not sign in. Please check your details.'));
     } finally {
       setBusy(false);
     }
@@ -76,7 +90,8 @@ export default function Login() {
       if (err) throw err;
       setMode('sent');
     } catch (err) {
-      setError(err?.message || 'Could not send the reset email.');
+      console.error('[login] reset-email failed:', err);
+      setError(messageFromError(err, 'Could not send the reset email. Please try again in a minute.'));
     } finally {
       setBusy(false);
     }
@@ -95,7 +110,8 @@ export default function Login() {
       const dest = user ? roleHome(user.app_role) : '/dashboard';
       navigate(dest, { replace: true });
     } catch (err) {
-      setError(err?.message || 'Could not set your password. The link may have expired.');
+      console.error('[login] set-password failed:', err);
+      setError(messageFromError(err, 'Could not set your password. The link may have expired.'));
     } finally {
       setBusy(false);
     }

@@ -134,15 +134,17 @@ export function BarChart({ data = [], fmt = (v) => Number(v).toLocaleString('en-
 }
 
 // Compact stat tile with an accent dot. value already formatted.
+// Console-style stat tile: a coloured accent top-bar + uppercase micro-label,
+// matching the Dashboard MetricCard. `color` drives the accent bar (defaults to
+// the theme indigo). Surface + text use base classes so it inverts light/dark.
 export function StatTile({ label, value, color, sub }) {
+  const bar = color || 'var(--color-primary-500, #6366f1)';
   return (
-    <div className="rounded-xl bg-gray-50 p-4">
-      <div className="flex items-center gap-2">
-        {color && <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />}
-        <p className="text-xs text-gray-500">{label}</p>
-      </div>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+    <div className="relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4">
+      <span className="absolute top-0 inset-x-0 h-[3px] opacity-80" style={{ backgroundColor: bar }} />
+      <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">{label}</p>
+      <p className="text-2xl font-semibold text-gray-900 mt-1.5 leading-none">{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1.5">{sub}</p>}
     </div>
   );
 }

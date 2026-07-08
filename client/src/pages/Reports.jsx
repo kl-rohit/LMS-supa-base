@@ -37,6 +37,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
 import { Donut, BarChart, LineChart, GroupedBarChart, TrendArrow, MobileCardTable, CHART_COLORS } from '../components/Charts';
+import { PageHeader } from '../components/ConsoleUI';
 import { exportCsv, exportPdf, printSection } from '../utils/reportExport';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 
@@ -534,7 +535,8 @@ export default function Reports() {
 
   return (
     <div className="space-y-4">
-      <h2 className="page-header mb-0">Reports</h2>
+      <PageHeader title="Reports" subtitle="Insights across attendance, fees, and learning" />
+
 
       {/* Reports Center: a categorized sidebar on desktop, a picker on mobile,
           and the selected report in the main panel. */}

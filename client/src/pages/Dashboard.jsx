@@ -15,9 +15,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
-import StatsCard from '../components/StatsCard';
 import CountUpAmount from '../components/CountUpAmount';
 import Loader from '../components/Loader';
+import { PageHeader, MetricCard, Panel, SectionLabel } from '../components/ConsoleUI';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { useOrgBranding } from '../hooks/useOrgBranding';
@@ -82,6 +82,9 @@ export default function Dashboard() {
   const recentAttendance = data.recent_attendance || [];
   const absenceAlerts = data.absent_alerts || [];
 
+  const attRate = Math.round(attendanceRateThisMonth);
+  const attTone = attRate >= 80 ? 'good' : attRate >= 60 ? 'warn' : 'bad';
+
   const formatTime = (timeStr) => {
     if (!timeStr) return '';
     const [h, m] = timeStr.split(':');
@@ -110,65 +113,66 @@ export default function Dashboard() {
       {/* Install-as-app prompt (phones only, hidden once installed) */}
       <InstallAppButton />
 
-      {/* Seat over-limit notice (also shown on the Students page). Links there
-          so the owner can set students inactive or reach out for more seats. */}
+      {/* Seat over-limit notice (also shown on the Students page). */}
       <SeatLimitNotice linkToStudents />
 
-      {/* Tiny show/hide toggle for the Fees stat */}
-      <div className="flex justify-end">
-        <button
-          onClick={amountReveal.toggle}
-          className="btn-secondary btn-sm"
-          title={amountReveal.revealed ? 'Hide amounts (auto-hides in 20s)' : 'Show amounts (auto-hides 20s later)'}
-        >
-          {amountReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          {amountReveal.revealed ? 'Hide' : 'Show'} amounts
-        </button>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle={branding.name ? `${branding.name} · at a glance` : 'Your academy at a glance'}
+        right={(
+          <button
+            onClick={amountReveal.toggle}
+            className="btn-secondary btn-sm"
+            title={amountReveal.revealed ? 'Hide amounts (auto-hides in 20s)' : 'Show amounts (auto-hides 20s later)'}
+          >
+            {amountReveal.revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {amountReveal.revealed ? 'Hide' : 'Show'} amounts
+          </button>
+        )}
+      />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dashboard-stats">
-        <StatsCard
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-tour="dashboard-stats">
+        <MetricCard
+          label="Total Students"
+          value={totalStudents.toLocaleString('en-IN')}
+          accent="indigo"
           icon={Users}
-          title="Total Students"
-          value={totalStudents}
-          color="indigo"
         />
-        <StatsCard
-          icon={Calendar}
-          title="Classes Today"
+        <MetricCard
+          label="Classes Today"
           value={classesToday.length}
-          color="blue"
+          accent="blue"
+          icon={Calendar}
           onClick={() => navigate('/classes')}
         />
-        <StatsCard
+        <MetricCard
+          label="Attendance Rate"
+          value={`${attRate}%`}
+          sub="This month"
+          tone={attTone}
+          accent="emerald"
           icon={ClipboardCheck}
-          title="Attendance Rate"
-          value={`${Math.round(attendanceRateThisMonth)}%`}
-          color="emerald"
-          subtitle="This month"
           onClick={() => navigate('/attendance')}
         />
-        <StatsCard
-          icon={IndianRupee}
-          title="Fees Collected"
+        <MetricCard
+          label="Fees Collected"
           value={amountReveal.revealed
             ? <CountUpAmount key="fees-collected" value={feesCollectedThisMonth} />
-            : '\u20B9\u2022\u2022\u2022\u2022'}
-          color="amber"
-          subtitle="This month"
+            : '₹••••'}
+          sub="This month"
+          accent="amber"
+          icon={IndianRupee}
           onClick={() => navigate('/fees')}
         />
       </div>
 
       {/* Upcoming Birthdays — next 30 days */}
       {birthdays.length > 0 && (
-        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Cake className="w-5 h-5 text-pink-600" />
-            <h3 className="font-semibold text-pink-800">Upcoming Birthdays</h3>
-            <span className="badge bg-pink-100 text-pink-700 ml-auto">{birthdays.length} in next 30 days</span>
-          </div>
+        <Panel
+          title={<span className="flex items-center gap-1.5 text-pink-600"><Cake className="w-3.5 h-3.5" /> Upcoming Birthdays</span>}
+          action={<span className="text-[11px] text-gray-400">{birthdays.length} in next 30 days</span>}
+        >
           <div className="space-y-2">
             {birthdays.map((b) => {
               const isToday = b.days_until === 0;
@@ -178,25 +182,17 @@ export default function Dashboard() {
               const message = `🎂 Happy birthday ${b.name}! Wishing you a wonderful year ahead.${branding.name ? `\n\n— ${branding.name}` : ''}`;
               const waLink = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}` : null;
               return (
-                <div key={b.student_id} className="flex items-center gap-3 bg-white border border-pink-100 rounded-lg px-3 py-2">
+                <div key={b.student_id} className="flex items-center gap-3 border border-gray-100 rounded-lg px-3 py-2">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${isToday ? 'bg-pink-500 text-white' : 'bg-pink-100 text-pink-700'}`}>
                     {b.name?.[0]?.toUpperCase() || '?'}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-900 leading-tight">
                       {b.name}
-                      {/* React renders the number 0 as visible text — so we
-                          must guard with > 0 (not just truthy). turning_age
-                          can be 0 when the DOB year is missing or equals the
-                          current year, which would otherwise paint "Name0".
-                          The {' '} keeps whitespace between name and chip
-                          even if Tailwind's ml-3 ever changes. */}
                       {b.turning_age > 0 && (
                         <>
                           {' '}
-                          <span className="text-xs font-normal text-gray-400 ml-1">
-                            · turning {b.turning_age}
-                          </span>
+                          <span className="text-xs font-normal text-gray-400 ml-1">· turning {b.turning_age}</span>
                         </>
                       )}
                     </p>
@@ -223,20 +219,18 @@ export default function Dashboard() {
               );
             })}
           </div>
-        </div>
+        </Panel>
       )}
 
       {/* Absence Alerts */}
       {absenceAlerts.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <h3 className="font-semibold text-red-800">Absence Alerts</h3>
-            <span className="badge bg-red-100 text-red-700 ml-auto">{absenceAlerts.length} students</span>
-          </div>
+        <Panel
+          title={<span className="flex items-center gap-1.5 text-rose-600"><AlertTriangle className="w-3.5 h-3.5" /> Absence Alerts</span>}
+          action={<span className="text-[11px] text-gray-400">{absenceAlerts.length} students</span>}
+        >
           <div className="space-y-2">
             {absenceAlerts.map((alert, idx) => (
-              <div key={idx} className="flex items-center justify-between bg-white rounded-lg px-4 py-2 border border-red-100">
+              <div key={idx} className="flex items-center justify-between rounded-lg px-3 py-2 border border-red-100 bg-red-50">
                 <div>
                   <span className="font-medium text-gray-900">{alert.student_name || alert.name}</span>
                   <span className="text-red-600 text-sm ml-2">
@@ -252,21 +246,22 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Today's Classes */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Today's Classes</h3>
+        <Panel
+          title="Today's Classes"
+          action={(
             <button
               onClick={() => navigate('/attendance')}
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
             >
-              Mark Attendance <ChevronRight className="w-4 h-4" />
+              Mark Attendance <ChevronRight className="w-3.5 h-3.5" />
             </button>
-          </div>
+          )}
+        >
           {classesToday.length === 0 ? (
             <p className="text-gray-400 text-sm py-4 text-center">No classes scheduled today.</p>
           ) : (
@@ -299,19 +294,20 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </Panel>
 
         {/* Recent Attendance */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Recent Attendance</h3>
+        <Panel
+          title="Recent Attendance"
+          action={(
             <button
               onClick={() => navigate('/attendance')}
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
             >
-              View All <ChevronRight className="w-4 h-4" />
+              View All <ChevronRight className="w-3.5 h-3.5" />
             </button>
-          </div>
+          )}
+        >
           {recentAttendance.length === 0 ? (
             <p className="text-gray-400 text-sm py-4 text-center">No recent attendance records.</p>
           ) : (
@@ -332,7 +328,7 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </Panel>
       </div>
     </div>
   );

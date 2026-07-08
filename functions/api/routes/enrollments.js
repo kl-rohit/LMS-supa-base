@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { createNotifications } = require('../lib/notify');
+const { resolveAudienceStudentIds } = require('../lib/audience');
 
 // GET /api/enrollments?course_id=X
 router.get('/', async (req, res) => {
@@ -75,15 +76,22 @@ router.get('/', async (req, res) => {
 // POST /api/enrollments
 router.post('/', async (req, res) => {
   try {
-    const { course_id, student_id, student_ids } = req.body;
+    const { course_id, student_id, student_ids, target_type } = req.body;
     if (!course_id) return res.status(400).json({ error: 'course_id is required' });
     // Verify course is in caller's org.
     const course = await getById(req, 'Courses', course_id);
     if (!course || Number(course.org_id) !== Number(req.orgId)) {
       return res.status(404).json({ error: 'Course not found' });
     }
-    const ids = Array.isArray(student_ids) && student_ids.length ? student_ids : student_id ? [student_id] : [];
-    if (!ids.length) return res.status(400).json({ error: 'student_id or student_ids[] required' });
+    // Enrol either an explicit student / list, OR an audience (Everyone / a
+    // Group / Specific students) resolved through the shared resolver. Audience
+    // assign is ADDITIVE — it enrols the resolved students; it never unenrols
+    // anyone (that would delete their progress), so removals stay explicit.
+    let ids = Array.isArray(student_ids) && student_ids.length ? student_ids : student_id ? [student_id] : [];
+    if (!ids.length && target_type) {
+      ids = await resolveAudienceStudentIds(req, { target_type, target_id: req.body.target_id, target_ids: req.body.target_ids });
+    }
+    if (!ids.length) return res.status(400).json({ error: 'student_id, student_ids[], or a target is required' });
 
     let existingIds = new Set();
     try {

@@ -203,6 +203,10 @@ export default function Lessons() {
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [enrollSelection, setEnrollSelection] = useState([]); // array of student_ids
   const [enrollSearch, setEnrollSearch] = useState('');
+  // Audience mode for enrolling: 'students' (hand-pick, default) | 'all' | 'group'.
+  const [enrollMode, setEnrollMode] = useState('students');
+  const [enrollGroupId, setEnrollGroupId] = useState('');
+  const [groups, setGroups] = useState([]);
 
   // Split-video-into-chapter-lessons modal state
   const [splitModalOpen, setSplitModalOpen] = useState(false);
@@ -509,7 +513,13 @@ export default function Lessons() {
   const openEnrollModal = () => {
     setEnrollSelection([]);
     setEnrollSearch('');
+    setEnrollMode('students');
+    setEnrollGroupId('');
     setEnrollModalOpen(true);
+    // Load groups lazily for the "A group" option (one read, only when needed).
+    if (groups.length === 0) {
+      api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {});
+    }
   };
   const enrolledIds = useMemo(
     () => new Set(enrollments.map((e) => String(e.student_id))),
@@ -529,13 +539,15 @@ export default function Lessons() {
     );
   }, [unenrolledStudents, enrollSearch]);
   const saveEnrollments = async () => {
-    if (enrollSelection.length === 0) return;
+    // Build the request by audience mode. Everyone / a Group resolve on the
+    // server (shared audience resolver); Specific students send the picked ids.
+    let body;
+    if (enrollMode === 'all') body = { target_type: 'all' };
+    else if (enrollMode === 'group') { if (!enrollGroupId) { toast.error('Pick a group'); return; } body = { target_type: 'group', target_id: String(enrollGroupId) }; }
+    else { if (enrollSelection.length === 0) return; body = { student_ids: enrollSelection.map(String) }; }
     try {
-      const resp = await api.post('/enrollments', {
-        course_id: String(selectedCourse.id),
-        student_ids: enrollSelection.map(String),
-      });
-      toast.success(`Enrolled ${resp.count || enrollSelection.length} student(s)`);
+      const resp = await api.post('/enrollments', { course_id: String(selectedCourse.id), ...body });
+      toast.success(resp.count > 0 ? `Enrolled ${resp.count} student${resp.count === 1 ? '' : 's'}` : 'Everyone in that audience is already enrolled');
       setEnrollModalOpen(false);
       fetchCourseDetail(selectedCourse.id);
     } catch (err) {
@@ -982,11 +994,36 @@ export default function Lessons() {
           title={`Enroll students — ${selectedCourse.name}`}
           size="md"
           onSave={saveEnrollments}
-          saveDisabled={enrollSelection.length === 0}
-          saveLabel={`Enroll ${enrollSelection.length > 0 ? `(${enrollSelection.length})` : ''}`}
+          saveDisabled={enrollMode === 'students' ? enrollSelection.length === 0 : enrollMode === 'group' ? !enrollGroupId : false}
+          saveLabel={enrollMode === 'all' ? 'Enroll everyone' : enrollMode === 'group' ? 'Enroll group' : `Enroll ${enrollSelection.length > 0 ? `(${enrollSelection.length})` : ''}`}
         >
           <div className="space-y-3">
-            {unenrolledStudents.length === 0 ? (
+            {/* Audience mode — same model as assignments and papers. */}
+            <div className="grid grid-cols-3 gap-2">
+              {[{ k: 'all', label: 'Everyone' }, { k: 'group', label: 'A group' }, { k: 'students', label: 'Specific students' }].map((m) => (
+                <button
+                  key={m.k}
+                  type="button"
+                  onClick={() => setEnrollMode(m.k)}
+                  className={`px-2 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${enrollMode === m.k ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-gray-200 text-gray-600 hover:border-indigo-300'}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {enrollMode === 'all' && (
+              <p className="text-sm text-gray-500 py-2">Enrols every active student who isn't already in this course. Existing enrolments and their progress are untouched.</p>
+            )}
+
+            {enrollMode === 'group' && (
+              <select value={enrollGroupId} onChange={(e) => setEnrollGroupId(e.target.value)} className="input-field">
+                <option value="">Select a group…</option>
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.name}{g.member_count != null ? ` (${g.member_count})` : ''}</option>)}
+              </select>
+            )}
+
+            {enrollMode === 'students' && (unenrolledStudents.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-6">All active students are already enrolled.</p>
             ) : (
               <>
@@ -1038,13 +1075,7 @@ export default function Lessons() {
                   })}
                 </div>
               </>
-            )}
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <button onClick={() => setEnrollModalOpen(false)} className="btn-secondary btn-sm">Cancel</button>
-              <button onClick={saveEnrollments} className="btn-primary btn-sm" disabled={enrollSelection.length === 0}>
-                Enroll {enrollSelection.length > 0 && `(${enrollSelection.length})`}
-              </button>
-            </div>
+            ))}
           </div>
         </Modal>
 

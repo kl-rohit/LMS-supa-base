@@ -33,6 +33,7 @@
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
 const { createNotifications } = require('../lib/notify');
+const { resolveAudienceStudentIds } = require('../lib/audience');
 
 const VALID_KINDS = ['task', 'quiz'];
 // 'students' (plural) = a hand-picked multi-select list, stored as a JSON array
@@ -80,33 +81,10 @@ async function loadAssignments(req) {
 
 // Resolve the recipient student ids for an assignment (used for counts). The
 // returned list is best-effort and org-scoped.
+// Now delegates to the shared audience resolver (lib/audience) so assignments,
+// question papers, and course assignment all resolve "who gets it" identically.
 async function recipientStudentIds(req, asg) {
-  const orgId = Number(req.orgId);
-  try {
-    if (asg.target_type === 'students') {
-      return parseTargetIds(asg.target_ids);
-    }
-    if (asg.target_type === 'student' && asg.target_id) {
-      return [String(asg.target_id)];
-    }
-    if (asg.target_type === 'group' && asg.target_id) {
-      const links = await zcqlAll(
-        req,
-        `SELECT GroupStudents.student_id FROM GroupStudents WHERE GroupStudents.group_id = ${safeId(asg.target_id)} AND GroupStudents.org_id = ${orgId}`,
-        'GroupStudents'
-      );
-      return unwrap(links, 'GroupStudents').map((l) => String(l.student_id)).filter(Boolean);
-    }
-    // all
-    const rows = await zcqlAll(
-      req,
-      `SELECT ROWID FROM Students WHERE Students.org_id = ${orgId} AND Students.status = 'active'`,
-      'Students'
-    );
-    return unwrap(rows, 'Students').map((r) => String(r.ROWID)).filter(Boolean);
-  } catch {
-    return [];
-  }
+  return resolveAudienceStudentIds(req, asg);
 }
 
 // Count completions for a task assignment (rows in AssignmentCompletions).

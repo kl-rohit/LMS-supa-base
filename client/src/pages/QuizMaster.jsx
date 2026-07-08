@@ -6,11 +6,13 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Download, Users, CheckCircle2, XCircle, Circle,
-  ChevronDown, Loader2, BookOpen, ClipboardList, FileQuestion,
+  ChevronDown, Loader2, BookOpen, ClipboardList, FileQuestion, Share2, Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
+import Modal from '../components/Modal';
+import TargetPicker from '../components/TargetPicker';
 import { MetricCard, Panel, SectionLabel } from '../components/ConsoleUI';
 import { quizGrade } from '../utils/quizGrade';
 
@@ -41,6 +43,24 @@ export default function QuizMaster() {
     return () => { cancelled = true; };
   }, [lessonId]);
 
+  // Assign-from-quiz state. A quiz reaches students through a quiz-assignment
+  // (kind='quiz', quiz_lesson_id=this quiz); we create/edit it right here so you
+  // never open the Assignments module for quizzes.
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [existingAsg, setExistingAsg] = useState(null);
+  const [target, setTarget] = useState({ target_type: 'all', target_id: '', target_ids: [] });
+  const [groups, setGroups] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [assigning, setAssigning] = useState(false);
+
+  const loadAssignment = () => api.get('/assignments').then((r) => {
+    const a = (r.assignments || []).find((x) => String(x.quiz_lesson_id) === String(lessonId) && x.kind === 'quiz');
+    setExistingAsg(a || null);
+    if (a) setTarget({ target_type: a.target_type || 'all', target_id: a.target_id ? String(a.target_id) : '', target_ids: Array.isArray(a.target_ids) ? a.target_ids.map(String) : [] });
+    return a || null;
+  }).catch(() => null);
+  useEffect(() => { loadAssignment(); }, [lessonId]);
+
   if (loading) return <Loader text="Loading analysis..." />;
   if (!data) return <div className="text-center py-12 text-gray-500">Could not load this quiz.</div>;
 
@@ -49,6 +69,43 @@ export default function QuizMaster() {
   const assoc = quiz.association || { kind: 'standalone', name: '' };
   const AssocIcon = assoc.kind === 'course' ? BookOpen : assoc.kind === 'assignment' ? ClipboardList : FileQuestion;
   const assocText = assoc.kind === 'standalone' ? 'Standalone' : `${assoc.kind === 'course' ? 'Course' : 'Assignment'}: ${assoc.name}`;
+
+  // A course quiz is delivered by course enrolment; only standalone quizzes are
+  // assigned here.
+  const canAssign = assoc.kind !== 'course';
+  const asgLabel = !existingAsg ? 'Not assigned yet'
+    : existingAsg.target_type === 'all' ? 'Assigned to everyone'
+    : existingAsg.target_type === 'group' ? 'Assigned to a group'
+    : existingAsg.target_type === 'students' ? `Assigned to ${(existingAsg.target_ids || []).length} student${(existingAsg.target_ids || []).length === 1 ? '' : 's'}`
+    : 'Assigned';
+
+  const openAssign = () => {
+    setAssignOpen(true);
+    if (groups.length === 0) api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {});
+    if (students.length === 0) api.get('/students?limit=500').then((r) => setStudents(r.students || [])).catch(() => {});
+  };
+  const saveAssign = async () => {
+    if (target.target_type === 'group' && !target.target_id) { toast.error('Pick a group'); return; }
+    if (target.target_type === 'students' && (target.target_ids || []).length === 0) { toast.error('Pick at least one student'); return; }
+    setAssigning(true);
+    try {
+      const body = { target_type: target.target_type, target_id: target.target_id || null, target_ids: target.target_ids || [] };
+      if (existingAsg) await api.put(`/assignments/${existingAsg.id}`, body);
+      else await api.post('/assignments', { title: quiz.title, kind: 'quiz', quiz_lesson_id: String(lessonId), ...body });
+      await loadAssignment();
+      setAssignOpen(false);
+      toast.success('Quiz assigned');
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message || 'Could not assign');
+    } finally {
+      setAssigning(false);
+    }
+  };
+  const unassign = async () => {
+    if (!existingAsg) return;
+    try { await api.delete(`/assignments/${existingAsg.id}`); setExistingAsg(null); setAssignOpen(false); toast.success('Quiz unassigned'); }
+    catch { toast.error('Could not unassign'); }
+  };
 
   // Grade distribution across responses.
   const gradeTally = {};
@@ -83,13 +140,42 @@ export default function QuizMaster() {
             <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"><AssocIcon className="w-3 h-3" /> {assocText}</span>
             <span className="text-xs text-gray-500">{quiz.question_count} question{quiz.question_count === 1 ? '' : 's'}</span>
             <span className="text-xs text-gray-500">Pass {quiz.pass_mark}%</span>
+            {canAssign && (
+              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${existingAsg ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                <Share2 className="w-3 h-3" /> {asgLabel}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {canAssign && (
+            <button onClick={openAssign} className="btn-secondary btn-sm"><Share2 className="w-4 h-4" /> <span className="hidden sm:inline">{existingAsg ? 'Manage assignment' : 'Assign'}</span></button>
+          )}
           <button onClick={exportCsv} disabled={!responses.length} className="btn-secondary btn-sm disabled:opacity-40"><Download className="w-4 h-4" /> <span className="hidden sm:inline">Export CSV</span></button>
           <button onClick={() => navigate(`/quizzes/${lessonId}/edit`)} className="btn-primary btn-sm"><Edit2 className="w-4 h-4" /> Edit questions</button>
         </div>
       </div>
+
+      {/* Assign-to-students modal (standalone from the quiz; no need to open Assignments) */}
+      <Modal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        title="Assign this quiz"
+        size="md"
+        onSave={saveAssign}
+        saveLabel={assigning ? 'Saving…' : existingAsg ? 'Update' : 'Assign'}
+        saveDisabled={assigning}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">Choose who takes this quiz. Students see it in their portal under Assignments, and their scores flow back here.</p>
+          <TargetPicker value={target} groups={groups} students={students} onChange={setTarget} label="Assign to" />
+          {existingAsg && (
+            <button type="button" onClick={unassign} className="text-sm text-red-600 hover:text-red-700 font-medium inline-flex items-center gap-1.5">
+              <Trash2 className="w-4 h-4" /> Unassign (remove from students)
+            </button>
+          )}
+        </div>
+      </Modal>
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

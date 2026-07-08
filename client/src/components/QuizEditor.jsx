@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Plus, Trash2, Check, Loader2, X, ListChecks, Copy, ArrowUp, ArrowDown,
-  CircleDot, ToggleLeft, CheckSquare, Type,
+  CircleDot, ToggleLeft, CheckSquare, Type, Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -194,27 +194,31 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
   const [drafts, setDrafts] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settings, setSettings] = useState({ quiz_required: false, quiz_shuffle: false, quiz_shuffle_options: false, quiz_pass_mark: '' });
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importMode, setImportMode] = useState('append');
+  const [importing, setImporting] = useState(false);
   const bottomRef = useRef(null);
+
+  // Load (or reload) this quiz's questions + settings from the server.
+  const loadQuestions = async () => {
+    const data = await api.getFresh(`/quizzes?lesson_id=${lesson.id}`);
+    setDrafts((data.questions || []).map(fromServer));
+    const s = data.settings || {};
+    setSettings({
+      quiz_required: !!s.quiz_required,
+      quiz_shuffle: !!s.quiz_shuffle,
+      quiz_shuffle_options: !!s.quiz_shuffle_options,
+      quiz_pass_mark: s.quiz_pass_mark || '',
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const data = await api.get(`/quizzes?lesson_id=${lesson.id}`);
-        if (cancelled) return;
-        setDrafts((data.questions || []).map(fromServer));
-        const s = data.settings || {};
-        setSettings({
-          quiz_required: !!s.quiz_required,
-          quiz_shuffle: !!s.quiz_shuffle,
-          quiz_shuffle_options: !!s.quiz_shuffle_options,
-          quiz_pass_mark: s.quiz_pass_mark || '',
-        });
-      } catch {
-        toast.error('Could not load quiz');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      try { await loadQuestions(); }
+      catch { if (!cancelled) toast.error('Could not load quiz'); }
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [lesson.id]);
@@ -314,16 +318,61 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
     onClose();
   };
 
+  // Read an uploaded .json file into the paste box.
+  const onImportFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => setImportText(String(r.result || ''));
+    r.readAsText(f);
+    e.target.value = '';
+  };
+
+  // Parse the JSON and bulk-import via the server (append or replace).
+  const doImport = async () => {
+    let parsed;
+    try { parsed = JSON.parse(importText); }
+    catch { toast.error('That does not look like valid JSON.'); return; }
+    if (!Array.isArray(parsed)) { toast.error('Expected a JSON array of questions.'); return; }
+    if (parsed.length === 0) { toast.error('No questions found in the JSON.'); return; }
+    setImporting(true);
+    try {
+      const resp = await api.post('/quizzes/import', { lesson_id: String(lesson.id), questions: parsed, mode: importMode });
+      await loadQuestions();
+      setImportOpen(false); setImportText('');
+      const skipped = (resp.errors || []).length;
+      if (skipped) toast(`Imported ${resp.created} of ${resp.total}. ${skipped} skipped (check their format).`, { icon: '⚠️' });
+      else toast.success(`Imported ${resp.created} question${resp.created === 1 ? '' : 's'}`);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const SAMPLE_JSON = `[
+  { "type": "single", "question": "2 + 2 = ?", "points": 1,
+    "options": ["3", "4", "5"], "correct_index": 1, "explanation": "" },
+  { "type": "multi", "question": "Pick the even numbers",
+    "options": ["2", "3", "4"], "correct_answers": [0, 2] },
+  { "type": "truefalse", "question": "The sky is blue", "correct_index": 0 },
+  { "type": "short", "question": "Capital of France?",
+    "correct_answers": ["Paris", "paris"] }
+]`;
+
   return (
     <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
       {/* Sticky header: single Save action + close. */}
       <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <ListChecks className="w-5 h-5 text-indigo-500 shrink-0" />
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Quiz — {lesson.title}</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Quiz: {lesson.title}</h2>
           {hasChanges && <span className="text-xs text-amber-600 font-medium flex-shrink-0 hidden sm:inline">Unsaved changes</span>}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" onClick={() => setImportOpen(true)} className="btn-secondary btn-sm" title="Import questions from JSON">
+            <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Import</span>
+          </button>
           <button type="button" onClick={saveAll} disabled={saving || !hasChanges} className="btn-primary btn-sm disabled:opacity-40">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save quiz
           </button>
@@ -332,6 +381,46 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
           </button>
         </div>
       </div>
+
+      {/* Import-from-JSON overlay */}
+      {importOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => !importing && setImportOpen(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-xl border border-gray-200 shadow-xl p-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Upload className="w-4 h-4 text-indigo-500" /> Import questions</h3>
+              <button type="button" onClick={() => setImportOpen(false)} className="p-1.5 rounded text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Paste a JSON array of questions, or upload a .json file. Types: single, truefalse, multi, short.</p>
+
+            <div className="flex items-center gap-2 mb-3 text-sm">
+              <label className="inline-flex items-center gap-1.5 cursor-pointer"><input type="radio" name="impMode" checked={importMode === 'append'} onChange={() => setImportMode('append')} /> Add to existing</label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer"><input type="radio" name="impMode" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} /> Replace all</label>
+              <label className="ml-auto btn-secondary btn-sm cursor-pointer">
+                <Upload className="w-3.5 h-3.5" /> Upload .json
+                <input type="file" accept=".json,application/json" onChange={onImportFile} className="hidden" />
+              </label>
+            </div>
+
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={SAMPLE_JSON}
+              rows={10}
+              className="input-field w-full font-mono text-xs resize-y"
+            />
+            <div className="flex items-center justify-between mt-3">
+              <button type="button" onClick={() => setImportText(SAMPLE_JSON)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Paste a sample</button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setImportOpen(false)} className="btn-secondary btn-sm" disabled={importing}>Cancel</button>
+                <button type="button" onClick={doImport} disabled={importing || !importText.trim()} className="btn-primary btn-sm disabled:opacity-40">
+                  {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-6 pb-28 space-y-4">

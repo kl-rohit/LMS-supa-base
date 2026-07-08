@@ -332,6 +332,64 @@ router.get('/:lessonId/attempt/:studentId', async (req, res) => {
   }
 });
 
+// POST /api/quizzes/import — bulk-create questions from a JSON array.
+// Body: { lesson_id, questions:[...], mode:'append'|'replace' }
+// Each item: { type|question_type, question, options[], correct_index,
+//   correct_answers[], points, explanation }. Validated with the same rules as
+// manual entry; invalid rows are reported (not silently dropped).
+router.post('/import', async (req, res) => {
+  try {
+    const { lesson_id, mode } = req.body;
+    const questions = Array.isArray(req.body.questions) ? req.body.questions : null;
+    if (!lesson_id || !questions) return res.status(400).json({ error: 'lesson_id and a questions array are required' });
+    if (!(await lessonInOrg(req, lesson_id))) return res.status(404).json({ error: 'Lesson not found' });
+    if (questions.length === 0) return res.status(400).json({ error: 'The questions array is empty' });
+    if (questions.length > 200) return res.status(400).json({ error: 'Import is limited to 200 questions at a time' });
+
+    // Replace mode wipes existing questions first.
+    if (mode === 'replace') {
+      const existing = await loadLessonQuiz(req, lesson_id);
+      for (const q of existing) { try { await remove(req, 'LessonQuizzes', q.id); } catch { /* ignore */ } }
+    }
+    // Append after the current highest order_index (0 for a freshly cleared quiz).
+    let order = 0;
+    if (mode !== 'replace') {
+      const existing = await loadLessonQuiz(req, lesson_id);
+      order = existing.reduce((m, q) => Math.max(m, Number(q.order_index) || 0), 0) + 1;
+    }
+
+    const errors = [];
+    let created = 0;
+    for (let i = 0; i < questions.length; i++) {
+      const raw = questions[i] || {};
+      const q = String(raw.question ?? '').trim();
+      if (!q) { errors.push({ index: i, error: 'missing question text' }); continue; }
+      const built = buildQuestionFields({
+        question_type: raw.question_type || raw.type,
+        options: raw.options,
+        correct_index: raw.correct_index,
+        correct_answers: raw.correct_answers,
+        points: raw.points,
+      });
+      if (built.error) { errors.push({ index: i, error: built.error }); continue; }
+      try {
+        await insert(req, 'LessonQuizzes', {
+          lesson_id: String(lesson_id),
+          question: q,
+          explanation: raw.explanation ? String(raw.explanation).trim() : '',
+          order_index: order++,
+          ...built.fields,
+          org_id: Number(req.orgId),
+        });
+        created++;
+      } catch (e) { errors.push({ index: i, error: 'could not save' }); }
+    }
+    res.json({ created, errors, total: questions.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to import questions', detail: e.message });
+  }
+});
+
 // POST /api/quizzes — create one question.
 // Body: { lesson_id, question, question_type, options[], correct_index,
 //         correct_answers[], points, explanation, order_index }

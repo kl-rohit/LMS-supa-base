@@ -55,7 +55,15 @@ a{color:inherit;text-decoration:none}
 
 /* Layout */
 .wrap{max-width:1080px;margin:0 auto;padding:0 32px}
-@media(max-width:640px){.wrap{padding:0 20px}}
+@media(max-width:640px){
+  .wrap{padding:0 18px}
+  .hero{padding:120px 0 60px}
+  /* Tighten the how-it-works timeline so the left gutter matches the right */
+  .steps{padding-left:30px}
+  .steps::before,.steps-fill{left:11px}
+  .step .num{left:-30px;width:24px;height:24px;font-size:11px}
+  .step{padding-bottom:26px}
+}
 section{position:relative;scroll-margin-top:80px}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-600)}
 .eyebrow::before{content:'';width:22px;height:2px;background:var(--brand-600);border-radius:2px}

@@ -101,8 +101,10 @@ section{position:relative;scroll-margin-top:80px}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
 @media(max-width:860px){.grid{grid-template-columns:1fr 1fr}}
 @media(max-width:540px){.grid{grid-template-columns:1fr}}
-.card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:24px;transition:.25s}
+.card{display:block;background:#fff;border:1px solid var(--border);border-radius:16px;padding:24px;transition:.25s;color:inherit;position:relative}
 .card:hover{border-color:var(--brand-500);box-shadow:0 12px 32px rgba(15,23,42,.08);transform:translateY(-3px)}
+.card .go{position:absolute;top:22px;right:22px;color:var(--brand-500);opacity:0;transform:translateX(-4px);transition:.2s;font-weight:700}
+.card:hover .go{opacity:1;transform:none}
 .card .ico{width:44px;height:44px;border-radius:12px;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
 .card h3{font-size:17px;font-weight:700}
 .card p{color:var(--ink-3);font-size:14px;margin-top:6px}
@@ -162,8 +164,9 @@ footer{border-top:1px solid var(--border);padding:40px 0}
   <div class="nav-links">
     <a href="#modules">Features</a>
     <a href="#setup">How it works</a>
-    <a href="#pricing">Pricing</a>
+    <a href="/app/pricing.html">Pricing</a>
     <a href="/app/landing-demo.html">Live demo</a>
+    <a href="/app/landing.html">← Back to site</a>
     <a class="nav-cta" href="/app/login">Sign in</a>
   </div>
 </nav>
@@ -257,12 +260,12 @@ footer{border-top:1px solid var(--border);padding:40px 0}
       <h2>Every part of your academy. Fully connected.</h2>
     </div>
     <div class="grid">
-      <div class="card"><div class="ico">👥</div><h3>Students &amp; groups</h3><p>Every learner, parent, batch and fee plan in one clean roster.</p></div>
-      <div class="card"><div class="ico">✅</div><h3>Attendance</h3><p>Mark a class in seconds; absences are flagged before they become a pattern.</p></div>
-      <div class="card"><div class="ico">₹</div><h3>Fees &amp; reminders</h3><p>Know who owes what; gentle reminders and a UPI QR go out on their own.</p></div>
-      <div class="card"><div class="ico">🎥</div><h3>Lessons &amp; quizzes</h3><p>Share recordings, papers and exam-grade quizzes, and see how each student did.</p></div>
-      <div class="card"><div class="ico">💬</div><h3>Parent updates</h3><p>Attendance, fees and progress reach parents automatically.</p></div>
-      <div class="card"><div class="ico">📊</div><h3>Reports</h3><p>Revenue, retention, attendance and learning trends at a glance.</p></div>
+      <a class="card" href="/app/landing-demo.html"><span class="go">→</span><div class="ico">👥</div><h3>Students &amp; groups</h3><p>Every learner, parent, batch and fee plan in one clean roster.</p></a>
+      <a class="card" href="/app/landing-demo.html"><span class="go">→</span><div class="ico">✅</div><h3>Attendance</h3><p>Mark a class in seconds; absences are flagged before they become a pattern.</p></a>
+      <a class="card" href="/app/landing-demo.html"><span class="go">→</span><div class="ico">₹</div><h3>Fees &amp; reminders</h3><p>Know who owes what; gentle reminders and a UPI QR go out on their own.</p></a>
+      <a class="card" href="/app/landing-demo.html"><span class="go">→</span><div class="ico">🎥</div><h3>Lessons &amp; quizzes</h3><p>Share recordings, papers and exam-grade quizzes, and see how each student did.</p></a>
+      <a class="card" href="/app/landing-demo.html"><span class="go">→</span><div class="ico">💬</div><h3>Parent updates</h3><p>Attendance, fees and progress reach parents automatically.</p></a>
+      <a class="card" href="/app/landing-demo.html"><span class="go">→</span><div class="ico">📊</div><h3>Reports</h3><p>Revenue, retention, attendance and learning trends at a glance.</p></a>
     </div>
   </div>
 </section>
@@ -293,6 +296,7 @@ footer{border-top:1px solid var(--border);padding:40px 0}
         <li><span class="ck">✓</span> Works on any phone — installs like an app</li>
       </ul>
       <a class="btn btn-primary" href="tel:+919360390883" style="width:100%;justify-content:center">Book a demo</a>
+      <a href="/app/pricing.html" style="display:inline-block;margin-top:16px;font-size:14px;color:var(--brand-600);font-weight:600">See full pricing &amp; FAQ →</a>
     </div>
   </div>
 </section>
@@ -323,9 +327,10 @@ footer{border-top:1px solid var(--border);padding:40px 0}
     <div class="foot-links">
       <a href="#modules">Features</a>
       <a href="#setup">How it works</a>
-      <a href="#pricing">Pricing</a>
+      <a href="/app/pricing.html">Pricing</a>
       <a href="/app/landing-demo.html">Live demo</a>
       <a href="/app/login">Sign in</a>
+      <a href="/app/landing.html">← Back to site</a>
     </div>
   </div>
   <p class="foot-copy">© VidyaSetu · Bridging teachers and learners</p>

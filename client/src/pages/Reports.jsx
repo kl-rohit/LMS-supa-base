@@ -535,7 +535,7 @@ export default function Reports() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" subtitle="Insights across attendance, fees, and learning" />
+      <PageHeader title="Reports" subtitle="Insights across attendance, fees, and learning" live={false} />
 
 
       {/* Reports Center: a categorized sidebar on desktop, a picker on mobile,

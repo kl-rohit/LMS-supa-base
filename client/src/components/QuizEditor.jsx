@@ -144,7 +144,7 @@ function QuestionCard({ index, count, draft, onChange, onDelete, onDuplicate, on
         </div>
       )}
 
-      <input value={draft.explanation} onChange={(e) => set({ explanation: e.target.value })} placeholder="Explanation (optional — shown after answering)" className="input-field w-full text-sm" />
+      <input value={draft.explanation} onChange={(e) => set({ explanation: e.target.value })} placeholder="Explanation (optional, shown after answering)" className="input-field w-full text-sm" />
     </div>
   );
 }

@@ -1,0 +1,266 @@
+// Quiz Master — full-page analysis of a quiz's responses. Score summary,
+// grade distribution, per-question difficulty + option/distractor breakdown,
+// and an expandable responses table with CSV export. Reached at
+// /quizzes/:lessonId. Base classes auto-theme (light + dark).
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft, Edit2, Download, Users, CheckCircle2, XCircle, Circle,
+  ChevronDown, Loader2, BookOpen, ClipboardList, FileQuestion,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../utils/api';
+import Loader from '../components/Loader';
+import { MetricCard, Panel, SectionLabel } from '../components/ConsoleUI';
+import { quizGrade } from '../utils/quizGrade';
+
+const TYPE_LABEL = { single: 'Single choice', truefalse: 'True / False', multi: 'Multiple answers', short: 'Short answer' };
+
+// Difficulty from the % who got it right (lower % = harder).
+function difficulty(pct) {
+  if (pct == null) return { label: 'No data', cls: 'bg-gray-100 text-gray-500' };
+  if (pct >= 80) return { label: 'Easy', cls: 'bg-green-50 text-green-700' };
+  if (pct >= 40) return { label: 'Medium', cls: 'bg-amber-50 text-amber-700' };
+  return { label: 'Hard', cls: 'bg-rose-50 text-rose-700' };
+}
+
+export default function QuizMaster() {
+  const { lessonId } = useParams();
+  const navigate = useNavigate();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try { const d = await api.getFresh(`/quizzes/${lessonId}/analytics`); if (!cancelled) setData(d); }
+      catch { if (!cancelled) toast.error('Could not load quiz analytics'); }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [lessonId]);
+
+  if (loading) return <Loader text="Loading analysis..." />;
+  if (!data) return <div className="text-center py-12 text-gray-500">Could not load this quiz.</div>;
+
+  const { quiz, summary, per_question: perQ, responses } = data;
+  const bands = quiz.grade_bands;
+  const assoc = quiz.association || { kind: 'standalone', name: '' };
+  const AssocIcon = assoc.kind === 'course' ? BookOpen : assoc.kind === 'assignment' ? ClipboardList : FileQuestion;
+  const assocText = assoc.kind === 'standalone' ? 'Standalone' : `${assoc.kind === 'course' ? 'Course' : 'Assignment'}: ${assoc.name}`;
+
+  // Grade distribution across responses.
+  const gradeTally = {};
+  responses.forEach((r) => { const g = quizGrade(r.score, r.passed, bands).label; gradeTally[g] = (gradeTally[g] || 0) + 1; });
+  const gradeRows = Object.entries(gradeTally).sort((a, b) => b[1] - a[1]);
+
+  const exportCsv = () => {
+    const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const lines = [];
+    lines.push(['Student', 'Score %', 'Correct', 'Total', 'Passed', 'Attempts', 'Submitted'].map(esc).join(','));
+    responses.forEach((r) => lines.push([r.student_name, r.score, r.correct_count, r.total_questions, r.passed ? 'Yes' : 'No', r.attempts, r.submitted_at ? new Date(r.submitted_at).toLocaleString() : ''].map(esc).join(',')));
+    lines.push('');
+    lines.push(['Question', 'Answered', 'Correct', 'Correct %'].map(esc).join(','));
+    perQ.forEach((q, i) => lines.push([`Q${i + 1}. ${q.question}`, q.answered, q.correct, q.correct_pct == null ? '' : q.correct_pct].map(esc).join(',')));
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${(quiz.title || 'quiz').replace(/[^a-z0-9]+/gi, '-')}-responses.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <button onClick={() => navigate('/quizzes')} className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1 mb-1">
+            <ArrowLeft className="w-4 h-4" /> All quizzes
+          </button>
+          <h1 className="text-2xl font-bold text-gray-900 leading-tight truncate">{quiz.title}</h1>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"><AssocIcon className="w-3 h-3" /> {assocText}</span>
+            <span className="text-xs text-gray-500">{quiz.question_count} question{quiz.question_count === 1 ? '' : 's'}</span>
+            <span className="text-xs text-gray-500">Pass {quiz.pass_mark}%</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={exportCsv} disabled={!responses.length} className="btn-secondary btn-sm disabled:opacity-40"><Download className="w-4 h-4" /> <span className="hidden sm:inline">Export CSV</span></button>
+          <button onClick={() => navigate(`/quizzes/${lessonId}/edit`)} className="btn-primary btn-sm"><Edit2 className="w-4 h-4" /> Edit questions</button>
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <MetricCard label="Responses" value={summary.attempts} accent="indigo" icon={Users} />
+        <MetricCard label="Average score" value={`${summary.avg_score}%`} accent="blue" />
+        <MetricCard label="Pass rate" value={`${summary.pass_rate}%`} sub={`${summary.pass_count} of ${summary.attempts} passed`} tone={summary.pass_rate >= 70 ? 'good' : summary.pass_rate >= 40 ? 'warn' : 'bad'} accent="emerald" />
+        <MetricCard label="Median / range" value={`${summary.median}%`} sub={summary.attempts ? `${summary.low}% to ${summary.high}%` : ''} accent="violet" />
+      </div>
+
+      {summary.attempts === 0 ? (
+        <Panel><p className="text-sm text-gray-400 text-center py-6">No one has attempted this quiz yet. Analysis appears once students submit.</p></Panel>
+      ) : (
+        <>
+          {/* Grade distribution */}
+          {gradeRows.length > 0 && (
+            <Panel title="Grade distribution">
+              <div className="space-y-2">
+                {gradeRows.map(([label, count]) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <span className="text-sm text-gray-700 w-28 flex-shrink-0 truncate">{label}</span>
+                    <div className="flex-1 h-2.5 rounded bg-gray-100 overflow-hidden">
+                      <div className="h-full bg-indigo-500 rounded" style={{ width: `${Math.round((count / summary.attempts) * 100)}%` }} />
+                    </div>
+                    <span className="text-xs text-gray-500 w-10 text-right">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
+
+          {/* Per-question analysis */}
+          <Panel title="Question analysis">
+            {summary.with_answers === 0 ? (
+              <p className="text-sm text-gray-400 py-2">Per-question detail is available for attempts made after answer capture was enabled. New attempts will populate this.</p>
+            ) : (
+              <div className="space-y-4">
+                {perQ.map((q, i) => <QuestionStat key={q.id || i} q={q} index={i} />)}
+              </div>
+            )}
+          </Panel>
+
+          {/* Responses */}
+          <Panel title={<span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Responses <span className="text-gray-300 normal-case font-normal">{responses.length}</span></span>}>
+            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {responses.map((r) => <ResponseRow key={r.student_id} lessonId={lessonId} r={r} bands={bands} />)}
+            </div>
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}
+
+// One question's stats: difficulty + how the options were chosen (distractors).
+function QuestionStat({ q, index }) {
+  const type = q.question_type || 'single';
+  const diff = difficulty(q.correct_pct);
+  const total = q.answered || 0;
+  // The most-picked wrong option is the "top distractor".
+  let topDistractor = -1, topDistractorCount = -1;
+  if (type !== 'short') {
+    (q.option_counts || []).forEach((c, i) => {
+      const isCorrect = type === 'multi' ? (q.correct_answers || []).includes(i) : q.correct_index === i;
+      if (!isCorrect && c > topDistractorCount) { topDistractorCount = c; topDistractor = i; }
+    });
+  }
+  return (
+    <div className="border border-gray-200 rounded-lg p-3">
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <p className="text-sm font-medium text-gray-900"><span className="text-gray-400 mr-1.5">Q{index + 1}.</span>{q.question}</p>
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${diff.cls}`}>
+          {q.correct_pct == null ? 'No data' : `${q.correct_pct}% correct · ${diff.label}`}
+        </span>
+      </div>
+      <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-2">{TYPE_LABEL[type] || 'Single choice'} · {total} answered</p>
+
+      {type === 'short' ? (
+        <p className="text-sm text-green-700 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> {(q.correct_answers || []).join(' / ')}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {(q.options || []).map((opt, i) => {
+            const isCorrect = type === 'multi' ? (q.correct_answers || []).includes(i) : q.correct_index === i;
+            const count = (q.option_counts || [])[i] || 0;
+            const pct = total ? Math.round((count / total) * 100) : 0;
+            const isDistractor = i === topDistractor && topDistractorCount > 0;
+            return (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                {isCorrect ? <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" /> : <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+                <span className={`w-40 sm:w-56 truncate ${isCorrect ? 'text-green-700 font-medium' : 'text-gray-700'}`}>{opt}</span>
+                <div className="flex-1 h-2 rounded bg-gray-100 overflow-hidden">
+                  <div className={`h-full rounded ${isCorrect ? 'bg-green-500' : 'bg-gray-300'}`} style={{ width: `${pct}%` }} />
+                </div>
+                <span className="text-xs text-gray-500 w-16 text-right">{count} ({pct}%)</span>
+                {isDistractor && <span className="text-[10px] font-medium text-rose-600 whitespace-nowrap">top miss</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A response row, expandable to the student's per-question answers (loaded on demand).
+function ResponseRow({ lessonId, r, bands }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const grade = quizGrade(r.score, r.passed, bands);
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !detail && !loading) {
+      setLoading(true);
+      try { setDetail(await api.getFresh(`/quizzes/${lessonId}/attempt/${r.student_id}`)); }
+      catch { toast.error('Could not load this response'); }
+      finally { setLoading(false); }
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={toggle} className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors">
+        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">{(r.student_name || '?').slice(0, 1).toUpperCase()}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900 truncate">{r.student_name}</p>
+          <p className="text-xs text-gray-500">{r.correct_count}/{r.total_questions} correct{r.attempts > 1 ? ` · ${r.attempts} attempts` : ''}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-semibold text-gray-900">{r.score}%</p>
+          <span className={`inline-block text-[11px] font-medium px-1.5 py-0.5 rounded ${grade.badgeClass}`}>{grade.label}</span>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3 bg-gray-50/60">
+          {loading ? (
+            <div className="py-3 text-center text-gray-400"><Loader2 className="w-4 h-4 animate-spin mx-auto" /></div>
+          ) : !detail ? null : !detail.has_answers ? (
+            <p className="text-xs text-gray-500 py-2">Detailed answers were not recorded for this attempt.</p>
+          ) : (
+            <div className="space-y-2 pt-1">
+              {detail.breakdown.map((b, i) => (
+                <div key={b.id || i} className="text-sm border-t border-gray-100 pt-2 first:border-t-0">
+                  <p className="text-gray-800"><span className="text-gray-400 mr-1">{i + 1}.</span>{b.question}</p>
+                  <p className={`mt-0.5 flex items-start gap-1.5 ${b.is_correct ? 'text-green-700' : 'text-red-600'}`}>
+                    {b.is_correct ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                    <span>{answerText(b, b.selected)}</span>
+                  </p>
+                  {!b.is_correct && <p className="text-xs text-gray-500 ml-5">Correct: {correctText(b)}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function answerText(q, value) {
+  if (value === null || value === undefined || value === '') return 'No answer';
+  const type = q.question_type || 'single';
+  if (type === 'short') return String(value);
+  if (type === 'multi') { const picked = (Array.isArray(value) ? value : []).map((i) => (q.options || [])[i]).filter(Boolean); return picked.length ? picked.join(', ') : 'No answer'; }
+  return (q.options || [])[Number(value)] || 'No answer';
+}
+function correctText(q) {
+  const type = q.question_type || 'single';
+  if (type === 'short') return (q.correct_answers || []).join(' / ');
+  if (type === 'multi') return (q.correct_answers || []).map((i) => (q.options || [])[i]).filter(Boolean).join(', ');
+  return (q.options || [])[q.correct_index] || '';
+}

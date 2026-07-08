@@ -76,6 +76,8 @@ const Lessons        = lazyWithReload(() => import('./pages/Lessons'));
 const Assignments    = lazyWithReload(() => import('./pages/Assignments'));
 const QuestionPapers = lazyWithReload(() => import('./pages/QuestionPapers'));
 const Quizzes = lazyWithReload(() => import('./pages/Quizzes'));
+const QuizMaster = lazyWithReload(() => import('./pages/QuizMaster'));
+const QuizEditorPage = lazyWithReload(() => import('./pages/QuizEditorPage'));
 const Help           = lazyWithReload(() => import('./pages/Help'));
 const VerifyCertificate = lazyWithReload(() => import('./pages/VerifyCertificate'));
 
@@ -311,6 +313,8 @@ function TeacherLayout() {
               <Route path="/assignments" element={<Assignments />} />
               <Route path="/question-papers" element={<QuestionPapers />} />
               <Route path="/quizzes" element={<Quizzes />} />
+              <Route path="/quizzes/:lessonId/edit" element={<QuizEditorPage />} />
+              <Route path="/quizzes/:lessonId" element={<QuizMaster />} />
               <Route path="/student-logins" element={<StudentLogins />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />

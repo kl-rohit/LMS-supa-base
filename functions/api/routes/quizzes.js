@@ -341,6 +341,112 @@ router.get('/:lessonId/attempt/:studentId', async (req, res) => {
   }
 });
 
+// GET /api/quizzes/:lessonId/analytics — full "quiz master" analysis:
+// score summary, per-question difficulty + option/distractor distribution, and
+// the responses list. Per-question stats come from the stored answers, so they
+// only count attempts made after answer capture was added.
+router.get('/:lessonId/analytics', async (req, res) => {
+  try {
+    const lid = safeId(req.params.lessonId);
+    if (!lid) return res.status(400).json({ error: 'lesson_id is required' });
+    const lesson = await getById(req, 'Lessons', lid);
+    if (!lesson || Number(lesson.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Quiz not found' });
+    const n = normalize(lesson);
+    const questions = (await loadLessonQuiz(req, lid)).map(shapeForAdmin);
+
+    // Association (course > assignment > standalone).
+    let association = { kind: 'standalone', name: '' };
+    if (n.course_id) {
+      let title = '';
+      try { const c = await getById(req, 'Courses', n.course_id); if (c && Number(c.org_id) === Number(req.orgId)) title = normalize(c).title || ''; } catch { /* deleted */ }
+      association = { kind: 'course', name: title || 'Course' };
+    } else {
+      try {
+        const arows = await zcql(req, `SELECT title FROM Assignments WHERE Assignments.quiz_lesson_id = ${lid} AND Assignments.org_id = ${Number(req.orgId)}`);
+        const names = unwrap(arows, 'Assignments').map(normalize).map((a) => a.title).filter(Boolean);
+        if (names.length) association = { kind: 'assignment', name: names.join(', ') };
+      } catch { /* ignore */ }
+    }
+
+    // Attempts (with answers) + student names.
+    let attempts = [];
+    try {
+      const rows = await zcql(req, `SELECT * FROM QuizAttempts WHERE QuizAttempts.lesson_id = ${lid} AND QuizAttempts.org_id = ${Number(req.orgId)} ORDER BY QuizAttempts.MODIFIEDTIME DESC`);
+      attempts = unwrap(rows, 'QuizAttempts').map(normalize);
+    } catch { /* table absent */ }
+    const sids = [...new Set(attempts.map((a) => safeId(a.student_id)).filter(Boolean))];
+    const nameById = new Map();
+    if (sids.length) {
+      try {
+        const srows = await zcql(req, `SELECT ROWID, name FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.ROWID IN (${sids.join(',')})`);
+        for (const s of unwrap(srows, 'Students').map(normalize)) nameById.set(String(s.id), s.name || '');
+      } catch { /* ignore */ }
+    }
+
+    // Score summary.
+    const scores = attempts.map((a) => Number(a.score) || 0);
+    const nAtt = attempts.length;
+    const passCount = attempts.filter((a) => a.passed === true || a.passed === 1).length;
+    const sorted = [...scores].sort((a, b) => a - b);
+    const median = nAtt ? (nAtt % 2 ? sorted[(nAtt - 1) / 2] : Math.round((sorted[nAtt / 2 - 1] + sorted[nAtt / 2]) / 2)) : 0;
+    const summary = {
+      attempts: nAtt,
+      avg_score: nAtt ? Math.round(scores.reduce((s, x) => s + x, 0) / nAtt) : 0,
+      median, high: nAtt ? sorted[nAtt - 1] : 0, low: nAtt ? sorted[0] : 0,
+      pass_count: passCount, pass_rate: nAtt ? Math.round((passCount / nAtt) * 100) : 0,
+      with_answers: attempts.filter((a) => a.answers).length,
+    };
+
+    // Per-question stats.
+    const stats = questions.map((q) => ({ q, answered: 0, correct: 0, opt: (q.options || []).map(() => 0) }));
+    const byId = new Map(stats.map((s) => [String(s.q.id), s]));
+    for (const a of attempts) {
+      let ans = {};
+      try { const p = a.answers ? JSON.parse(a.answers) : {}; if (p && typeof p === 'object' && !Array.isArray(p)) ans = p; } catch { /* ignore */ }
+      if (!Object.keys(ans).length) continue;
+      for (const q of questions) {
+        const st = byId.get(String(q.id));
+        const given = ans[String(q.id)];
+        if (given === undefined || given === null || given === '') continue;
+        st.answered++;
+        if (gradeQuestion(q, given) >= (Number(q.points) || 1)) st.correct++;
+        if (q.question_type === 'multi') { (Array.isArray(given) ? given : []).forEach((i) => { if (st.opt[i] !== undefined) st.opt[i]++; }); }
+        else if (q.question_type !== 'short') { const i = Number(given); if (st.opt[i] !== undefined) st.opt[i]++; }
+      }
+    }
+    const per_question = stats.map(({ q, answered, correct, opt }) => ({
+      id: q.id, question: q.question, question_type: q.question_type, points: q.points,
+      options: q.options, correct_index: q.correct_index, correct_answers: q.correct_answers,
+      explanation: q.explanation,
+      answered, correct, correct_pct: answered ? Math.round((correct / answered) * 100) : null,
+      option_counts: opt,
+    }));
+
+    const responses = attempts.map((a) => ({
+      student_id: String(a.student_id),
+      student_name: nameById.get(String(a.student_id)) || 'Student',
+      score: Number(a.score) || 0,
+      correct_count: Number(a.correct_count) || 0,
+      total_questions: Number(a.total_questions) || 0,
+      attempts: Number(a.attempts) || 0,
+      passed: a.passed === true || a.passed === 1,
+      submitted_at: a.updated_at || a.created_at || null,
+    }));
+
+    res.json({
+      quiz: {
+        id: n.id, title: n.title || 'Untitled quiz', association,
+        question_count: questions.length,
+        pass_mark: Number(n.quiz_pass_mark) > 0 ? Number(n.quiz_pass_mark) : 70,
+        grade_bands: parseGradeBands(n.quiz_grade_bands),
+      },
+      summary, per_question, responses,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load analytics', detail: e.message });
+  }
+});
+
 // POST /api/quizzes/import — bulk-create questions from a JSON array.
 // Body: { lesson_id, questions:[...], mode:'append'|'replace' }
 // Each item: { type|question_type, question, options[], correct_index,

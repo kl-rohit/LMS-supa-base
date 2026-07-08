@@ -1,23 +1,20 @@
 // Admin Quizzes — a first-class module (peer of Question Papers) that lists
-// every quiz in the academy (course lessons + standalone), and opens the
-// full-screen editor to view or edit a quiz's questions. Standalone quizzes
-// created here can be attached to an assignment; course quizzes stay linked to
-// their course. Base Tailwind classes auto-theme (light + dark) via index.css.
+// every quiz in the academy (course lessons + standalone). Clicking a quiz opens
+// its full-page analysis (/quizzes/:id); "Edit questions" opens the editor
+// (/quizzes/:id/edit). Base Tailwind classes auto-theme (light + dark).
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Edit2, Trash2, ListChecks, Loader2, BookOpen, ClipboardList, FileQuestion } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
-import QuizEditor from '../components/QuizEditor';
-import QuizDetailPanel from '../components/QuizDetailPanel';
 
 export default function Quizzes() {
+  const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editorLesson, setEditorLesson] = useState(null);
-  const [detailLessonId, setDetailLessonId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
@@ -42,19 +39,12 @@ export default function Quizzes() {
     setCreating(true);
     try {
       const { quiz } = await api.post('/quizzes/standalone', { title });
-      setShowNew(false);
-      setNewTitle('');
-      setEditorLesson({ id: quiz.id, title: quiz.title });
+      navigate(`/quizzes/${quiz.id}/edit`, { state: { title: quiz.title } });
     } catch (e) {
       toast.error(e.message || 'Could not create quiz');
     } finally {
       setCreating(false);
     }
-  };
-
-  const closeEditor = async () => {
-    setEditorLesson(null);
-    await load();
   };
 
   const doDelete = async () => {
@@ -77,7 +67,7 @@ export default function Quizzes() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Quizzes</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Create and manage quizzes. Attach a quiz to an assignment, or add one inside a course lesson.
+            Create and manage quizzes. Open one to analyse responses, or attach it to an assignment or course lesson.
           </p>
         </div>
         {!showNew && (
@@ -123,7 +113,7 @@ export default function Quizzes() {
                 <ListChecks className="w-5 h-5 text-indigo-600" />
               </div>
               <button
-                onClick={() => setDetailLessonId(q.id)}
+                onClick={() => navigate(`/quizzes/${q.id}`)}
                 className="flex-1 min-w-0 text-left"
               >
                 <p className="font-medium text-gray-900 truncate">{q.title}</p>
@@ -134,7 +124,7 @@ export default function Quizzes() {
                 </p>
               </button>
               <button
-                onClick={() => setEditorLesson({ id: q.id, title: q.title })}
+                onClick={() => navigate(`/quizzes/${q.id}/edit`, { state: { title: q.title } })}
                 className="btn-secondary btn-sm flex-shrink-0"
               >
                 <Edit2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Edit questions</span>
@@ -150,16 +140,6 @@ export default function Quizzes() {
           ))}
         </div>
       )}
-
-      {detailLessonId && (
-        <QuizDetailPanel
-          lessonId={detailLessonId}
-          onClose={() => setDetailLessonId(null)}
-          onEdit={(quiz) => { setDetailLessonId(null); setEditorLesson({ id: quiz.id, title: quiz.title }); }}
-        />
-      )}
-
-      {editorLesson && <QuizEditor lesson={editorLesson} onClose={closeEditor} />}
 
       <ConfirmDialog
         isOpen={del.open}

@@ -14,6 +14,12 @@ function effectivePassMark(lesson) {
   const n = Number(lesson?.quiz_pass_mark);
   return (Number.isFinite(n) && n >= 1 && n <= 100) ? n : PASS_THRESHOLD;
 }
+// Per-quiz grade bands JSON → array (or null). Passed to the student result UI.
+function parseGradeBands(raw) {
+  if (Array.isArray(raw)) return raw.length ? raw : null;
+  if (!raw) return null;
+  try { const a = JSON.parse(raw); return Array.isArray(a) && a.length ? a : null; } catch { return null; }
+}
 const { loadAssignments } = require('./assignments');
 const { loadPapers } = require('./questionpapers');
 const { isFeatureEnabled, requireFeature } = require('../middleware/entitlement');
@@ -794,6 +800,7 @@ router.get('/lessons/:id/quiz', async (req, res) => {
       pass_threshold: effectivePassMark(lesson),
       quiz_shuffle: lesson.quiz_shuffle === true || lesson.quiz_shuffle === 1,
       quiz_shuffle_options: lesson.quiz_shuffle_options === true || lesson.quiz_shuffle_options === 1,
+      quiz_grade_bands: parseGradeBands(lesson.quiz_grade_bands),
       attempt: attempt ? {
         score: Number(attempt.score) || 0,
         attempts: Number(attempt.attempts) || 0,
@@ -1068,6 +1075,7 @@ router.get('/assignments/:id/quiz', async (req, res) => {
       // certificate-gating, and shuffle follows the underlying quiz lesson.
       quiz_shuffle: lesson.quiz_shuffle === true || lesson.quiz_shuffle === 1,
       quiz_shuffle_options: lesson.quiz_shuffle_options === true || lesson.quiz_shuffle_options === 1,
+      quiz_grade_bands: parseGradeBands(lesson.quiz_grade_bands),
       attempt: attempt ? {
         score: Number(attempt.score) || 0,
         attempts: Number(attempt.attempts) || 0,

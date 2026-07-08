@@ -44,6 +44,13 @@ function parseOptions(raw) {
   }
 }
 
+// Parse the stored per-quiz grade bands JSON into an array (or null).
+function parseGradeBands(raw) {
+  if (Array.isArray(raw)) return raw.length ? raw : null;
+  if (!raw) return null;
+  try { const a = JSON.parse(raw); return Array.isArray(a) && a.length ? a : null; } catch { return null; }
+}
+
 // Question types (Tier 2). Legacy rows have no question_type → 'single'.
 const VALID_QTYPES = ['single', 'truefalse', 'multi', 'short'];
 const normShort = (s) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -192,6 +199,7 @@ router.get('/', async (req, res) => {
         quiz_shuffle: n.quiz_shuffle === true || n.quiz_shuffle === 1,
         quiz_shuffle_options: n.quiz_shuffle_options === true || n.quiz_shuffle_options === 1,
         quiz_pass_mark: Number(n.quiz_pass_mark) > 0 ? Number(n.quiz_pass_mark) : null,
+        quiz_grade_bands: parseGradeBands(n.quiz_grade_bands),
       },
     });
   } catch (e) {
@@ -267,6 +275,7 @@ router.get('/:lessonId/detail', async (req, res) => {
           quiz_shuffle: n.quiz_shuffle === true || n.quiz_shuffle === 1,
           quiz_shuffle_options: n.quiz_shuffle_options === true || n.quiz_shuffle_options === 1,
           quiz_pass_mark: Number(n.quiz_pass_mark) > 0 ? Number(n.quiz_pass_mark) : null,
+        quiz_grade_bands: parseGradeBands(n.quiz_grade_bands),
         },
       },
       questions,

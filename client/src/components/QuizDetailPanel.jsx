@@ -127,7 +127,7 @@ export default function QuizDetailPanel({ lessonId, onClose, onEdit }) {
                 ) : (
                   <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
                     {attempts.map((a) => (
-                      <StudentAttemptRow key={a.student_id} lessonId={lessonId} attempt={a} />
+                      <StudentAttemptRow key={a.student_id} lessonId={lessonId} attempt={a} bands={quiz?.settings?.quiz_grade_bands} />
                     ))}
                   </div>
                 )}
@@ -158,11 +158,11 @@ export default function QuizDetailPanel({ lessonId, onClose, onEdit }) {
 
 // One student's response row, expandable to a per-question breakdown fetched on
 // demand (so opening the panel stays a single read; details load per student).
-function StudentAttemptRow({ lessonId, attempt }) {
+function StudentAttemptRow({ lessonId, attempt, bands }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
-  const grade = quizGrade(attempt.score, attempt.passed);
+  const grade = quizGrade(attempt.score, attempt.passed, bands);
 
   const toggle = async () => {
     const next = !open;

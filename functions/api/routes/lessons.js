@@ -5,6 +5,20 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeI
 const { createNotifications } = require('../lib/notify');
 const { requireFeature } = require('../middleware/entitlement');
 
+// Normalise per-quiz grade bands into a stored JSON string (or null to clear).
+// Input: array of { label, min } (min 0-100). Sorted high→low. Blank labels dropped.
+function sanitizeGradeBands(raw) {
+  let arr = raw;
+  if (typeof raw === 'string') { try { arr = JSON.parse(raw); } catch { return null; } }
+  if (!Array.isArray(arr)) return null;
+  const clean = arr
+    .map((b) => ({ label: String(b && b.label != null ? b.label : '').trim(), min: Math.max(0, Math.min(100, Math.round(Number(b && b.min) || 0))) }))
+    .filter((b) => b.label);
+  if (!clean.length) return null;
+  clean.sort((a, b) => b.min - a.min);
+  return JSON.stringify(clean);
+}
+
 // Students enrolled in a course (for new-lesson / new-quiz notifications).
 async function enrolledStudentIds(req, courseId) {
   const cid = safeId(courseId);
@@ -233,7 +247,7 @@ router.post('/', async (req, res) => {
     const { course_id, title, description, video_url, duration_seconds, order_index,
             section_name, start_seconds, end_seconds,
             content_type, content_url, quiz_required, quiz_shuffle,
-            quiz_shuffle_options, quiz_pass_mark } = req.body;
+            quiz_shuffle_options, quiz_pass_mark, quiz_grade_bands } = req.body;
     const type = content_type || 'video';
     const isQuiz = type === 'quiz';
     const url = type === 'document' ? content_url : video_url;
@@ -276,6 +290,7 @@ router.post('/', async (req, res) => {
       payload.quiz_shuffle_options = (quiz_shuffle_options === true || quiz_shuffle_options === 'true');
       const pm = Number(quiz_pass_mark);
       if (Number.isFinite(pm) && pm >= 1 && pm <= 100) payload.quiz_pass_mark = Math.round(pm);
+      if (quiz_grade_bands !== undefined) { const gb = sanitizeGradeBands(quiz_grade_bands); if (gb) payload.quiz_grade_bands = gb; }
     }
     const row = await insert(req, 'Lessons', payload);
 
@@ -383,7 +398,7 @@ router.put('/:id', async (req, res) => {
     const { title, description, video_url, duration_seconds, order_index,
             section_name, start_seconds, end_seconds,
             content_type, content_url, quiz_required, quiz_shuffle,
-            quiz_shuffle_options, quiz_pass_mark } = req.body;
+            quiz_shuffle_options, quiz_pass_mark, quiz_grade_bands } = req.body;
     const patch = {};
     if (title !== undefined)            patch.title = title;
     if (description !== undefined)      patch.description = description;
@@ -403,6 +418,7 @@ router.put('/:id', async (req, res) => {
       const n = Number(quiz_pass_mark);
       patch.quiz_pass_mark = (Number.isFinite(n) && n >= 1 && n <= 100) ? Math.round(n) : null;
     }
+    if (quiz_grade_bands !== undefined) patch.quiz_grade_bands = sanitizeGradeBands(quiz_grade_bands);
     const updated = await update(req, 'Lessons', req.params.id, patch);
     res.json({ lesson: normalize(updated) });
   } catch (e) {

@@ -193,7 +193,7 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
   const [saving, setSaving] = useState(false);
   const [drafts, setDrafts] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settings, setSettings] = useState({ quiz_required: false, quiz_shuffle: false, quiz_shuffle_options: false, quiz_pass_mark: '' });
+  const [settings, setSettings] = useState({ quiz_required: false, quiz_shuffle: false, quiz_shuffle_options: false, quiz_pass_mark: '', quiz_grade_bands: [] });
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importMode, setImportMode] = useState('append');
@@ -210,6 +210,7 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
       quiz_shuffle: !!s.quiz_shuffle,
       quiz_shuffle_options: !!s.quiz_shuffle_options,
       quiz_pass_mark: s.quiz_pass_mark || '',
+      quiz_grade_bands: Array.isArray(s.quiz_grade_bands) ? s.quiz_grade_bands : [],
     });
   };
 
@@ -303,9 +304,16 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
         quiz_shuffle: next.quiz_shuffle,
         quiz_shuffle_options: next.quiz_shuffle_options,
         quiz_pass_mark: next.quiz_pass_mark === '' ? null : Number(next.quiz_pass_mark),
+        quiz_grade_bands: next.quiz_grade_bands || [],
       });
     } catch { if (!flushOnly) toast.error('Could not save quiz settings'); }
   };
+
+  // Custom grade-band helpers (optional per-quiz label ladder).
+  const bands = settings.quiz_grade_bands || [];
+  const addBand = () => saveSettings({ quiz_grade_bands: [...bands, { label: '', min: 0 }] });
+  const updateBand = (i, patch) => setSettings((s) => ({ ...s, quiz_grade_bands: (s.quiz_grade_bands || []).map((b, idx) => (idx === i ? { ...b, ...patch } : b)) }));
+  const removeBand = (i) => saveSettings({ quiz_grade_bands: bands.filter((_, idx) => idx !== i) });
 
   const addQuestion = (type) => {
     setMenuOpen(false);
@@ -452,6 +460,44 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
               </span>
             </div>
             <p className="text-xs text-gray-400">Score is weighted by each question's marks. Leave pass mark blank for the default 70%.</p>
+
+            {/* Custom grade bands (optional). Empty = default ladder (Excellent / Very good / Good / Passed). */}
+            <div className="pt-2.5 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Grade labels</span>
+                <button type="button" onClick={addBand} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Add band
+                </button>
+              </div>
+              {bands.length === 0 ? (
+                <p className="text-xs text-gray-400 mt-1.5">Using the default ladder (Excellent 90+, Very good 80+, Good 70+, Passed). Add bands to set your own, e.g. Distinction 85, Merit 70, Pass 50.</p>
+              ) : (
+                <div className="mt-2 space-y-1.5">
+                  {bands.map((b, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        value={b.label}
+                        onChange={(e) => updateBand(i, { label: e.target.value })}
+                        onBlur={() => saveSettings({ quiz_grade_bands: bands })}
+                        placeholder="Label, e.g. Distinction"
+                        className="input-field !py-1 flex-1 text-sm"
+                      />
+                      <span className="text-xs text-gray-400">at</span>
+                      <input
+                        type="number" min="0" max="100"
+                        value={b.min}
+                        onChange={(e) => updateBand(i, { min: e.target.value })}
+                        onBlur={() => saveSettings({ quiz_grade_bands: bands })}
+                        className="input-field !py-1 w-16 text-sm"
+                      />
+                      <span className="text-xs text-gray-400">%+</span>
+                      <button type="button" onClick={() => removeBand(i)} className="p-1 text-gray-300 hover:text-red-500" title="Remove band"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-gray-400">Each label applies at its score and above. The lowest band also covers anyone below the pass mark.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {loading ? (

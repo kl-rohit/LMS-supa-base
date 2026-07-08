@@ -29,8 +29,9 @@ function shuffleCopy(arr) {
 }
 
 // Grade ladder shown alongside a passing score — shared with the admin panel.
-function gradeLabel(score) {
-  return quizGrade(score, true).label;
+// bands (optional) are the quiz's custom labels; falls back to the default ladder.
+function gradeLabel(score, bands) {
+  return quizGrade(score, true, bands).label;
 }
 
 export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onNext, endpointBase }) {
@@ -61,6 +62,8 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
   // response (assignment flow, where there's no lesson object on the client).
   const [shuffleFlag, setShuffleFlag] = useState(lesson?.quiz_shuffle === true || lesson?.quiz_shuffle === 1);
   const [shuffleOptsFlag, setShuffleOptsFlag] = useState(lesson?.quiz_shuffle_options === true || lesson?.quiz_shuffle_options === 1);
+  // Optional per-quiz custom grade bands (from the fetch); null = default ladder.
+  const [gradeBands, setGradeBands] = useState(null);
 
   const required = lesson?.quiz_required === true || lesson?.quiz_required === 1;
   const shuffleQOn = shuffleFlag;       // shuffle question order
@@ -90,6 +93,7 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
         if (data.quiz_shuffle_options !== undefined) {
           setShuffleOptsFlag(data.quiz_shuffle_options === true || data.quiz_shuffle_options === 1);
         }
+        if (Array.isArray(data.quiz_grade_bands)) setGradeBands(data.quiz_grade_bands);
         if (data.attempt?.passed) passedNotifiedRef.current = true;
       } catch {
         if (!cancelled) toast.error('Failed to load quiz');
@@ -375,7 +379,7 @@ export default function LessonQuiz({ lesson, lessonId, onPassed, nextLesson, onN
           </p>
           {result.passed && (
             <span className="inline-block mt-2 text-xs font-semibold text-green-700 bg-green-100 px-3 py-1 rounded-full">
-              {gradeLabel(result.score)}
+              {gradeLabel(result.score, gradeBands)}
             </span>
           )}
         </div>

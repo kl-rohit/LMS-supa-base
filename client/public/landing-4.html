@@ -175,6 +175,32 @@ footer{border-top:1px solid var(--border);padding:40px 0}
 .foot-links a:hover{color:var(--ink)}
 .foot-copy{color:var(--ink-4);font-size:13px;margin-top:20px}
 
+/* Headline rotator inherits the big weight */
+.hero h1 .rotator-item{font-weight:900}
+
+/* Animated sheen on the top progress bar */
+.scroll-progress{background-size:220% 100%;animation:sheen 3s linear infinite}
+@keyframes sheen{0%{background-position:200% 0}100%{background-position:-20% 0}}
+
+/* Floating circular scroll orb (bottom-right) */
+.scroll-orb{position:fixed;right:20px;bottom:20px;width:46px;height:46px;z-index:110;border:none;background:#fff;border-radius:50%;box-shadow:0 6px 20px rgba(15,23,42,.16);cursor:pointer;display:grid;place-items:center;opacity:0;transform:scale(.6);transition:opacity .3s,transform .3s,box-shadow .2s;padding:0}
+.scroll-orb.show{opacity:1;transform:none}
+.scroll-orb:hover{box-shadow:0 8px 26px rgba(79,70,229,.35)}
+.scroll-orb svg{position:absolute;inset:0}
+.scroll-orb .orb-pct{font-size:11px;font-weight:800;color:var(--brand-600)}
+
+/* Rail active pulse */
+.rail-item.active .rail-dot{animation:railPulse 1.8s ease-in-out infinite}
+@keyframes railPulse{0%,100%{box-shadow:0 0 0 4px rgba(79,70,229,.15)}50%{box-shadow:0 0 0 7px rgba(79,70,229,.06)}}
+
+/* Mental-load sticky notes (the "oh, I forgot" feeling) */
+.mind{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+.mind-note{font-size:14px;font-weight:600;color:#78350f;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:9px 14px;box-shadow:0 2px 8px rgba(15,23,42,.06);transition:transform .2s}
+.mind-note:nth-child(odd){transform:rotate(-1.5deg)}
+.mind-note:nth-child(even){transform:rotate(1.5deg)}
+.mind-note:hover{transform:rotate(0) scale(1.04)}
+.mind-strike{margin-top:16px;font-size:15px;color:var(--brand-600);font-weight:600}
+
 /* Reveal */
 .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s cubic-bezier(.22,1,.36,1)}
 .reveal.in{opacity:1;transform:none}
@@ -182,6 +208,13 @@ footer{border-top:1px solid var(--border);padding:40px 0}
 </head>
 <body>
 <div class="scroll-progress" id="progress"></div>
+<button class="scroll-orb" id="orb" title="Back to top" aria-label="Scroll progress, click to go to top">
+  <svg viewBox="0 0 46 46" width="46" height="46">
+    <circle cx="23" cy="23" r="20" fill="none" stroke="var(--border)" stroke-width="3"></circle>
+    <circle id="orbArc" cx="23" cy="23" r="20" fill="none" stroke="var(--brand-600)" stroke-width="3" stroke-linecap="round" transform="rotate(-90 23 23)" stroke-dasharray="125.66" stroke-dashoffset="125.66"></circle>
+  </svg>
+  <span class="orb-pct" id="orbPct">0</span>
+</button>
 
 <nav class="topnav" id="nav">
   <a class="brand" href="#top"><span class="brand-dot"></span><span>Vidya<b>Setu</b></span></a>
@@ -210,20 +243,16 @@ footer{border-top:1px solid var(--border);padding:40px 0}
 <!-- HERO -->
 <section class="hero wrap">
   <span class="eyebrow">The operating system for modern academies</span>
-  <h1>One platform to run<br><span class="grad">your entire academy.</span></h1>
-  <p class="lead">
-    Attendance, fees, timetable, lessons and parent updates, all connected and automatic. Built for
-    <span class="rotator"><span class="rotator-track">
-      <span class="rotator-item">music academies</span>
-      <span class="rotator-item">dance schools</span>
-      <span class="rotator-item">coaching centres</span>
-      <span class="rotator-item">tuition classes</span>
-      <span class="rotator-item">arts academies</span>
-      <span class="rotator-item">corporate trainers</span>
-      <span class="rotator-item" aria-hidden="true">music academies</span>
-    </span></span>
-    who would rather run on one calm system.
-  </p>
+  <h1>One platform for your<br><span class="rotator hero-rot"><span class="rotator-track">
+    <span class="rotator-item">music academy</span>
+    <span class="rotator-item">dance school</span>
+    <span class="rotator-item">coaching centre</span>
+    <span class="rotator-item">tuition class</span>
+    <span class="rotator-item">arts academy</span>
+    <span class="rotator-item">corporate training</span>
+    <span class="rotator-item" aria-hidden="true">music academy</span>
+  </span></span></h1>
+  <p class="lead">Attendance, fees, timetable, lessons and parent updates, all connected and automatic. One calm system, built for the way you actually teach.</p>
   <p class="accent">More time teaching. Less time managing.</p>
   <div class="hero-cta">
     <a class="btn btn-primary" href="/app/landing-2.html#contact">Book a demo</a>
@@ -239,6 +268,14 @@ footer{border-top:1px solid var(--border);padding:40px 0}
     <h2>Running an academy shouldn't feel like five separate jobs.</h2>
     <p>A register here, fee notes there, lessons on a drive, reminders typed by hand at night. VidyaSetu folds all of it into one connected place, so nothing falls through the cracks.</p>
   </div>
+  <div class="mind">
+    <span class="mind-note">Did Aarav pay this month?</span>
+    <span class="mind-note">Who missed class twice?</span>
+    <span class="mind-note">Send today's lesson link</span>
+    <span class="mind-note">Reply to that parent</span>
+    <span class="mind-note">Oh, I forgot to mark attendance</span>
+  </div>
+  <p class="mind-strike">VidyaSetu quietly handles every one of these, so you don't hold them in your head.</p>
 </section>
 
 <!-- SETUP steps -->
@@ -384,6 +421,10 @@ footer{border-top:1px solid var(--border);padding:40px 0}
 (function(){
   var nav=document.getElementById('nav');
   var progress=document.getElementById('progress');
+  var orb=document.getElementById('orb');
+  var orbArc=document.getElementById('orbArc');
+  var orbPct=document.getElementById('orbPct');
+  var ORB_C=125.66; // 2·π·20
   var railItems=Array.prototype.slice.call(document.querySelectorAll('.rail-item'));
   var sections=railItems.map(function(i){return document.getElementById(i.getAttribute('data-to'));});
 
@@ -393,8 +434,12 @@ footer{border-top:1px solid var(--border);padding:40px 0}
     var p=max>0?h.scrollTop/max:0;
     progress.style.width=(p*100)+'%';
     nav.classList.toggle('scrolled',h.scrollTop>10);
+    orbArc.style.strokeDashoffset=(ORB_C*(1-p)).toFixed(1);
+    orbPct.textContent=Math.round(p*100);
+    orb.classList.toggle('show',h.scrollTop>300);
   }
   addEventListener('scroll',onScroll,{passive:true}); onScroll();
+  orb.addEventListener('click',function(){ scrollTo({top:0,behavior:'smooth'}); });
 
   railItems.forEach(function(item){
     item.addEventListener('click',function(){

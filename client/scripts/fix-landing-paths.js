@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const dist = path.join(__dirname, '..', 'dist');
-const files = ['landing.html', 'landing-2.html', 'landing-3.html', 'pricing.html', 'landing-demo.html'];
+const files = ['landing.html', 'landing-2.html', 'landing-3.html', 'landing-4.html', 'pricing.html', 'landing-demo.html'];
 
 for (const f of files) {
   const p = path.join(dist, f);

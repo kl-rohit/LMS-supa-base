@@ -84,6 +84,7 @@ export default function Fees() {
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
   const [additionalFees, setAdditionalFees] = useState([]);
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false);
+  const [groups, setGroups] = useState([]); // for the "add a group" bulk-select
   // adjustment_type: 'fee' (positive) | 'discount' (stored as negative amount).
   // We reuse the AdditionalFees table for both — discounts are just rows with
   // amount < 0. The monthly aggregation sums these correctly without changes.
@@ -254,6 +255,29 @@ export default function Fees() {
     setFeeForm((prev) => ({ ...prev, student_ids: [] }));
   };
 
+  // Bulk-add every active member of a group to the selection.
+  const addGroupStudents = (groupId) => {
+    if (!groupId) return;
+    const g = groups.find((x) => String(x.id) === String(groupId));
+    if (!g) return;
+    const activeIds = new Set(students.map((s) => String(s.id)));
+    const memberIds = (g.members || []).map(String).filter((id) => activeIds.has(id));
+    if (memberIds.length === 0) { toast(`No active students in ${g.name}`); return; }
+    setFeeForm((prev) => {
+      const set = new Set(prev.student_ids.map(String));
+      memberIds.forEach((id) => set.add(id));
+      return { ...prev, student_ids: [...set] };
+    });
+    toast.success(`Added ${memberIds.length} from ${g.name}`);
+  };
+
+  // Load groups the first time the add-fee modal opens (one read, only if used).
+  useEffect(() => {
+    if (addFeeModalOpen && groups.length === 0) {
+      api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {});
+    }
+  }, [addFeeModalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredStudentsList = students.filter((s) =>
     s.name.toLowerCase().includes(studentSearch.toLowerCase())
   );
@@ -376,7 +400,7 @@ export default function Fees() {
       await api.post('/fees/additional', {
         student_id: student.student_id,
         amount: student.shortfall_amount,
-        description: `Min class shortfall — ${monthName} ${selectedYear} (${student.shortfall_classes} class${student.shortfall_classes === 1 ? '' : 'es'})`,
+        description: `Min class shortfall, ${monthName} ${selectedYear} (${student.shortfall_classes} class${student.shortfall_classes === 1 ? '' : 'es'})`,
         fee_date: formatDateLocal(new Date()),
         month: selectedMonth,
         year: selectedYear,
@@ -700,7 +724,7 @@ export default function Fees() {
                               </div>
                             )
                           ) : (
-                            <span className="text-xs text-gray-300" title="No minimum configured for this student">—</span>
+                            <span className="text-xs text-gray-300" title="No minimum configured for this student">-</span>
                           )}
                         </td>
                       )}
@@ -731,7 +755,7 @@ export default function Fees() {
                           <button
                             onClick={() => undoPayment(student)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium hover:bg-green-200 transition-colors"
-                            title={`Paid on ${student.payment?.payment_date || ''} \u2014 click to undo`}
+                            title={`Paid on ${student.payment?.payment_date || ''}, click to undo`}
                           >
                             <Check className="w-3 h-3" /> Paid
                           </button>
@@ -952,7 +976,7 @@ export default function Fees() {
                           onClick={(e) => { e.stopPropagation(); applyShortfall(student); }}
                           className="mt-1 text-xs text-indigo-600 hover:underline"
                         >
-                          Below min {student.present_count}/{student.min_classes} — charge +₹{student.shortfall_amount.toLocaleString('en-IN')}
+                          Below min {student.present_count}/{student.min_classes}, charge +₹{student.shortfall_amount.toLocaleString('en-IN')}
                         </button>
                       )}
                     </div>
@@ -1106,6 +1130,20 @@ export default function Fees() {
               </div>
             )}
 
+            {/* Quick-add a whole group */}
+            {groups.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => { addGroupStudents(e.target.value); }}
+                className="input-field text-sm mb-1.5"
+              >
+                <option value="">+ Add a group…</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0})</option>
+                ))}
+              </select>
+            )}
+
             {/* Search + Select All / Clear */}
             <div className="flex items-center gap-2 mb-1.5">
               <input
@@ -1187,7 +1225,7 @@ export default function Fees() {
             </div>
             {feeForm.adjustment_type === 'discount' && (
               <p className="text-xs text-green-700 mt-1">
-                Enter the positive amount \u2014 it will be applied as a deduction from the monthly total.
+                Enter the positive amount, it will be applied as a deduction from the monthly total.
               </p>
             )}
           </div>

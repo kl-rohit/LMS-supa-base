@@ -1080,6 +1080,51 @@ function StatTile({ icon: Icon, label, value, color }) {
 // (config.master.js → gen-config), so this always matches the public pricing
 // sheet and the in-app gating.
 // ----------------------------------------------------------------------------
+// Hoisted to module scope so the <input> keeps a stable identity across the
+// parent's re-renders (defining these inside PlansSection remounted the input
+// on every keystroke and lost focus).
+function PriceField({ label, cur, value, suffix, onChange }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-gray-600">{label}</span>
+      <div className="mt-1 flex items-center gap-1.5">
+        <span className="text-sm text-gray-400">{cur}</span>
+        <input
+          type="number"
+          min="0"
+          inputMode="numeric"
+          value={value === '' ? '' : Number(value || 0)}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        />
+        {suffix ? <span className="text-xs text-gray-400 whitespace-nowrap">{suffix}</span> : null}
+      </div>
+    </label>
+  );
+}
+
+function PriceEditor({ plan, name, accent, prices, cur, money, setPriceField }) {
+  const p = prices[plan] || {};
+  return (
+    <div className={`card space-y-3 ${accent ? 'ring-1 ring-indigo-200' : ''}`}>
+      <div className="flex items-baseline justify-between">
+        <h3 className="font-semibold text-gray-900">{name}</h3>
+        <div className="text-right">
+          <span className="text-xl font-bold text-gray-900">{money(p.base)}</span>
+          <span className="text-sm text-gray-500">/mo</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <PriceField label="Base price" cur={cur} value={p.base} suffix="/mo" onChange={(v) => setPriceField(plan, 'base', v)} />
+        <PriceField label="Regular base (struck)" cur={cur} value={p.baseRegular} suffix="/mo" onChange={(v) => setPriceField(plan, 'baseRegular', v)} />
+        <PriceField label="Included students" cur={cur} value={p.included} onChange={(v) => setPriceField(plan, 'included', v)} />
+        <PriceField label="Per student" cur={cur} value={p.perStudent} suffix="/student" onChange={(v) => setPriceField(plan, 'perStudent', v)} />
+        <PriceField label="Per student regular (struck)" cur={cur} value={p.perStudentRegular} suffix="/student" onChange={(v) => setPriceField(plan, 'perStudentRegular', v)} />
+      </div>
+    </div>
+  );
+}
+
 function PlansSection() {
   const P = PLAN_PRICING || {};
   const cur = P.currency || '₹';
@@ -1201,45 +1246,9 @@ function PlansSection() {
   const completeCount = allItems.filter((it) => features[it.key]?.complete).length;
   const total = allItems.length;
 
-  // Small inline editor for one plan's prices.
-  const PriceEditor = ({ plan, name, accent }) => {
-    const p = prices[plan] || {};
-    const Field = ({ label, field, suffix }) => (
-      <label className="block">
-        <span className="text-xs font-medium text-gray-600">{label}</span>
-        <div className="mt-1 flex items-center gap-1.5">
-          <span className="text-sm text-gray-400">{cur}</span>
-          <input
-            type="number"
-            min="0"
-            inputMode="numeric"
-            value={p[field] === '' ? '' : Number(p[field] || 0)}
-            onChange={(e) => setPriceField(plan, field, e.target.value)}
-            className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          />
-          {suffix ? <span className="text-xs text-gray-400 whitespace-nowrap">{suffix}</span> : null}
-        </div>
-      </label>
-    );
-    return (
-      <div className={`card space-y-3 ${accent ? 'ring-1 ring-indigo-200' : ''}`}>
-        <div className="flex items-baseline justify-between">
-          <h3 className="font-semibold text-gray-900">{name}</h3>
-          <div className="text-right">
-            <span className="text-xl font-bold text-gray-900">{money(p.base)}</span>
-            <span className="text-sm text-gray-500">/mo</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Base price" field="base" suffix="/mo" />
-          <Field label="Regular base (struck)" field="baseRegular" suffix="/mo" />
-          <Field label="Included students" field="included" />
-          <Field label="Per student" field="perStudent" suffix="/student" />
-          <Field label="Per student regular (struck)" field="perStudentRegular" suffix="/student" />
-        </div>
-      </div>
-    );
-  };
+  // PriceEditor + PriceField are hoisted to module scope (below the component)
+  // so typing in a price input never remounts the field — defining them inline
+  // here made React recreate the <input> each keystroke and steal focus.
 
   if (loading) {
     return (
@@ -1264,8 +1273,8 @@ function PlansSection() {
       ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <PriceEditor plan="core" name="Core" />
-        <PriceEditor plan="complete" name="Complete" accent />
+        <PriceEditor plan="core" name="Core" prices={prices} cur={cur} money={money} setPriceField={setPriceField} />
+        <PriceEditor plan="complete" name="Complete" accent prices={prices} cur={cur} money={money} setPriceField={setPriceField} />
       </div>
 
       <div className="card p-0 overflow-hidden">

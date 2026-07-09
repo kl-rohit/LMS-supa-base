@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 
-// Pass `onSave` to surface a primary Save/Update button in the header (next to
-// the close X) so long forms can be saved without scrolling. `saving` shows a
-// spinner + disables it; `saveLabel` sets the text (e.g. "Update" when editing).
-export default function Modal({ isOpen, onClose, title, children, size = 'md', onSave, saveLabel = 'Save', saving = false, saveDisabled = false }) {
+// Pass `onSave` to render a sticky footer with Cancel (bottom-left) and a
+// primary Save/Update button (bottom-right) — the standard dialog layout, so
+// the action lives where users expect it. `saving` shows a spinner + disables
+// it; `saveLabel` sets the text (e.g. "Update" when editing). `cancelLabel`
+// overrides the "Cancel" text.
+export default function Modal({ isOpen, onClose, title, children, size = 'md', onSave, saveLabel = 'Save', cancelLabel = 'Cancel', saving = false, saveDisabled = false }) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -43,27 +45,31 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', o
       >
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {onSave && (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={saving || saveDisabled}
-                className="btn-primary btn-sm disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {saving ? 'Saving…' : saveLabel}
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-md hover:bg-gray-100 transition-colors flex-shrink-0"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
         </div>
         <div className="px-6 py-4 overflow-y-auto scrollbar-thin">{children}</div>
+        {onSave && (
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 flex-shrink-0">
+            <button type="button" onClick={onClose} className="btn-secondary btn-sm">
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving || saveDisabled}
+              className="btn-primary btn-sm disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {saving ? 'Saving…' : saveLabel}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

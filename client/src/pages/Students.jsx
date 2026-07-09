@@ -1270,9 +1270,6 @@ export default function Students() {
             )}
             <p className="text-xs text-gray-400 mt-1">This value will overwrite the existing value on all selected students.</p>
           </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-            <button onClick={() => setBulkEditOpen(false)} className="btn-secondary btn-sm">Cancel</button>
-          </div>
         </div>
       </Modal>
 

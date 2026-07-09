@@ -385,10 +385,6 @@ export default function Assignments() {
             students={students}
             onChange={(v) => setForm((f) => ({ ...f, ...v }))}
           />
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }} className="btn-secondary">Cancel</button>
-          </div>
         </form>
       </Modal>
 

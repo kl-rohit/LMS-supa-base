@@ -1253,6 +1253,7 @@ export default function Fees() {
         title={editFeeForm.is_discount ? 'Edit discount' : 'Edit additional fee'}
         size="sm"
         onSave={saveEditFee}
+        saveLabel="Save changes"
       >
         <div className="space-y-4">
           <div>
@@ -1279,9 +1280,6 @@ export default function Fees() {
             <p className="text-xs text-gray-400 mt-1">
               {editFeeForm.is_discount ? 'Stored as a negative amount (subtracted from total).' : 'Stored as a positive amount (added to total).'}
             </p>
-          </div>
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-            <button type="button" onClick={closeEditFee} className="btn-secondary btn-sm">Cancel</button>
           </div>
         </div>
       </Modal>

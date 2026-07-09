@@ -978,12 +978,6 @@ export default function Lessons() {
                 </p>
               )}
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <button onClick={() => setLessonModalOpen(false)} className="btn-secondary btn-sm">Cancel</button>
-              <button onClick={saveLesson} className="btn-primary btn-sm">
-                {editingLesson ? 'Save' : 'Add lesson'}
-              </button>
-            </div>
           </div>
         </Modal>
 
@@ -1169,12 +1163,6 @@ export default function Lessons() {
               );
             })()}
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <button onClick={() => setSplitModalOpen(false)} className="btn-secondary btn-sm">Cancel</button>
-              <button onClick={handleSplit} className="btn-primary btn-sm">
-                <Scissors className="w-4 h-4" /> Create lessons
-              </button>
-            </div>
           </div>
         </Modal>
       </div>
@@ -1278,12 +1266,6 @@ function CourseModal({ isOpen, onClose, form, setForm, onSave, isEdit }) {
             className="input-field resize-none"
             rows={3}
           />
-        </div>
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-          <button onClick={onClose} className="btn-secondary btn-sm">Cancel</button>
-          <button onClick={onSave} className="btn-primary btn-sm">
-            {isEdit ? 'Save' : 'Create course'}
-          </button>
         </div>
       </div>
     </Modal>

@@ -535,10 +535,6 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
                   className="input-field" />
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setResched(null)} className="btn-secondary btn-sm">Cancel</button>
-              <button onClick={saveReschedule} className="btn-primary btn-sm">Move class</button>
-            </div>
           </div>
         )}
       </Modal>

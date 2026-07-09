@@ -406,11 +406,6 @@ export default function Groups() {
               placeholder="Optional description..."
             />
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => { setModalOpen(false); setEditingGroup(null); }} className="btn-secondary">
-              Cancel
-            </button>
-          </div>
         </form>
       </Modal>
 

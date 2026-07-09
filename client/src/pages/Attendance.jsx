@@ -1585,15 +1585,6 @@ export default function Attendance() {
                 />
               </div>
             )}
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <button type="button" onClick={closeEditRecord} className="btn-secondary btn-sm" disabled={savingEdit}>
-                Cancel
-              </button>
-              <button type="button" onClick={saveEditRecord} className="btn-primary btn-sm" disabled={savingEdit}>
-                {savingEdit ? 'Saving...' : 'Save'}
-              </button>
-            </div>
           </div>
         )}
       </Modal>

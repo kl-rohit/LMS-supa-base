@@ -1066,13 +1066,6 @@ export default function Classes() {
               </div>
             </div>
           )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setCampFormOpen(false)} className="btn-secondary">Cancel</button>
-            <button onClick={saveCamp} disabled={savingCamp} className="btn-primary">
-              {savingCamp ? 'Saving...' : `Create Camp (${campForm.total_days} days)`}
-            </button>
-          </div>
         </div>
       </Modal>
 
@@ -1439,11 +1432,6 @@ export default function Classes() {
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => { setModalOpen(false); setEditingClass(null); }} className="btn-secondary">
-              Cancel
-            </button>
-          </div>
         </form>
       </Modal>
 

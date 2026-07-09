@@ -460,16 +460,6 @@ export default function StudentLogins() {
                 We'll create the login and show you a password to share with the parent (a "Send on WhatsApp" button makes it one tap).
               </p>
             </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <button onClick={() => setCreateFor(null)} className="btn-secondary btn-sm" disabled={submitting}>
-                Cancel
-              </button>
-              <button onClick={handleCreate} className="btn-primary btn-sm" disabled={submitting}>
-                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {submitting ? 'Creating...' : 'Create login'}
-              </button>
-            </div>
           </div>
         )}
       </Modal>

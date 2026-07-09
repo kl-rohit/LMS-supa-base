@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit2, Download, Users, CheckCircle2, XCircle, Circle,
-  ChevronDown, Loader2, BookOpen, ClipboardList, FileQuestion, Share2, Trash2,
+  ChevronDown, Loader2, BookOpen, ClipboardList, FileQuestion, Share2, Trash2, Trophy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -31,6 +31,8 @@ export default function QuizMaster() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Filter analytics to one group's members (client-side, on the response set).
+  const [groupFilter, setGroupFilter] = useState('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +62,10 @@ export default function QuizMaster() {
     return a || null;
   }).catch(() => null);
   useEffect(() => { loadAssignment(); }, [lessonId]);
+
+  // Load groups (with members) up-front so the analytics group filter works
+  // without opening the assign modal first.
+  useEffect(() => { api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {}); }, []);
 
   if (loading) return <Loader text="Loading analysis..." />;
   if (!data) return <div className="text-center py-12 text-gray-500">Could not load this quiz.</div>;
@@ -107,9 +113,24 @@ export default function QuizMaster() {
     catch { toast.error('Could not unassign'); }
   };
 
-  // Grade distribution across responses.
+  // Group filter: narrow the response set to one group's members (client-side).
+  // Per-question analysis stays global (it is computed server-side); the filter
+  // drives the leaderboard, grade distribution, and responses list.
+  const filterGroup = groupFilter === 'all' ? null : groups.find((g) => String(g.id) === String(groupFilter));
+  const memberSet = filterGroup ? new Set((filterGroup.members || []).map(String)) : null;
+  const shownResponses = memberSet ? responses.filter((r) => memberSet.has(String(r.student_id))) : responses;
+
+  // Leaderboard: highest score first, tie-break by fewer attempts then earlier
+  // submission (rewards getting it right first, in fewer tries).
+  const leaderboard = [...shownResponses].sort((a, b) =>
+    (b.score - a.score)
+    || ((a.attempts || 1) - (b.attempts || 1))
+    || (new Date(a.submitted_at || 0) - new Date(b.submitted_at || 0))
+  );
+
+  // Grade distribution across the shown responses.
   const gradeTally = {};
-  responses.forEach((r) => { const g = quizGrade(r.score, r.passed, bands).label; gradeTally[g] = (gradeTally[g] || 0) + 1; });
+  shownResponses.forEach((r) => { const g = quizGrade(r.score, r.passed, bands).label; gradeTally[g] = (gradeTally[g] || 0) + 1; });
   const gradeRows = Object.entries(gradeTally).sort((a, b) => b[1] - a[1]);
 
   const exportCsv = () => {
@@ -189,6 +210,48 @@ export default function QuizMaster() {
         <Panel><p className="text-sm text-gray-400 text-center py-6">No one has attempted this quiz yet. Analysis appears once students submit.</p></Panel>
       ) : (
         <>
+          {/* Group filter — scopes the leaderboard, grade distribution, and
+              responses to one group's members. */}
+          {groups.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Filter by group</span>
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="input-field text-sm w-auto py-1.5"
+              >
+                <option value="all">All students</option>
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count ?? (g.members ? g.members.length : 0)})</option>)}
+              </select>
+              {filterGroup && (
+                <span className="text-xs text-gray-500">{shownResponses.length} of {responses.length} responses</span>
+              )}
+            </div>
+          )}
+
+          {shownResponses.length === 0 ? (
+            <Panel><p className="text-sm text-gray-400 text-center py-6">No one in this group has attempted the quiz yet.</p></Panel>
+          ) : (
+          <>
+          {/* Leaderboard — top scorers first. */}
+          <Panel title={<span className="flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Leaderboard</span>}>
+            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {leaderboard.slice(0, 10).map((r, i) => {
+                const grade = quizGrade(r.score, r.passed, bands);
+                const medal = i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-200 text-gray-700' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500';
+                return (
+                  <div key={r.student_id} className="flex items-center gap-3 px-3 py-2">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${medal}`}>{i + 1}</span>
+                    <span className="text-sm font-medium text-gray-900 truncate flex-1">{r.student_name}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{r.correct_count}/{r.total_questions}{r.attempts > 1 ? ` · ${r.attempts} tries` : ''}</span>
+                    <span className="text-sm font-semibold text-gray-900 w-12 text-right flex-shrink-0">{r.score}%</span>
+                    <span className={`inline-block text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${grade.badgeClass}`}>{grade.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+
           {/* Grade distribution */}
           {gradeRows.length > 0 && (
             <Panel title="Grade distribution">
@@ -197,7 +260,7 @@ export default function QuizMaster() {
                   <div key={label} className="flex items-center gap-3">
                     <span className="text-sm text-gray-700 w-28 flex-shrink-0 truncate">{label}</span>
                     <div className="flex-1 h-2.5 rounded bg-gray-100 overflow-hidden">
-                      <div className="h-full bg-indigo-500 rounded" style={{ width: `${Math.round((count / summary.attempts) * 100)}%` }} />
+                      <div className="h-full bg-indigo-500 rounded" style={{ width: `${Math.round((count / shownResponses.length) * 100)}%` }} />
                     </div>
                     <span className="text-xs text-gray-500 w-10 text-right">{count}</span>
                   </div>
@@ -206,8 +269,8 @@ export default function QuizMaster() {
             </Panel>
           )}
 
-          {/* Per-question analysis */}
-          <Panel title="Question analysis">
+          {/* Per-question analysis (always across all responses) */}
+          <Panel title={<span>Question analysis{filterGroup ? <span className="text-gray-300 normal-case font-normal"> · all responses</span> : ''}</span>}>
             {summary.with_answers === 0 ? (
               <p className="text-sm text-gray-400 py-2">Per-question detail is available for attempts made after answer capture was enabled. New attempts will populate this.</p>
             ) : (
@@ -218,11 +281,13 @@ export default function QuizMaster() {
           </Panel>
 
           {/* Responses */}
-          <Panel title={<span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Responses <span className="text-gray-300 normal-case font-normal">{responses.length}</span></span>}>
+          <Panel title={<span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Responses <span className="text-gray-300 normal-case font-normal">{shownResponses.length}</span></span>}>
             <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-              {responses.map((r) => <ResponseRow key={r.student_id} lessonId={lessonId} r={r} bands={bands} />)}
+              {shownResponses.map((r) => <ResponseRow key={r.student_id} lessonId={lessonId} r={r} bands={bands} />)}
             </div>
           </Panel>
+          </>
+          )}
         </>
       )}
     </div>

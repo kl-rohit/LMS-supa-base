@@ -46,11 +46,13 @@ import {
   Phone,
   AtSign,
   MapPin,
+  Palette,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import CredentialShare from '../components/CredentialShare';
+import PlatformBranding from '../components/PlatformBranding';
 import EmptyState from '../components/EmptyState';
 import Tooltip from '../components/Tooltip';
 import { useAuth } from '../contexts/AuthContext';
@@ -740,6 +742,7 @@ export default function Platform() {
     { key: 'search',     label: 'Search',     icon: Search,          badge: 0 },
     { key: 'billing',    label: 'Billing',    icon: Receipt,         badge: 0 },
     { key: 'plans',      label: 'Plans',      icon: Layers,          badge: 0 },
+    { key: 'config',     label: 'Config',     icon: Palette,         badge: 0 },
     { key: 'activity',   label: 'Activity',   icon: ScrollText,      badge: 0 },
     { key: 'broadcast',  label: 'Broadcast',  icon: Megaphone,       badge: 0 },
   ];
@@ -914,6 +917,10 @@ export default function Platform() {
 
           {section === 'plans' && (
             <PlansSection />
+          )}
+
+          {section === 'config' && (
+            <PlatformBranding />
           )}
 
           {section === 'activity' && (

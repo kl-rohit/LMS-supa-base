@@ -79,6 +79,11 @@ app.use('/api/verify', require('./routes/verify'));
 // Mounted before requireAuth on purpose.
 app.use('/api/leads', require('./routes/leads'));
 
+// /api/branding — PUBLIC platform brand (name/logo/tagline/support). Read
+// pre-auth by the login screen + landing pages. Writes are platform-admin only,
+// under /api/platform/branding. Mounted before requireAuth on purpose.
+app.use('/api/branding', require('./routes/branding'));
+
 // /api/internal/* — unattended jobs (Catalyst cron). Protected by a shared
 // secret header (X-Cron-Secret), NOT by the user-session middleware below.
 // Must be mounted before requireAuth so the cron can reach it without a login.

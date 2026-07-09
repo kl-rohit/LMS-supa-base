@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { LogIn, Mail, Lock, KeyRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlatformBrand } from '../hooks/usePlatformBrand';
 import { supabase } from '../utils/supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { roleHome } from '../components/RequireAuth';
@@ -38,6 +39,7 @@ function messageFromError(err, fallback) {
 
 export default function Login() {
   const { user, loading } = useAuth();
+  const brand = usePlatformBrand();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -123,15 +125,13 @@ export default function Login() {
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 rounded-2xl shadow-lg mb-3 overflow-hidden">
             <img
-              src={`${process.env.PUBLIC_URL || '/'}logo.png`}
-              alt="VidyaSetu"
+              src={brand.logo_url || `${process.env.PUBLIC_URL || '/'}logo.png`}
+              alt={brand.brand_name}
               className="w-full h-full object-cover"
             />
           </div>
-          <h1 className="text-2xl font-bold">
-            <span className="text-gray-900">Vidya</span><span className="text-amber-500">Setu</span>
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">Bridging teachers and learners</p>
+          <h1 className="text-2xl font-bold text-gray-900">{brand.brand_name}</h1>
+          {brand.tagline && <p className="text-sm text-gray-500 mt-1">{brand.tagline}</p>}
         </div>
 
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">

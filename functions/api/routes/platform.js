@@ -12,6 +12,7 @@ const {
   insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor, readCount, mapLimit,
 } = require('../db/catalystDb');
 const { getUserById, resetUserPassword } = require('../lib/supabaseAuth');
+const { loadBranding, saveBranding } = require('../lib/platformSettings');
 const { normalizePlan, effectivePlan, trialInfo, planMaxStudents, TRIAL_DURATION_DAYS } = require('../lib/plans');
 const { ADMIN_KEY: ONBOARDING_ADMIN_KEY, SETUP_KEY: ONBOARDING_SETUP_KEY } = require('../lib/onboarding');
 const { MODULES } = require('../db/migrationRegistry');
@@ -44,6 +45,19 @@ const TENANT_TABLES = [
   'Courses', 'Lessons', 'LessonProgress', 'CourseEnrollments',
   'Camps', 'CampDays',
 ];
+
+// =============================================================================
+// Platform branding/identity — read + write the single global brand record.
+// (Public read is /api/branding; this write is platform-admin only.)
+// =============================================================================
+router.get('/branding', async (req, res) => {
+  try { res.json(await loadBranding(req)); }
+  catch (e) { res.status(500).json({ error: 'Failed to load branding', detail: e.message }); }
+});
+router.put('/branding', async (req, res) => {
+  try { res.json(await saveBranding(req, req.body || {})); }
+  catch (e) { res.status(500).json({ error: 'Failed to save branding', detail: e.message }); }
+});
 
 // =============================================================================
 // GET /api/platform/status — quick health-check for the multi-tenancy layer

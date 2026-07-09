@@ -91,8 +91,9 @@ section{position:relative;scroll-margin-top:80px}
 @keyframes rotateWords{0%,13%{transform:translateY(0)}16.67%,30%{transform:translateY(-1.2em)}33.33%,46%{transform:translateY(-2.4em)}50%,63%{transform:translateY(-3.6em)}66.67%,80%{transform:translateY(-4.8em)}83.33%,96%{transform:translateY(-6em)}100%{transform:translateY(-7.2em)}}
 @media(prefers-reduced-motion:reduce){.rotator-track{animation:none}}
 
-/* Sections */
-.sec{padding:80px 0}
+/* Sections — padding-block only, so horizontal gutter from .wrap survives when
+   a section carries both classes (e.g. <section class="sec wrap">). */
+.sec{padding-block:80px}
 .sec.alt{background:var(--bg-alt);border-block:1px solid var(--border)}
 .sec-head{max-width:42ch}
 .sec-head.center{margin:0 auto;text-align:center}

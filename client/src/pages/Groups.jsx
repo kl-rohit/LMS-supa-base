@@ -12,6 +12,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -182,7 +183,7 @@ export default function Groups() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Groups</h2>
+        <PageTitle title="Groups" />
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
             {[

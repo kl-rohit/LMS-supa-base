@@ -19,6 +19,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import Loader from '../components/Loader';
@@ -509,7 +510,7 @@ export default function Fees() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Fee Management</h2>
+        <PageTitle title="Fee Management" />
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={amountReveal.toggle}

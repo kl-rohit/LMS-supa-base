@@ -252,7 +252,7 @@ export default function Dashboard() {
                     <p className="text-xs text-gray-500 mt-1">
                       {dobDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', weekday: 'short' })}
                       {' · '}
-                      {isToday ? <span className="font-semibold text-pink-600">TODAY 🎉</span>
+                      {isToday ? <span className="font-semibold text-pink-600">Today</span>
                         : isTomorrow ? <span className="font-medium text-pink-600">Tomorrow</span>
                         : <>in {b.days_until} days</>}
                     </p>

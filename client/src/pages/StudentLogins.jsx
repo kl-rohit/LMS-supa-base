@@ -5,7 +5,6 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import {
-  KeyRound,
   Mail,
   MessageSquare,
   Check,
@@ -19,6 +18,7 @@ import {
   Compass,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import Modal from '../components/Modal';
@@ -78,6 +78,9 @@ export default function StudentLogins() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [created, setCreated] = useState(null); // { student, email, password, reused }
+  // Login id whose row action (resend tour / enable-disable) is in flight, so we
+  // can disable that row's buttons and prevent a double submit.
+  const [busyId, setBusyId] = useState(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -160,15 +163,21 @@ export default function StudentLogins() {
   };
 
   const resendTour = async (login) => {
+    if (busyId) return;
+    setBusyId(login.id);
     try {
       await api.post(`/student-logins/${login.id}/resend-tour`);
       toast.success('Welcome tour will show again on the parent\'s next visit');
     } catch (e) {
       toast.error('Failed: ' + e.message);
+    } finally {
+      setBusyId(null);
     }
   };
 
   const toggleStatus = async (login) => {
+    if (busyId) return;
+    setBusyId(login.id);
     const next = login.status === 'active' ? 'disabled' : 'active';
     try {
       await api.put(`/student-logins/${login.id}`, { status: next });
@@ -176,6 +185,8 @@ export default function StudentLogins() {
       await fetchAll();
     } catch (e) {
       toast.error('Failed: ' + e.message);
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -196,14 +207,11 @@ export default function StudentLogins() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 data-tour="logins-intro" className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-indigo-600" />
-            Parent Logins
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Create a portal login for each parent. They'll get an email to set their password, then can see their child's class history and fees.
-          </p>
+        <div data-tour="logins-intro">
+          <PageTitle
+            title="Parent Logins"
+            subtitle="Create a portal login for each parent so they can see their child's class history and fees."
+          />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -293,7 +301,8 @@ export default function StudentLogins() {
                             <Tooltip label="Re-send the welcome tour for this parent">
                               <button
                                 onClick={() => resendTour(login)}
-                                className="p-1.5 rounded-md hover:bg-indigo-50 text-indigo-600"
+                                disabled={busyId === login.id}
+                                className="p-1.5 rounded-md hover:bg-indigo-50 text-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
                               >
                                 <Compass className="w-4 h-4" />
                               </button>
@@ -301,7 +310,8 @@ export default function StudentLogins() {
                             <Tooltip label={login.status === 'active' ? 'Disable login' : 'Enable login'}>
                               <button
                                 onClick={() => toggleStatus(login)}
-                                className="p-1.5 rounded-md hover:bg-amber-50 text-amber-600"
+                                disabled={busyId === login.id}
+                                className="p-1.5 rounded-md hover:bg-amber-50 text-amber-600 disabled:opacity-40 disabled:cursor-not-allowed"
                               >
                                 <Power className="w-4 h-4" />
                               </button>
@@ -386,14 +396,16 @@ export default function StudentLogins() {
                       )}
                       <button
                         onClick={() => resendTour(login)}
-                        className="btn-secondary btn-sm text-indigo-600"
+                        disabled={busyId === login.id}
+                        className="btn-secondary btn-sm text-indigo-600 disabled:opacity-40"
                         title="Re-send the welcome tour for this parent"
                       >
                         <Compass className="w-4 h-4" /> Tour
                       </button>
                       <button
                         onClick={() => toggleStatus(login)}
-                        className="btn-secondary btn-sm text-amber-600"
+                        disabled={busyId === login.id}
+                        className="btn-secondary btn-sm text-amber-600 disabled:opacity-40"
                         title={login.status === 'active' ? 'Disable login' : 'Enable login'}
                       >
                         <Power className="w-4 h-4" /> {login.status === 'active' ? 'Disable' : 'Enable'}

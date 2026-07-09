@@ -12,6 +12,7 @@ import {
   Users, UserRound, UsersRound, ExternalLink, CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -148,7 +149,7 @@ export default function Assignments() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Assignments</h2>
+        <PageTitle title="Assignments" />
         <button onClick={openAdd} data-tour="assignments-add" className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> New Assignment
         </button>

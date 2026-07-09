@@ -16,6 +16,7 @@ import {
   BellRing,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useModuleFlags } from '../hooks/useModuleFlags';
@@ -410,7 +411,7 @@ export default function Messages() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Messages</h2>
+        <PageTitle title="Messages" />
         <div className="flex items-center gap-2 flex-wrap">
           {pendingSendable.length > 0 && featureOn('messages.bulk') && (
             <button

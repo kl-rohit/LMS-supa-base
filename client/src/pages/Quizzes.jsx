@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Edit2, Trash2, ListChecks, Loader2, BookOpen, ClipboardList, FileQuestion } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
@@ -65,7 +66,7 @@ export default function Quizzes() {
     <div>
       <div className="flex items-start justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quizzes</h1>
+          <PageTitle title="Quizzes" />
           <p className="text-sm text-gray-500 mt-1">
             Create and manage quizzes. Open one to analyse responses, or attach it to an assignment or course lesson.
           </p>

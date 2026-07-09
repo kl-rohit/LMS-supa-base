@@ -5,6 +5,7 @@
 // light and dark and stays responsive. No hardcoded palette.
 //
 // Exports:
+//   PageTitle    — just the title block (pulse dot + title + subtitle)
 //   PageHeader   — title + live pulse dot + optional subtitle / right actions
 //   MetricCard   — stat tile with a coloured accent top-bar + micro-label
 //   Panel        — bordered surface with an uppercase micro-title + actions
@@ -27,16 +28,22 @@ const TONE = {
   muted: 'text-gray-400',
 };
 
+export function PageTitle({ title, subtitle, live = true }) {
+  return (
+    <div className="flex items-center gap-2.5 min-w-0">
+      {live && <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse flex-shrink-0" />}
+      <div className="min-w-0">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">{title}</h1>
+        {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function PageHeader({ title, subtitle, right, live = true }) {
   return (
     <div className="flex items-start justify-between gap-3 flex-wrap">
-      <div className="flex items-center gap-2.5 min-w-0">
-        {live && <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse flex-shrink-0" />}
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">{title}</h1>
-          {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
-        </div>
-      </div>
+      <PageTitle title={title} subtitle={subtitle} live={live} />
       {right && <div className="flex items-center gap-2 flex-shrink-0">{right}</div>}
     </div>
   );

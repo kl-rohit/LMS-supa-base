@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 // Top-level error boundary. Catches render-time crashes anywhere in the app and
 // shows a friendly recovery card instead of a blank white screen. A reload
@@ -25,7 +26,9 @@ export default class ErrorBoundary extends React.Component {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
         <div className="w-full max-w-sm text-center bg-white rounded-2xl shadow-xl p-6">
-          <div className="text-4xl mb-3">🎻</div>
+          <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-3">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
           <h1 className="text-lg font-semibold text-gray-900">Something needs a moment</h1>
           <p className="mt-2 text-sm text-gray-500">
             The app hit a snag rendering this screen. A quick reload usually sorts it out.

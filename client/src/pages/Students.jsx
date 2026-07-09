@@ -19,6 +19,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import Papa from 'papaparse';
 import api from '../utils/api';
 import { useConfirm } from '../contexts/ConfirmContext';
@@ -616,7 +617,7 @@ export default function Students() {
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Students</h2>
+        <PageTitle title="Students" />
         <div className="flex items-center gap-2 flex-wrap">
           {statusFilter === 'inactive' && students.some((s) => s.status === 'inactive') && (
             <button

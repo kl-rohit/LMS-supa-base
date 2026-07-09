@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, FileText, ExternalLink, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -105,7 +106,7 @@ export default function QuestionPapers() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Question Papers</h2>
+        <PageTitle title="Question Papers" />
         <button onClick={openAdd} data-tour="papers-add" className="btn-primary btn-sm">
           <Plus className="w-4 h-4" /> Add Paper
         </button>

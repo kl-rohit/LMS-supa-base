@@ -1781,6 +1781,13 @@ export default function Reports() {
         const asPct = (v) => { const n = Number(v) || 0; return Math.round(n <= 1 ? n * 100 : n); };
         const mShort = (ym) => MONTHS_SHORT[parseInt((ym || '').split('-')[1], 10) - 1] || ym;
 
+        // First load of any detailed tab: show the shared Loader instead of a
+        // blank pane. On a re-fetch we keep the existing data on screen (no flash).
+        const ADV_TABS = ['revenue', 'defaulters', 'retention', 'slots', 'courses', 'capacity'];
+        if (ADV_TABS.includes(activeTab) && busy(activeTab) && !data(activeTab)) {
+          return <Loader text="Loading report..." />;
+        }
+
         // ---------- Revenue Trend ----------
         if (activeTab === 'revenue') {
           const d = data('revenue');

@@ -19,6 +19,7 @@ import {
   Video,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import Modal from '../components/Modal';
@@ -631,7 +632,7 @@ export default function Classes() {
       <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="page-header mb-0">Weekly Schedule</h2>
+        <PageTitle title="Weekly Schedule" />
         <div className="flex items-center gap-2 flex-wrap">
           {/* View switcher: Timetable (date-aware grid) vs List (day cards) */}
           <div className="flex items-center bg-white rounded-lg border border-gray-200 p-0.5">
@@ -803,7 +804,7 @@ export default function Classes() {
       {activeTab === 'camps' && (
       <>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h2 className="page-header mb-0">Camps</h2>
+          <PageTitle title="Camps" />
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-1">
               {['active', 'completed', 'archived'].map((s) => (

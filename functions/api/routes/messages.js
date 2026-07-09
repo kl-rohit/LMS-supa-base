@@ -6,6 +6,7 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeI
 const { loadTemplates, DEFAULT_TEMPLATES, loadAppSettings } = require('./settings');
 const { generateFeeReminders, substituteTemplate, pickTemplate, notifyAdminFeeRemindersReady } = require('../lib/feeReminder');
 const { createNotifications } = require('../lib/notify');
+const { resolveAudienceStudentIds } = require('../lib/audience');
 const { requireFeature } = require('../middleware/entitlement');
 
 // Friendly inbox titles per message_type.
@@ -41,8 +42,44 @@ router.get('/', async (req, res) => {
 // POST /api/messages
 router.post('/', async (req, res) => {
   try {
-    const { student_id, parent_name, mobile_number, message, message_type } = req.body;
+    const { student_id, parent_name, mobile_number, message, message_type, student_ids, target_type } = req.body;
     if (!message) return res.status(400).json({ error: 'message is required' });
+
+    // Audience send: an explicit student_ids[] or a target (Everyone / group(s)
+    // / specific) → one Messages row per resolved student, using each student's
+    // own parent name + mobile. Falls through to the single-student path below.
+    if (target_type || (Array.isArray(student_ids) && student_ids.length)) {
+      let ids = Array.isArray(student_ids) && student_ids.length ? student_ids.map(String) : [];
+      if (!ids.length && target_type) {
+        ids = await resolveAudienceStudentIds(req, { target_type, target_id: req.body.target_id, target_ids: req.body.target_ids });
+      }
+      ids = [...new Set(ids.map(String))].filter((x) => /^\d+$/.test(x));
+      if (!ids.length) return res.status(400).json({ error: 'No students matched the audience' });
+      const byId = new Map();
+      try {
+        const srows = await zcqlAll(req, `SELECT ROWID, parent_name, mobile_number FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.ROWID IN (${ids.join(',')})`, 'Students');
+        for (const s of unwrap(srows, 'Students').map(normalize)) byId.set(String(s.id), s);
+      } catch { /* ignore */ }
+      let count = 0;
+      for (const sid of ids) {
+        const s = byId.get(String(sid));
+        if (!s) continue; // not in this org
+        try {
+          await insert(req, 'Messages', {
+            student_id: String(sid),
+            parent_name: s.parent_name || '',
+            mobile_number: s.mobile_number || '',
+            message,
+            message_type: message_type || 'custom',
+            is_sent: 0,
+            org_id: Number(req.orgId),
+          });
+          count++;
+        } catch (e) { /* skip one, keep going */ }
+      }
+      return res.status(201).json({ count });
+    }
+
     let pName = parent_name, mNum = mobile_number;
     if (student_id) {
       const s = await getById(req, 'Students', student_id);

@@ -23,6 +23,7 @@ import { normalizeMobileForWhatsApp, formatMobileDisplay } from '../utils/phone'
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
+import TargetPicker from '../components/TargetPicker';
 // Templates editor lives at /settings → Templates tab. We just READ
 // templates here for the compose dropdown + quick-template chips, and use
 // the same DEFAULT_TEMPLATES from the shared component as the fallback.
@@ -71,10 +72,13 @@ export default function Messages() {
   // Compose form
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeForm, setComposeForm] = useState({
-    student_id: '',
     message_type: 'custom',
     message_text: '',
   });
+  // Audience for the message: Everyone / a group / specific students (+ the
+  // multi-group "add a group" helper in the picker).
+  const [composeTarget, setComposeTarget] = useState({ target_type: 'all', target_id: '', target_ids: [] });
+  const [groups, setGroups] = useState([]);
   const [sending, setSending] = useState(false);
 
   // Resolve a template by type + substitute {name}/{parent}. Other placeholders
@@ -107,36 +111,18 @@ export default function Messages() {
     { key: 'holiday_notice', label: 'Holiday Notice' },
   ];
 
+  // Bulk compose has no single student, so templates use generic placeholders
+  // ([Student Name]/[Parent Name]) the sender can edit before sending.
   const handleTypeChange = (type) => {
-    const student = students.find((s) => String(s.id) === String(composeForm.student_id));
-    const template = getTemplate(type, student?.name, student?.parent_name);
-    setComposeForm({
-      ...composeForm,
+    setComposeForm((f) => ({
+      ...f,
       message_type: type,
-      message_text: type !== 'custom' ? template : composeForm.message_text,
-    });
-  };
-
-  const handleStudentChange = (studentId) => {
-    const student = students.find((s) => String(s.id) === String(studentId));
-    const template = composeForm.message_type !== 'custom'
-      ? getTemplate(composeForm.message_type, student?.name, student?.parent_name)
-      : composeForm.message_text;
-    setComposeForm({
-      ...composeForm,
-      student_id: studentId,
-      message_text: template,
-    });
+      message_text: type !== 'custom' ? getTemplate(type) : f.message_text,
+    }));
   };
 
   const applyQuickTemplate = (templateKey) => {
-    const student = students.find((s) => String(s.id) === String(composeForm.student_id));
-    const template = getTemplate(templateKey, student?.name, student?.parent_name);
-    setComposeForm({
-      ...composeForm,
-      message_type: templateKey,
-      message_text: template,
-    });
+    setComposeForm((f) => ({ ...f, message_type: templateKey, message_text: getTemplate(templateKey) }));
   };
 
   useEffect(() => {
@@ -146,7 +132,7 @@ export default function Messages() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [messagesData, studentsData, templatesData, settingsData] = await Promise.all([
+      const [messagesData, studentsData, templatesData, settingsData, groupsData] = await Promise.all([
         api.get('/messages'),
         api.get('/students'),
         // Templates fetch must not break the page — fall back to defaults
@@ -154,9 +140,11 @@ export default function Messages() {
         api.get('/settings/templates').catch(() => ({ templates: DEFAULT_TEMPLATES })),
         // School identity for compose-time substitution of {school}/{signature}.
         api.get('/settings/app').catch(() => ({ settings: {} })),
+        api.get('/groups').catch(() => ({ groups: [] })),
       ]);
       setMessages(messagesData.messages || []);
       setStudents((studentsData.students || []).filter((s) => s.status === 'active'));
+      setGroups((groupsData.groups || []).filter((g) => (g.status || 'active') === 'active'));
       const t = { ...DEFAULT_TEMPLATES, ...(templatesData?.templates || {}) };
       setTemplates(t);
       const s = settingsData?.settings || {};
@@ -256,10 +244,6 @@ export default function Messages() {
 
   const handleCompose = async (e) => {
     e.preventDefault();
-    if (!composeForm.student_id) {
-      toast.error('Please select a student first.');
-      return;
-    }
     if (!composeForm.message_text.trim()) {
       toast.error('Please write a message before sending.');
       return;
@@ -273,16 +257,26 @@ export default function Messages() {
       toast.error(`Fill in or remove these placeholders first: ${leftover.join(', ')}`);
       return;
     }
+    // Build the audience (Everyone / a group / specific students).
+    const t = composeTarget;
+    const body = { message: composeForm.message_text, message_type: composeForm.message_type };
+    if (t.target_type === 'group') {
+      if (!t.target_id) { toast.error('Pick a group'); return; }
+      body.target_type = 'group'; body.target_id = t.target_id;
+    } else if (t.target_type === 'students') {
+      if (!t.target_ids || t.target_ids.length === 0) { toast.error('Pick at least one student'); return; }
+      body.student_ids = t.target_ids;
+    } else {
+      body.target_type = 'all';
+    }
     try {
       setSending(true);
-      await api.post('/messages', {
-        student_id: String(composeForm.student_id),
-        message_type: composeForm.message_type,
-        message: composeForm.message_text,
-      });
-      toast.success('Message created');
+      const r = await api.post('/messages', body);
+      const n = r?.count ?? 1;
+      toast.success(`Created ${n} message${n === 1 ? '' : 's'}`);
       setComposeOpen(false);
-      setComposeForm({ student_id: '', message_type: 'custom', message_text: '' });
+      setComposeForm({ message_type: 'custom', message_text: '' });
+      setComposeTarget({ target_type: 'all', target_id: '', target_ids: [] });
       fetchData();
     } catch (err) {
       toast.error(err.message);
@@ -483,34 +477,25 @@ export default function Messages() {
         <div className="card border-indigo-200">
           <h3 className="font-semibold text-gray-900 mb-3">Compose Message</h3>
           <form onSubmit={handleCompose} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Student *</label>
-                <select
-                  value={composeForm.student_id}
-                  onChange={(e) => handleStudentChange(e.target.value)}
-                  className="select-field"
-                  required
-                >
-                  <option value="">Select student...</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select
-                  value={composeForm.message_type}
-                  onChange={(e) => handleTypeChange(e.target.value)}
-                  className="select-field"
-                >
-                  <option value="custom">Custom</option>
-                  <option value="absence_alert">Absence Alert</option>
-                  <option value="fee_reminder">Fee Reminder</option>
-                  <option value="class_update">Class Update</option>
-                </select>
-              </div>
+            <TargetPicker
+              value={composeTarget}
+              groups={groups}
+              students={students}
+              onChange={setComposeTarget}
+              label="Send to"
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <select
+                value={composeForm.message_type}
+                onChange={(e) => handleTypeChange(e.target.value)}
+                className="select-field"
+              >
+                <option value="custom">Custom</option>
+                <option value="absence_alert">Absence Alert</option>
+                <option value="fee_reminder">Fee Reminder</option>
+                <option value="class_update">Class Update</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>

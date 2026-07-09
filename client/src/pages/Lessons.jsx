@@ -31,6 +31,7 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Tooltip from '../components/Tooltip';
 import QuizEditor from '../components/QuizEditor';
+import TargetPicker from '../components/TargetPicker';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters, extractDriveId } from '../utils/youtube';
 import {
@@ -201,11 +202,8 @@ export default function Lessons() {
   const [quizLesson, setQuizLesson] = useState(null);
 
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
-  const [enrollSelection, setEnrollSelection] = useState([]); // array of student_ids
-  const [enrollSearch, setEnrollSearch] = useState('');
-  // Audience mode for enrolling: 'students' (hand-pick, default) | 'all' | 'group'.
-  const [enrollMode, setEnrollMode] = useState('students');
-  const [enrollGroupId, setEnrollGroupId] = useState('');
+  // Audience for enrolling — shared TargetPicker shape. Defaults to hand-pick.
+  const [enrollTarget, setEnrollTarget] = useState({ target_type: 'students', target_id: '', target_ids: [] });
   const [groups, setGroups] = useState([]);
 
   // Split-video-into-chapter-lessons modal state
@@ -511,12 +509,9 @@ export default function Lessons() {
 
   // ----- Enroll students -----
   const openEnrollModal = () => {
-    setEnrollSelection([]);
-    setEnrollSearch('');
-    setEnrollMode('students');
-    setEnrollGroupId('');
+    setEnrollTarget({ target_type: 'students', target_id: '', target_ids: [] });
     setEnrollModalOpen(true);
-    // Load groups lazily for the "A group" option (one read, only when needed).
+    // Load groups lazily for the picker (one read, only when needed).
     if (groups.length === 0) {
       api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {});
     }
@@ -529,22 +524,13 @@ export default function Lessons() {
     () => students.filter((s) => !enrolledIds.has(String(s.id))),
     [students, enrolledIds]
   );
-  // Search across name + parent so a teacher can find a student quickly even
-  // when the unenrolled list is long.
-  const enrollFiltered = useMemo(() => {
-    const q = enrollSearch.trim().toLowerCase();
-    if (!q) return unenrolledStudents;
-    return unenrolledStudents.filter(
-      (s) => (s.name || '').toLowerCase().includes(q) || (s.parent_name || '').toLowerCase().includes(q)
-    );
-  }, [unenrolledStudents, enrollSearch]);
   const saveEnrollments = async () => {
-    // Build the request by audience mode. Everyone / a Group resolve on the
+    // Build the request from the picker. Everyone / a Group resolve on the
     // server (shared audience resolver); Specific students send the picked ids.
     let body;
-    if (enrollMode === 'all') body = { target_type: 'all' };
-    else if (enrollMode === 'group') { if (!enrollGroupId) { toast.error('Pick a group'); return; } body = { target_type: 'group', target_id: String(enrollGroupId) }; }
-    else { if (enrollSelection.length === 0) return; body = { student_ids: enrollSelection.map(String) }; }
+    if (enrollTarget.target_type === 'all') body = { target_type: 'all' };
+    else if (enrollTarget.target_type === 'group') { if (!enrollTarget.target_id) { toast.error('Pick a group'); return; } body = { target_type: 'group', target_id: String(enrollTarget.target_id) }; }
+    else { if (!enrollTarget.target_ids?.length) return; body = { target_type: 'students', target_ids: enrollTarget.target_ids.map(String) }; }
     try {
       const resp = await api.post('/enrollments', { course_id: String(selectedCourse.id), ...body });
       toast.success(resp.count > 0 ? `Enrolled ${resp.count} student${resp.count === 1 ? '' : 's'}` : 'Everyone in that audience is already enrolled');
@@ -988,88 +974,24 @@ export default function Lessons() {
           title={`Enroll students — ${selectedCourse.name}`}
           size="md"
           onSave={saveEnrollments}
-          saveDisabled={enrollMode === 'students' ? enrollSelection.length === 0 : enrollMode === 'group' ? !enrollGroupId : false}
-          saveLabel={enrollMode === 'all' ? 'Enroll everyone' : enrollMode === 'group' ? 'Enroll group' : `Enroll ${enrollSelection.length > 0 ? `(${enrollSelection.length})` : ''}`}
+          saveDisabled={enrollTarget.target_type === 'students' ? !enrollTarget.target_ids?.length : enrollTarget.target_type === 'group' ? !enrollTarget.target_id : false}
+          saveLabel={enrollTarget.target_type === 'all' ? 'Enroll everyone' : enrollTarget.target_type === 'group' ? 'Enroll group' : `Enroll ${enrollTarget.target_ids?.length ? `(${enrollTarget.target_ids.length})` : ''}`}
         >
           <div className="space-y-3">
-            {/* Audience mode — same model as assignments and papers. */}
-            <div className="grid grid-cols-3 gap-2">
-              {[{ k: 'all', label: 'Everyone' }, { k: 'group', label: 'A group' }, { k: 'students', label: 'Specific students' }].map((m) => (
-                <button
-                  key={m.k}
-                  type="button"
-                  onClick={() => setEnrollMode(m.k)}
-                  className={`px-2 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${enrollMode === m.k ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-gray-200 text-gray-600 hover:border-indigo-300'}`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {enrollMode === 'all' && (
-              <p className="text-sm text-gray-500 py-2">Enrols every active student who isn't already in this course. Existing enrolments and their progress are untouched.</p>
-            )}
-
-            {enrollMode === 'group' && (
-              <select value={enrollGroupId} onChange={(e) => setEnrollGroupId(e.target.value)} className="input-field">
-                <option value="">Select a group…</option>
-                {groups.map((g) => <option key={g.id} value={g.id}>{g.name}{g.member_count != null ? ` (${g.member_count})` : ''}</option>)}
-              </select>
-            )}
-
-            {enrollMode === 'students' && (unenrolledStudents.length === 0 ? (
+            {unenrolledStudents.length === 0 && enrollTarget.target_type === 'students' ? (
               <p className="text-sm text-gray-500 text-center py-6">All active students are already enrolled.</p>
             ) : (
-              <>
-                <p className="text-sm text-gray-500">Search and select students to enroll. Already-enrolled students aren't shown.</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={enrollSearch}
-                    onChange={(e) => setEnrollSearch(e.target.value)}
-                    className="input-field flex-1 text-sm"
-                    placeholder="Search by name or parent…"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setEnrollSelection((prev) => Array.from(new Set([...prev, ...enrollFiltered.map((s) => String(s.id))])))}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap"
-                  >
-                    Select all
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEnrollSelection([])}
-                    className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="max-h-72 overflow-y-auto border border-gray-200 rounded-lg">
-                  {enrollFiltered.length === 0 ? (
-                    <p className="text-sm text-gray-400 text-center py-6">No students match “{enrollSearch}”.</p>
-                  ) : enrollFiltered.map((s) => {
-                    const checked = enrollSelection.includes(String(s.id));
-                    return (
-                      <label key={s.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 border-gray-100">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const sid = String(s.id);
-                            setEnrollSelection((prev) => e.target.checked ? [...prev, sid] : prev.filter((x) => x !== sid));
-                          }}
-                          className="w-4 h-4 text-indigo-600 rounded"
-                        />
-                        <span className="text-sm text-gray-800">{s.name}</span>
-                        <span className="text-xs text-gray-400 ml-auto">{s.parent_name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </>
-            ))}
+              <TargetPicker
+                value={enrollTarget}
+                groups={groups}
+                students={unenrolledStudents}
+                onChange={setEnrollTarget}
+                label="Enrol which students?"
+              />
+            )}
+            {enrollTarget.target_type === 'all' && (
+              <p className="text-sm text-gray-500">Enrols every active student who isn't already in this course. Existing enrolments and their progress are untouched.</p>
+            )}
           </div>
         </Modal>
 

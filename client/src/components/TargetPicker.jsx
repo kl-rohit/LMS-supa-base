@@ -29,6 +29,20 @@ export default function TargetPicker({ value, groups = [], students = [], onChan
     set({ target_ids: [...next] });
   };
 
+  // Bulk-add a whole group's current members into the specific-students list.
+  // A snapshot (not dynamic) — you can then add more groups or hand-pick extras
+  // and remove anyone. Groups can be added one after another (they merge).
+  const addGroup = (groupId) => {
+    if (!groupId) return;
+    const g = groups.find((x) => String(x.id) === String(groupId));
+    if (!g) return;
+    const valid = new Set(students.map((s) => String(s.id)));
+    const memberIds = (g.members || []).map(String).filter((id) => valid.has(id));
+    const next = new Set(target_ids.map(String));
+    memberIds.forEach((id) => next.add(id));
+    set({ target_ids: [...next] });
+  };
+
   const filtered = q
     ? students.filter((s) => (s.name || '').toLowerCase().includes(q.toLowerCase()))
     : students;
@@ -61,7 +75,14 @@ export default function TargetPicker({ value, groups = [], students = [], onChan
       )}
 
       {target_type === 'students' && (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div>
+          {groups.length > 0 && (
+            <select value="" onChange={(e) => addGroup(e.target.value)} className="input-field text-sm mb-2">
+              <option value="">+ Add a whole group…</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count ?? (g.members ? g.members.length : 0)})</option>)}
+            </select>
+          )}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
             <Search className="w-4 h-4 text-gray-400 shrink-0" />
             <input
@@ -91,6 +112,7 @@ export default function TargetPicker({ value, groups = [], students = [], onChan
                 </button>
               );
             })}
+          </div>
           </div>
         </div>
       )}

@@ -18,6 +18,7 @@ import api from '../utils/api';
 import CountUpAmount from '../components/CountUpAmount';
 import Loader from '../components/Loader';
 import { PageHeader, MetricCard, Panel, SectionLabel } from '../components/ConsoleUI';
+import { Donut, BarChart, CHART_COLORS } from '../components/Charts';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { useOrgBranding } from '../hooks/useOrgBranding';
@@ -84,6 +85,28 @@ export default function Dashboard() {
 
   const attRate = Math.round(attendanceRateThisMonth);
   const attTone = attRate >= 80 ? 'good' : attRate >= 60 ? 'warn' : 'bad';
+
+  // Attendance donut (present/absent/late hours this month).
+  const ab = data.attendance_breakdown || { present: 0, absent: 0, late: 0 };
+  const donutData = [
+    { label: 'Present', value: ab.present || 0, color: CHART_COLORS.present },
+    { label: 'Absent', value: ab.absent || 0, color: CHART_COLORS.absent },
+    { label: 'Late', value: ab.late || 0, color: CHART_COLORS.late },
+  ].filter((d) => d.value > 0);
+  const hasAttData = donutData.length > 0;
+
+  // Today's classes broken down by type (client-side; the payload already has them).
+  const MIX_LABELS = { online: 'Online', offline: 'Offline', online_group: 'Online group', offline_group: 'Offline group', other: 'Other' };
+  const mixCounts = classesToday.reduce((m, c) => {
+    const k = c.class_type || 'other';
+    m[k] = (m[k] || 0) + 1;
+    return m;
+  }, {});
+  const mixData = Object.entries(mixCounts).map(([k, v], i) => ({
+    label: MIX_LABELS[k] || k,
+    value: v,
+    color: CHART_COLORS.series[i % CHART_COLORS.series.length],
+  }));
 
   const formatTime = (timeStr) => {
     if (!timeStr) return '';
@@ -165,6 +188,36 @@ export default function Dashboard() {
           icon={IndianRupee}
           onClick={() => navigate('/fees')}
         />
+      </div>
+
+      {/* Visual overview — attendance mix + today's class mix */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <Panel title="Attendance this month">
+          {hasAttData ? (
+            <div className="flex items-center gap-5 sm:gap-6">
+              <Donut size={132} thickness={20} centervalue={`${attRate}%`} centerlabel="present" data={donutData} />
+              <div className="flex-1 space-y-2.5">
+                {donutData.map((d) => (
+                  <div key={d.label} className="flex items-center gap-2.5 text-sm">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
+                    <span className="text-gray-500">{d.label}</span>
+                    <span className="ml-auto font-semibold text-gray-900 tabular-nums">{d.value} hrs</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-8">No attendance recorded yet this month.</p>
+          )}
+        </Panel>
+
+        <Panel title="Today's classes by type">
+          {mixData.length > 0 ? (
+            <BarChart data={mixData} fmt={(v) => `${v}`} />
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-8">No classes scheduled today.</p>
+          )}
+        </Panel>
       </div>
 
       {/* Upcoming Birthdays — next 30 days */}

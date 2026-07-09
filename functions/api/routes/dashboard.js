@@ -105,6 +105,7 @@ router.get('/', async (req, res) => {
     });
     const presentCount = sumHrs(thisMonth.filter((a) => a.status === 'present'));
     const absentCount = sumHrs(thisMonth.filter((a) => a.status === 'absent'));
+    const lateCount = sumHrs(thisMonth.filter((a) => a.status === 'late'));
     const attended = presentCount + absentCount;
     const attendanceRate = attended ? Math.round((presentCount / attended) * 100) : 0;
     const feesCollected = thisMonth.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
@@ -145,6 +146,8 @@ router.get('/', async (req, res) => {
         total_fee_this_month:         feesCollected,
         classes_today:                todayClasses.length,
       },
+      // Present/absent/late hours this month — drives the dashboard donut.
+      attendance_breakdown: { present: presentCount, absent: absentCount, late: lateCount },
       upcoming_classes_today: todayClasses,
       today_classes:          todayClasses,
       recent_attendance:      recent,

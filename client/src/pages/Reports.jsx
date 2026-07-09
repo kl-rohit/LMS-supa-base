@@ -37,7 +37,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
 import { Donut, BarChart, LineChart, GroupedBarChart, TrendArrow, MobileCardTable, CHART_COLORS } from '../components/Charts';
-import { PageHeader } from '../components/ConsoleUI';
+import { PageHeader, MetricCard } from '../components/ConsoleUI';
 import { exportCsv, exportPdf, printSection } from '../utils/reportExport';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 
@@ -1468,32 +1468,18 @@ export default function Reports() {
                 </button>
               </div>
 
-              {/* Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="card text-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-0">
-                  <Users className="w-8 h-8 mx-auto opacity-80" />
-                  <p className="text-3xl font-bold mt-2">{overallReport.students?.active || 0}</p>
-                  <p className="text-sm opacity-80">Total Students</p>
-                </div>
-                <div className="card text-center bg-gradient-to-br from-blue-500 to-cyan-600 text-white border-0">
-                  <ClipboardCheck className="w-8 h-8 mx-auto opacity-80" />
-                  <p className="text-3xl font-bold mt-2">{overallReport.attendance?.total_records || 0}</p>
-                  <p className="text-sm opacity-80">Classes Conducted</p>
-                </div>
-                <div className="card text-center bg-gradient-to-br from-amber-500 to-orange-600 text-white border-0">
-                  <IndianRupee className="w-8 h-8 mx-auto opacity-80" />
-                  <p className="text-3xl font-bold mt-2">
-                    {'\u20B9'}{Number(overallReport.fees?.grand_total || 0).toLocaleString('en-IN')}
-                  </p>
-                  <p className="text-sm opacity-80">Total Fees</p>
-                </div>
-                <div className="card text-center bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-0">
-                  <TrendingUp className="w-8 h-8 mx-auto opacity-80" />
-                  <p className="text-3xl font-bold mt-2">
-                    {Math.round(overallReport.attendance?.overall_rate || 0)}%
-                  </p>
-                  <p className="text-sm opacity-80">Avg Attendance</p>
-                </div>
+              {/* Summary Cards \u2014 clean console tiles (match the Dashboard). */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                <MetricCard label="Total Students" value={(overallReport.students?.active || 0).toLocaleString('en-IN')} accent="indigo" icon={Users} />
+                <MetricCard label="Classes Conducted" value={(overallReport.attendance?.total_records || 0).toLocaleString('en-IN')} accent="blue" icon={ClipboardCheck} />
+                <MetricCard label="Total Fees" value={`\u20B9${Number(overallReport.fees?.grand_total || 0).toLocaleString('en-IN')}`} accent="amber" icon={IndianRupee} />
+                <MetricCard
+                  label="Avg Attendance"
+                  value={`${Math.round(overallReport.attendance?.overall_rate || 0)}%`}
+                  accent="emerald"
+                  icon={TrendingUp}
+                  tone={(overallReport.attendance?.overall_rate || 0) >= 80 ? 'good' : (overallReport.attendance?.overall_rate || 0) >= 60 ? 'warn' : 'bad'}
+                />
               </div>
 
               {/* Visual overview — colourful, theme-aware charts from the same data */}

@@ -439,6 +439,70 @@ export default function Reports() {
     return text;
   };
 
+  // Consolidated PDF: one document that bundles every headline block on the
+  // Overall tab into labelled sections (summary, attendance, fees, classes,
+  // monthly trend). Reuses exportPdf's multi-section table renderer.
+  const downloadOverallPdf = () => {
+    if (!overallReport) return;
+    const r = overallReport;
+    const kv = (rows) => ({ columns: [{ key: 'k', label: 'Metric' }, { key: 'v', label: 'Value' }], rows });
+    const sections = [];
+    sections.push({
+      heading: 'Summary',
+      ...kv([
+        { k: 'Total students', v: r.students?.active || 0 },
+        { k: 'Classes conducted', v: r.attendance?.total_records || 0 },
+        { k: 'Total fees collected', v: rupee(r.fees?.grand_total) },
+        { k: 'Average attendance', v: `${Math.round(r.attendance?.overall_rate || 0)}%` },
+      ]),
+    });
+    sections.push({
+      heading: 'Attendance',
+      ...kv([
+        { k: 'Present', v: r.attendance?.present || 0 },
+        { k: 'Absent', v: r.attendance?.absent || 0 },
+        { k: 'Late', v: r.attendance?.late || 0 },
+        { k: 'Attendance rate', v: `${Math.round(r.attendance?.overall_rate || 0)}%` },
+      ]),
+    });
+    sections.push({
+      heading: 'Fees',
+      ...kv([
+        { k: 'Class fees', v: rupee(r.fees?.class_fees) },
+        { k: 'Additional fees', v: rupee(r.fees?.additional) },
+        { k: 'Grand total', v: rupee(r.fees?.grand_total) },
+      ]),
+    });
+    if (r.classes) {
+      sections.push({
+        heading: 'Classes by type',
+        ...kv([
+          { k: 'Online', v: r.classes.online || 0 },
+          { k: 'Offline', v: r.classes.offline || 0 },
+          { k: 'Online group', v: r.classes.online_group || 0 },
+          { k: 'Offline group', v: r.classes.offline_group || 0 },
+        ]),
+      });
+    }
+    if (Array.isArray(r.monthly_revenue) && r.monthly_revenue.length) {
+      sections.push({
+        heading: 'Monthly trend',
+        columns: [
+          { key: 'month', label: 'Month' },
+          { key: 'classes', label: 'Classes' },
+          { key: 'revenue', label: 'Revenue' },
+        ],
+        rows: r.monthly_revenue.map((m) => ({
+          month: `${(MONTHS[(parseInt(m.month) || 1) - 1] || '').substring(0, 3)} ${m.year}`,
+          classes: m.total_records || 0,
+          revenue: rupee(m.revenue ?? m.grand_total ?? m.total),
+        })),
+      });
+    }
+    exportPdf('Overall report', sections);
+    toast.success('Report downloaded');
+  };
+
   const changeMonth = (delta) => {
     let m = monthlyMonth + delta;
     let y = monthlyYear;
@@ -1388,7 +1452,14 @@ export default function Reports() {
             <EmptyState icon={TrendingUp} title="No data" message="No overall data available yet." />
           ) : (
             <>
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={downloadOverallPdf}
+                  className="btn-secondary btn-sm"
+                  title="Download the whole report as a PDF"
+                >
+                  <Download className="w-4 h-4" /> PDF
+                </button>
                 <button
                   onClick={() => copyToClipboard(formatOverallReportText())}
                   className={copied ? 'btn-success btn-sm' : 'btn-secondary btn-sm'}

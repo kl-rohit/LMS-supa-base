@@ -1,8 +1,11 @@
 // Parent dashboard — high-level summary for the linked student.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, CalendarClock, Check, IndianRupee, PlayCircle, ChevronRight, UserX, LogOut, Video } from 'lucide-react';
+import {
+  Calendar, CalendarClock, Check, IndianRupee, PlayCircle, ChevronRight, UserX, LogOut, Video,
+  Sparkles, ClipboardList, ListChecks, Bell, FileText,
+} from 'lucide-react';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import InstallAppButton from '../../components/InstallAppButton';
@@ -21,6 +24,8 @@ export default function PortalDashboard() {
   const [attendanceAll, setAttendanceAll] = useState([]);
   const [continueWatching, setContinueWatching] = useState(null);
   const [upcoming, setUpcoming] = useState(null);
+  const [assignments, setAssignments] = useState([]);
+  const [notifications, setNotifications] = useState([]);
 
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -29,12 +34,14 @@ export default function PortalDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const [me, monthFees, att, cw, up] = await Promise.all([
+        const [me, monthFees, att, cw, up, asg, ntf] = await Promise.all([
           api.getCached('/portal/me', 'portal_me'),
           api.getCached(`/portal/fees?month=${ym}`, 'portal_fees'),
           api.getCached('/portal/attendance', 'portal_attendance'),
           api.get('/portal/continue-watching').catch(() => ({ course: null })),
           api.get('/portal/upcoming-class').catch(() => ({ upcoming: null })),
+          api.get('/portal/assignments').catch(() => ({ assignments: [] })),
+          api.get('/portal/notifications').catch(() => ({ notifications: [] })),
         ]);
         if (cancelled) return;
         setStudent(me.student);
@@ -44,6 +51,8 @@ export default function PortalDashboard() {
         setAttendanceAll(attendance);
         setContinueWatching(cw?.course ? cw : null);
         setUpcoming(up?.upcoming || null);
+        setAssignments(asg?.assignments || []);
+        setNotifications(ntf?.notifications || []);
       } catch (e) {
         // /portal/me will fail if no StudentLogins row exists — show a friendly message
       } finally {
@@ -52,6 +61,52 @@ export default function PortalDashboard() {
     })();
     return () => { cancelled = true; };
   }, [ym]);
+
+  // "For you" feed — a single ranked list of what needs attention now, pulled
+  // from data already loaded: pending homework/quizzes first (time-sensitive),
+  // then unread notifications (fees, attendance, new content). Continue-watching
+  // has its own card below, so it is not duplicated here.
+  const feed = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const items = [];
+    (assignments || []).filter((a) => !a.completed).forEach((a) => {
+      const overdue = a.due_date && a.due_date < todayStr;
+      const dueSoon = a.due_date && a.due_date >= todayStr;
+      items.push({
+        key: `asg-${a.id}`,
+        icon: a.kind === 'quiz' ? ListChecks : ClipboardList,
+        tone: a.kind === 'quiz' ? 'violet' : 'indigo',
+        title: a.title || (a.kind === 'quiz' ? 'Quiz' : 'Homework'),
+        subtitle: a.kind === 'quiz'
+          ? (a.status === 'attempted' ? 'Quiz · retake to pass' : 'Quiz · not started')
+          : 'Homework · to do',
+        due: a.due_date || '',
+        overdue,
+        dueSoon,
+        to: '/portal/assignments',
+        priority: overdue ? 0 : 1,
+        sortKey: a.due_date || '9999-99-99',
+      });
+    });
+    (notifications || []).filter((n) => !n.read).forEach((n) => {
+      const icon = n.type === 'fee' ? IndianRupee : n.type === 'attendance' ? Calendar : n.type === 'message' ? Bell : FileText;
+      items.push({
+        key: `ntf-${n.id}`,
+        icon,
+        tone: 'sky',
+        title: n.title || 'Update',
+        subtitle: n.body || '',
+        to: n.link || '/portal',
+        priority: 2,
+        sortKey: n.created_at || '',
+      });
+    });
+    // Actionable first (overdue → due → notifications); within a tier, soonest
+    // due date first, newest notification first.
+    items.sort((a, b) => (a.priority - b.priority)
+      || (a.priority <= 1 ? String(a.sortKey).localeCompare(String(b.sortKey)) : String(b.sortKey).localeCompare(String(a.sortKey))));
+    return items.slice(0, 6);
+  }, [assignments, notifications]);
 
   if (loading) return <Loader />;
   if (!student) {
@@ -103,6 +158,47 @@ export default function PortalDashboard() {
 
       {/* Encouragement badges, computed from data already loaded. */}
       <PortalBadges attendance={attendanceAll} continueWatching={continueWatching} />
+
+      {/* "For you" — everything that needs {student.name}'s attention, in one place. */}
+      {feed.length > 0 && (
+        <div className="card">
+          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
+            For you
+          </h3>
+          <div className="space-y-2">
+            {feed.map((it) => {
+              const Icon = it.icon;
+              const tone = {
+                indigo: 'bg-indigo-50 text-indigo-600',
+                violet: 'bg-violet-50 text-violet-600',
+                sky: 'bg-sky-50 text-sky-600',
+              }[it.tone] || 'bg-gray-50 text-gray-600';
+              return (
+                <Link
+                  key={it.key}
+                  to={it.to}
+                  className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors group"
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{it.title}</p>
+                    {it.subtitle && <p className="text-xs text-gray-500 truncate">{it.subtitle}</p>}
+                  </div>
+                  {it.due && (
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${it.overdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {it.overdue ? 'Overdue' : `Due ${new Date(it.due + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                    </span>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 flex-shrink-0" />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Upcoming class — next scheduled occurrence from the timetable */}
       {upcoming && (

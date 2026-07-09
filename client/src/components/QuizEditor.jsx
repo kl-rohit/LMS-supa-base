@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 const MAX_OPTIONS = 6;
 const MIN_OPTIONS = 2;
@@ -199,6 +200,7 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
   const [importMode, setImportMode] = useState('append');
   const [importing, setImporting] = useState(false);
   const bottomRef = useRef(null);
+  const confirm = useConfirm();
 
   // Load (or reload) this quiz's questions + settings from the server.
   const loadQuestions = async () => {
@@ -321,8 +323,11 @@ export default function QuizEditor({ lesson, onClose, onCountChange }) {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 60);
   };
 
-  const handleClose = () => {
-    if (hasChanges && !window.confirm('You have unsaved changes. Close without saving?')) return;
+  const handleClose = async () => {
+    if (hasChanges) {
+      const ok = await confirm({ title: 'Discard changes?', message: 'You have unsaved changes to this quiz. Close without saving?', confirmText: 'Discard' });
+      if (!ok) return;
+    }
     onClose();
   };
 

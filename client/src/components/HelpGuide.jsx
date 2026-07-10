@@ -667,6 +667,7 @@ const ADMIN_ARTICLES = [
       ] },
       { type: 'h', text: 'Reset a password' },
       { type: 'p', text: 'You can reset a parent’s password any time. The **Reset** button issues a new temporary password, shown once, that you can share on WhatsApp. The parent is asked to set their own password the next time they sign in.' },
+      { type: 'note', text: 'If the same parent uses one login across more than one academy, a reset updates that shared password everywhere they use it. They stay in control: they simply set a new password on their next sign-in, and it works across all their academies.' },
       { type: 'tip', text: 'Each parent sees only their own child’s data.' },
       { type: 'faq', items: [
         { q: 'Can one parent see two children?', a: 'Yes, if both students are linked to the same parent contact.' },

@@ -14,7 +14,7 @@
 
 const router = require('express').Router();
 const { getById, update, zcql, unwrap } = require('../db/catalystDb');
-const { createLogin, setUserEnabled } = require('../lib/supabaseAuth');
+const { createLogin, setUserEnabled, resetUserPassword } = require('../lib/supabaseAuth');
 const { parentKey, setFlag } = require('../lib/onboarding');
 
 // Shape we return to the React app for each login row.
@@ -141,6 +141,34 @@ router.post('/:id/resend-tour', async (req, res) => {
     res.json({ message: 'The welcome tour will show again the next time this parent opens the portal.' });
   } catch (e) {
     res.status(500).json({ error: 'Failed to resend tour', detail: e.message });
+  }
+});
+
+// POST /api/student-logins/:id/reset-password — admin resets the parent's
+// password to a fresh temp one and re-flags must_set_password, so the parent is
+// forced to choose their own password on their next sign-in. Returns the temp
+// password for the admin to share (e.g. on WhatsApp). (:id is a student id.)
+router.post('/:id/reset-password', async (req, res) => {
+  try {
+    const existing = await getById(req, 'Students', req.params.id);
+    if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Student not found' });
+    if (!existing.login_user_id) return res.status(404).json({ error: 'No login for this student' });
+    let tempPassword;
+    try {
+      tempPassword = await resetUserPassword(existing.login_user_id);
+    } catch (e) {
+      return res.status(500).json({ error: 'Could not reset the password', detail: e.message });
+    }
+    res.json({
+      email: existing.login_email || '',
+      temp_password: tempPassword,
+      student_name: existing.name,
+      parent_name: existing.parent_name,
+      mobile_number: existing.mobile_number,
+      message: 'Password reset. Share the new password with the parent; they will be asked to set their own on next sign-in.',
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to reset password', detail: e.message });
   }
 });
 

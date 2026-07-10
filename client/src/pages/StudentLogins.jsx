@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Compass,
+  KeyRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
@@ -37,18 +38,20 @@ const LOGIN_URL = `${window.location.origin}${BASE}/login`;
 // Build the sign-in message shared with the parent. Includes the temporary
 // password when we have it (just after creating the login); otherwise tells
 // them to use their existing password.
-function credentialsMessage({ parentName, studentName, email, password, academyName }) {
+function credentialsMessage({ parentName, studentName, email, password, academyName, reset }) {
   const academy = academyName || 'our academy';
   const lines = [
     `Hi ${parentName || ''},`.trim(),
     ``,
-    `Your ${academy} parent portal access${studentName ? ` for ${studentName}` : ''} is ready.`,
+    reset
+      ? `Your ${academy} parent portal password has been reset.`
+      : `Your ${academy} parent portal access${studentName ? ` for ${studentName}` : ''} is ready.`,
     ``,
     `Sign in here: ${LOGIN_URL}`,
     `Email: ${email}`,
   ];
   if (password) {
-    lines.push(`Password: ${password}`, ``, `Please change your password after signing in.`);
+    lines.push(`Password: ${password}`, ``, `You will be asked to set your own password after signing in.`);
   } else {
     lines.push(``, `Use your existing password. If you forgot it, ask us to reset it.`);
   }
@@ -81,6 +84,8 @@ export default function StudentLogins() {
   // Login id whose row action (resend tour / enable-disable) is in flight, so we
   // can disable that row's buttons and prevent a double submit.
   const [busyId, setBusyId] = useState(null);
+  // Login row pending a password-reset confirmation.
+  const [resetTarget, setResetTarget] = useState(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -162,6 +167,31 @@ export default function StudentLogins() {
     }
   };
 
+  // Admin resets a parent's password to a fresh temp one. The backend re-flags
+  // must_set_password, so the parent is forced to set their own on next sign-in.
+  // We surface the new password in the same share modal used for new logins.
+  const doResetPassword = async () => {
+    const login = resetTarget;
+    setResetTarget(null);
+    if (!login || busyId) return;
+    setBusyId(login.id);
+    try {
+      const resp = await api.post(`/student-logins/${login.id}/reset-password`);
+      setCreated({
+        student: { name: resp.student_name, parent_name: resp.parent_name, mobile_number: resp.mobile_number },
+        email: resp.email,
+        password: resp.temp_password || null,
+        reused: false,
+        reset: true,
+      });
+      toast.success('Password reset');
+    } catch (e) {
+      toast.error('Failed: ' + e.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const resendTour = async (login) => {
     if (busyId) return;
     setBusyId(login.id);
@@ -209,6 +239,7 @@ export default function StudentLogins() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div data-tour="logins-intro">
           <PageTitle
+            live={false}
             title="Parent Logins"
             subtitle="Create a portal login for each parent so they can see their child's class history and fees."
           />
@@ -236,7 +267,7 @@ export default function StudentLogins() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto hidden md:block">
+        <div className="overflow-x-auto hidden lg:block">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -307,6 +338,15 @@ export default function StudentLogins() {
                                 <Compass className="w-4 h-4" />
                               </button>
                             </Tooltip>
+                            <Tooltip label="Reset password &amp; share the new one">
+                              <button
+                                onClick={() => setResetTarget(login)}
+                                disabled={busyId === login.id}
+                                className="p-1.5 rounded-md hover:bg-indigo-50 text-gray-500 hover:text-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
                             <Tooltip label={login.status === 'active' ? 'Disable login' : 'Enable login'}>
                               <button
                                 onClick={() => toggleStatus(login)}
@@ -343,7 +383,7 @@ export default function StudentLogins() {
         </div>
 
         {/* Mobile cards */}
-        <div className="md:hidden divide-y divide-gray-100">
+        <div className="lg:hidden divide-y divide-gray-100">
           {pageRows.map(({ student, login }) => {
             const waLink = login
               ? whatsappLink(student.mobile_number, { parentName: student.parent_name, studentName: student.name, email: login.email, academyName: branding.name })
@@ -401,6 +441,14 @@ export default function StudentLogins() {
                         title="Re-send the welcome tour for this parent"
                       >
                         <Compass className="w-4 h-4" /> Tour
+                      </button>
+                      <button
+                        onClick={() => setResetTarget(login)}
+                        disabled={busyId === login.id}
+                        className="btn-secondary btn-sm text-indigo-600 disabled:opacity-40"
+                        title="Reset password and share the new one"
+                      >
+                        <KeyRound className="w-4 h-4" /> Reset
                       </button>
                       <button
                         onClick={() => toggleStatus(login)}
@@ -480,13 +528,15 @@ export default function StudentLogins() {
       <Modal
         isOpen={!!created}
         onClose={() => setCreated(null)}
-        title={created?.reused ? 'Login linked' : 'Share these sign-in details'}
+        title={created?.reset ? 'Password reset' : created?.reused ? 'Login linked' : 'Share these sign-in details'}
         size="md"
       >
         {created && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              {created.reused
+              {created.reset
+                ? `New password for ${created.student?.name || 'this student'}. Share it with the parent — they will be asked to set their own on next sign-in. Shown only once.`
+                : created.reused
                 ? `${created.student?.parent_name || 'This parent'} already had an account — it is now linked to ${created.student?.name || 'this student'}.`
                 : `Login created for ${created.student?.name || ''}. Share the details below with the parent — the password is shown only once.`}
             </p>
@@ -499,6 +549,7 @@ export default function StudentLogins() {
                 email: created.email,
                 password: created.password,
                 academyName: branding.name,
+                reset: created.reset,
               })}
               copyText={credentialsMessage({
                 parentName: created.student?.parent_name,
@@ -506,6 +557,7 @@ export default function StudentLogins() {
                 email: created.email,
                 password: created.password,
                 academyName: branding.name,
+                reset: created.reset,
               })}
               note={created.password ? 'Save or share the password now — it is shown only once.' : null}
             />
@@ -524,6 +576,15 @@ export default function StudentLogins() {
         message="The parent will lose portal access and their login will be disabled. You can recreate the login later if needed."
         confirmText="Delete"
         danger
+      />
+
+      <ConfirmDialog
+        isOpen={!!resetTarget}
+        onClose={() => setResetTarget(null)}
+        onConfirm={doResetPassword}
+        title="Reset this parent's password?"
+        message={`This sets a new temporary password for ${resetTarget?.student_name || 'this parent'} and signs out their current one. You'll get the new password to share, and they will be asked to set their own on next sign-in.`}
+        confirmText="Reset password"
       />
     </div>
   );

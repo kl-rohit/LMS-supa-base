@@ -75,6 +75,7 @@ export const FEATURE_PLANS = {
     'portal.login': { core: true, complete: true },
     'portal.glance': { core: true, complete: true },
     'portal.profile': { core: true, complete: true },
+    'portal.feed': { core: true, complete: true },
     'portal.learning': { core: false, complete: true },
     'lessons.build': { core: false, complete: true },
     'lessons.player': { core: false, complete: true },
@@ -82,7 +83,9 @@ export const FEATURE_PLANS = {
     'lessons.progress': { core: false, complete: true },
     'lessons.enrol': { core: false, complete: true },
     'quizzes.add': { core: false, complete: true },
+    'quizzes.standalone': { core: false, complete: true },
     'quizzes.gate': { core: false, complete: true },
+    'quizzes.analytics': { core: false, complete: true },
     'quizzes.certs': { core: false, complete: true },
     'assignments.assign': { core: false, complete: true },
     'assignments.due': { core: false, complete: true },
@@ -92,6 +95,8 @@ export const FEATURE_PLANS = {
     'reports.basic': { core: true, complete: true },
     'reports.detailed': { core: false, complete: true },
     'reports.lessons': { core: false, complete: true },
+    'reports.quiz': { core: false, complete: true },
+    'reports.pdf': { core: true, complete: true },
     'pwa.install': { core: true, complete: true },
     'pwa.a2hs': { core: true, complete: true },
     'pwa.theme': { core: true, complete: true },
@@ -145,6 +150,7 @@ export const FEATURE_CATALOG = [
       { key: 'portal.login', label: 'Secure per-family login', core: true, complete: true, enforce: 'inherent' },
       { key: 'portal.glance', label: 'Attendance & fees at a glance', core: true, complete: true, enforce: 'inherent' },
       { key: 'portal.profile', label: 'Profile self-service', core: true, complete: true, enforce: 'inline' },
+      { key: 'portal.feed', label: '"For you" activity feed', core: true, complete: true, enforce: 'inherent' },
       { key: 'portal.learning', label: 'Lessons & assignments view', core: false, complete: true, enforce: 'module' }
   ] },
   { name: 'Lessons & Courses', items: [
@@ -156,7 +162,9 @@ export const FEATURE_CATALOG = [
   ] },
   { name: 'Quizzes & Certificates', items: [
       { key: 'quizzes.add', label: 'Add quizzes to lessons', core: false, complete: true, enforce: 'module' },
+      { key: 'quizzes.standalone', label: 'Standalone quizzes with JSON import', core: false, complete: true, enforce: 'inherent' },
       { key: 'quizzes.gate', label: 'Gate course completion on quizzes', core: false, complete: true, enforce: 'module' },
+      { key: 'quizzes.analytics', label: 'Analytics, leaderboard & answer breakdown', core: false, complete: true, enforce: 'inherent' },
       { key: 'quizzes.certs', label: 'Auto-issued completion certificates', core: false, complete: true, enforce: 'module' }
   ] },
   { name: 'Assignments', items: [
@@ -171,7 +179,9 @@ export const FEATURE_CATALOG = [
   { name: 'Reports', items: [
       { key: 'reports.basic', label: 'Attendance & fee summaries', core: true, complete: true, enforce: 'module' },
       { key: 'reports.detailed', label: 'Detailed reports & trends', core: false, complete: true, enforce: 'inline' },
-      { key: 'reports.lessons', label: 'Lesson activity reports', core: false, complete: true, enforce: 'inline' }
+      { key: 'reports.lessons', label: 'Lesson activity reports', core: false, complete: true, enforce: 'inline' },
+      { key: 'reports.quiz', label: 'Quiz outcomes report', core: false, complete: true, enforce: 'inline' },
+      { key: 'reports.pdf', label: 'One-click PDF report export', core: true, complete: true, enforce: 'inline' }
   ] },
   { name: 'Mobile & PWA', items: [
       { key: 'pwa.install', label: 'Installable mobile app (PWA)', core: true, complete: true, enforce: 'inherent' },

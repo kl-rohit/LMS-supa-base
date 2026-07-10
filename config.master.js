@@ -124,6 +124,7 @@ const master = {
         { key: 'portal.login',     label: 'Secure per-family login',         core: true,  complete: true, enforce: 'inherent' },
         { key: 'portal.glance',    label: 'Attendance & fees at a glance',    core: true,  complete: true, enforce: 'inherent' },
         { key: 'portal.profile',   label: 'Profile self-service',            core: true,  complete: true, enforce: 'inline' },
+        { key: 'portal.feed',      label: '"For you" activity feed',          core: true,  complete: true, enforce: 'inherent' },
         { key: 'portal.learning',  label: 'Lessons & assignments view',      core: false, complete: true, gate: 'lessons', enforce: 'module' },
       ] },
       { name: 'Lessons & Courses', items: [
@@ -134,9 +135,11 @@ const master = {
         { key: 'lessons.enrol',     label: 'One-click course enrolment',      core: false, complete: true, gate: 'lessons', enforce: 'module' },
       ] },
       { name: 'Quizzes & Certificates', items: [
-        { key: 'quizzes.add',       label: 'Add quizzes to lessons',              core: false, complete: true, gate: 'lessons', enforce: 'module' },
-        { key: 'quizzes.gate',      label: 'Gate course completion on quizzes',   core: false, complete: true, gate: 'lessons', enforce: 'module' },
-        { key: 'quizzes.certs',     label: 'Auto-issued completion certificates', core: false, complete: true, gate: 'lessons', enforce: 'module' },
+        { key: 'quizzes.add',        label: 'Add quizzes to lessons',                    core: false, complete: true, gate: 'lessons', enforce: 'module' },
+        { key: 'quizzes.standalone', label: 'Standalone quizzes with JSON import',        core: false, complete: true, gate: 'lessons', enforce: 'inherent' },
+        { key: 'quizzes.gate',       label: 'Gate course completion on quizzes',          core: false, complete: true, gate: 'lessons', enforce: 'module' },
+        { key: 'quizzes.analytics',  label: 'Analytics, leaderboard & answer breakdown',  core: false, complete: true, gate: 'lessons', enforce: 'inherent' },
+        { key: 'quizzes.certs',      label: 'Auto-issued completion certificates',        core: false, complete: true, gate: 'lessons', enforce: 'module' },
       ] },
       { name: 'Assignments', items: [
         { key: 'assignments.assign', label: 'Assign work to students or batches',  core: false, complete: true, gate: 'assignments', enforce: 'module' },
@@ -151,6 +154,8 @@ const master = {
         { key: 'reports.basic',     label: 'Attendance & fee summaries',  core: true,  complete: true, enforce: 'module' },
         { key: 'reports.detailed',  label: 'Detailed reports & trends',   core: false, complete: true, gate: 'detailed_reports', enforce: 'inline' },
         { key: 'reports.lessons',   label: 'Lesson activity reports',     core: false, complete: true, gate: 'lessons', enforce: 'inline' },
+        { key: 'reports.quiz',      label: 'Quiz outcomes report',        core: false, complete: true, gate: 'detailed_reports', enforce: 'inline' },
+        { key: 'reports.pdf',       label: 'One-click PDF report export', core: true,  complete: true, enforce: 'inline' },
       ] },
       { name: 'Mobile & PWA', items: [
         { key: 'pwa.install',   label: 'Installable mobile app (PWA)',                core: true, complete: true, enforce: 'inherent' },

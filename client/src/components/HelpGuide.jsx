@@ -18,7 +18,7 @@ import {
   Video, BarChart3, Calendar, KeyRound, LayoutDashboard, UserCircle2,
   ClipboardList, FileText, HelpCircle, ChevronRight, ChevronDown, ArrowRight,
   ArrowLeft, BookOpen, Lightbulb, Info, Settings as SettingsIcon, RotateCcw,
-  Compass, Footprints, UsersRound, Award,
+  Compass, Footprints, UsersRound, Award, ListChecks,
 } from 'lucide-react';
 import usePwaInstall from '../hooks/usePwaInstall';
 import usePush from '../hooks/usePush';
@@ -518,6 +518,31 @@ const ADMIN_ARTICLES = [
     ],
   },
   {
+    slug: 'quizzes', category: 'Teach online', icon: ListChecks, title: 'Quizzes & analysis',
+    summary: 'Build quizzes, assign them, and see how everyone did.',
+    blocks: [
+      { type: 'p', text: 'Open **Quizzes** from the menu to build quizzes, assign them, and review how your students did — all in one place.' },
+      { type: 'h', text: 'Create a quiz' },
+      { type: 'steps', items: [
+        'Open **Quizzes** and create a standalone quiz, or add questions to a lesson quiz.',
+        'Write your questions and mark the correct answers, or import questions in bulk as **JSON**.',
+        'Set a **pass mark** and, if you like, **grade bands** so scores map to grades.',
+      ] },
+      { type: 'h', text: 'Assign a quiz' },
+      { type: 'p', text: 'Assign a quiz to everyone, to a group, or to specific students right from the quiz — you do not need to open Assignments. Students take it in their portal and their scores flow straight back to you.' },
+      { type: 'h', text: 'See the analysis' },
+      { type: 'p', text: 'Open any quiz to see how it is going.' },
+      { type: 'list', items: [
+        '**Attempts, average score and pass rate** at a glance.',
+        '**Grade distribution** across your grade bands.',
+        '**Per-question difficulty** and a breakdown of the answers chosen.',
+        'A **top scorers** leaderboard, with a **filter by group**.',
+      ] },
+      { type: 'tip', text: 'Export responses as a **CSV** to keep a copy or work with the results in a spreadsheet.' },
+      { type: 'actions', items: [{ label: 'Open Quizzes', to: '/quizzes' }] },
+    ],
+  },
+  {
     slug: 'certificate', category: 'Teach online', icon: Award, title: 'Certificates & branding',
     summary: 'Design the completion certificate students earn — your wording, logo, seal and colours.',
     blocks: [
@@ -589,7 +614,7 @@ const ADMIN_ARTICLES = [
         '**Lesson activity** showing who is watching and completing.',
       ] },
       { type: 'h', text: 'Detailed reports (Complete plan)' },
-      { type: 'p', text: 'On the Complete plan you also get six deeper reports, each with a colourful chart.' },
+      { type: 'p', text: 'On the Complete plan you also get deeper reports, each with a colourful chart.' },
       { type: 'list', items: [
         '**Revenue trend** month by month, with this month compared to last.',
         '**Fees due** for any month, with the total and a per student list.',
@@ -597,7 +622,9 @@ const ADMIN_ARTICLES = [
         '**Attendance by slot** across the week and per class.',
         '**Course completion** rates per course.',
         '**Class capacity** showing how full each batch runs.',
+        '**Quiz Outcomes** with attempts, average score and pass rate per quiz — open one for the full analysis.',
       ] },
+      { type: 'p', text: 'The **Overall** tab also shows a learning-outcomes summary, so you can see how everyone is doing at a glance.' },
       { type: 'h', text: 'Filter, export and drill in' },
       { type: 'steps', items: [
         'Pick a **month or range** at the top of a report to focus the numbers.',
@@ -638,6 +665,8 @@ const ADMIN_ARTICLES = [
         'Find the student and create an invite using the parent’s contact.',
         'Share the sign-in link; the parent sets their own password on first login.',
       ] },
+      { type: 'h', text: 'Reset a password' },
+      { type: 'p', text: 'You can reset a parent’s password any time. The **Reset** button issues a new temporary password, shown once, that you can share on WhatsApp. The parent is asked to set their own password the next time they sign in.' },
       { type: 'tip', text: 'Each parent sees only their own child’s data.' },
       { type: 'faq', items: [
         { q: 'Can one parent see two children?', a: 'Yes, if both students are linked to the same parent contact.' },
@@ -725,6 +754,7 @@ const PARENT_ARTICLES = [
         'Latest attendance.',
         'Outstanding fees, if any.',
       ] },
+      { type: 'p', text: 'The portal home also shows a **For you** list that surfaces anything that needs attention — pending homework and quizzes, plus recent updates.' },
       { type: 'tip', text: 'For an online class, a **Join** button appears on the upcoming class card. It turns solid from 15 minutes before the class starts, so you can join on time.' },
       { type: 'actions', items: [{ label: 'Open Overview', to: '/portal/dashboard' }] },
     ],

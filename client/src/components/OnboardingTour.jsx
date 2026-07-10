@@ -35,6 +35,7 @@ import {
   KeyRound,
   FileText,
   ClipboardList,
+  ListChecks,
   UserCircle2,
   MessageSquare,
   Settings as SettingsIcon,
@@ -77,6 +78,13 @@ const STEPS = {
       body: 'Open Attendance to mark who came. Parents are notified the moment you save.',
       route: '/attendance',
       target: '[data-tour="nav-attendance"]',
+    },
+    {
+      icon: ListChecks,
+      title: 'Build quizzes',
+      body: 'Build quizzes, assign them to students, and open any quiz to see attempts, scores, pass rate and a leaderboard.',
+      route: '/quizzes',
+      target: '[data-tour="nav-quizzes"]',
     },
     {
       icon: BookOpen,

@@ -1,7 +1,7 @@
 // /api/reports — read-only aggregations. Org-scoped via resolveOrg.
 
 const router = require('express').Router();
-const { getById, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
+const { getById, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
 const { normalizePlan } = require('../lib/plans');
 
 // Detailed reports are a Complete-plan feature. The client hides the tabs for
@@ -189,16 +189,22 @@ router.get('/monthly/:year/:month', async (req, res) => {
 // GET /api/reports/overall — org-scoped
 router.get('/overall', async (req, res) => {
   try {
-    const [sRows, aRows, afRows, cRows] = await Promise.all([
+    const [sRows, aRows, afRows, cRows, qaRows] = await Promise.all([
       zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`).catch(() => []),
       zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
       zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
       zcql(req, `SELECT * FROM Classes WHERE Classes.org_id = ${Number(req.orgId)}`).catch(() => []),
+      zcqlAll(req, `SELECT score, passed FROM QuizAttempts WHERE QuizAttempts.org_id = ${Number(req.orgId)}`, 'QuizAttempts').catch(() => []),
     ]);
     const students = unwrap(sRows, 'Students');
     const attendance = unwrap(aRows, 'Attendance');
     const additional = unwrap(afRows, 'AdditionalFees');
     const classes = unwrap(cRows, 'Classes');
+    // Academy-wide quiz outcomes (drives the Overall learning tile).
+    const qAttempts = unwrap(qaRows, 'QuizAttempts').map(normalize);
+    const qN = qAttempts.length;
+    const qPass = qAttempts.filter((a) => a.passed === true || a.passed === 1).length;
+    const qAvg = qN ? Math.round(qAttempts.reduce((s, a) => s + (Number(a.score) || 0), 0) / qN) : 0;
     const active = students.filter((s) => s.status !== 'inactive').length;
     const present = attendance.filter((a) => a.status === 'present').length;
     const absent = attendance.filter((a) => a.status === 'absent').length;
@@ -219,9 +225,79 @@ router.get('/overall', async (req, res) => {
         overall_rate: slots ? Math.round((present / slots) * 100) : 0,
       },
       fees: { class_fees: classFees, additional: additionalTotal, grand_total: classFees + additionalTotal },
+      quiz: { attempts: qN, avg_score: qAvg, pass_rate: qN ? Math.round((qPass / qN) * 100) : 0 },
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch overall report', detail: e.message });
+  }
+});
+
+// GET /api/reports/quizzes — one row per quiz with headline outcome stats.
+// This is the overview that the Reports "Quizzes" tab shows; each row deep-links
+// to the full per-quiz analysis in the Quizzes module (QuizMaster). Complete plan.
+router.get('/quizzes', requireComplete, cacheJson(60000), async (req, res) => {
+  try {
+    const orgId = Number(req.orgId);
+    const rows = await zcqlAll(req, `SELECT * FROM Lessons WHERE Lessons.org_id = ${orgId} AND Lessons.content_type = 'quiz'`, 'Lessons').catch(() => []);
+    const quizzes = unwrap(rows, 'Lessons').map(normalize);
+    if (quizzes.length === 0) return res.json({ quizzes: [] });
+
+    const ids = quizzes.map((l) => safeId(l.id)).filter(Boolean);
+
+    // Batched lookups: course titles, question counts, assignment links, attempts.
+    const cids = [...new Set(quizzes.map((l) => safeId(l.course_id)).filter(Boolean))];
+    const [crows, qrows, arows, qaRows] = await Promise.all([
+      cids.length ? zcql(req, `SELECT ROWID, title FROM Courses WHERE Courses.org_id = ${orgId} AND Courses.ROWID IN (${cids.join(',')})`).catch(() => []) : [],
+      ids.length ? zcql(req, `SELECT lesson_id FROM LessonQuizzes WHERE LessonQuizzes.org_id = ${orgId} AND LessonQuizzes.lesson_id IN (${ids.join(',')})`).catch(() => []) : [],
+      ids.length ? zcql(req, `SELECT quiz_lesson_id, title FROM Assignments WHERE Assignments.org_id = ${orgId} AND Assignments.quiz_lesson_id IN (${ids.join(',')})`).catch(() => []) : [],
+      zcqlAll(req, `SELECT lesson_id, score, passed FROM QuizAttempts WHERE QuizAttempts.org_id = ${orgId}`, 'QuizAttempts').catch(() => []),
+    ]);
+
+    const courseTitle = new Map();
+    for (const c of unwrap(crows, 'Courses').map(normalize)) courseTitle.set(String(c.id), c.title || '');
+    const qCount = new Map();
+    for (const r of unwrap(qrows, 'LessonQuizzes').map(normalize)) qCount.set(String(r.lesson_id), (qCount.get(String(r.lesson_id)) || 0) + 1);
+    const asgByLesson = new Map();
+    for (const a of unwrap(arows, 'Assignments').map(normalize)) {
+      const k = String(a.quiz_lesson_id);
+      if (!asgByLesson.has(k)) asgByLesson.set(k, []);
+      if (a.title) asgByLesson.get(k).push(a.title);
+    }
+    // Group attempts by quiz.
+    const stat = new Map(); // lesson_id -> { n, sum, pass }
+    for (const a of unwrap(qaRows, 'QuizAttempts').map(normalize)) {
+      const k = String(a.lesson_id);
+      const s = stat.get(k) || { n: 0, sum: 0, pass: 0 };
+      s.n += 1;
+      s.sum += Number(a.score) || 0;
+      if (a.passed === true || a.passed === 1) s.pass += 1;
+      stat.set(k, s);
+    }
+
+    const associationFor = (l) => {
+      if (l.course_id) return { kind: 'course', name: courseTitle.get(String(l.course_id)) || 'Course' };
+      const a = asgByLesson.get(String(l.id));
+      if (a && a.length) return { kind: 'assignment', name: a.join(', ') };
+      return { kind: 'standalone', name: '' };
+    };
+
+    const out = quizzes.map((l) => {
+      const s = stat.get(String(l.id)) || { n: 0, sum: 0, pass: 0 };
+      return {
+        lesson_id: String(l.id),
+        title: l.title || 'Untitled quiz',
+        association: associationFor(l),
+        question_count: qCount.get(String(l.id)) || 0,
+        attempts: s.n,
+        avg_score: s.n ? Math.round(s.sum / s.n) : 0,
+        pass_rate: s.n ? Math.round((s.pass / s.n) * 100) : 0,
+      };
+    });
+    // Most-attempted first; quizzes with no attempts sink to the bottom.
+    out.sort((a, b) => b.attempts - a.attempts || String(a.title).localeCompare(String(b.title)));
+    res.json({ quizzes: out });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch quiz report', detail: e.message });
   }
 });
 

@@ -28,7 +28,10 @@ import {
   FileText,
   Download,
   Printer,
+  ListChecks,
+  ArrowRight,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
@@ -74,6 +77,8 @@ const ADVANCED_TABS = [
     desc: 'How far students have progressed through each course, with completion rates.' },
   { id: 'capacity', label: 'Class Capacity', icon: Gauge,
     desc: 'How full each active batch runs against its roster, to spot room to grow.' },
+  { id: 'quizzes', label: 'Quiz Outcomes', icon: ListChecks,
+    desc: 'Every quiz with attempts, average score, and pass rate. Open one for the full analysis.' },
 ];
 
 // Current month as YYYY-MM (local time).
@@ -238,6 +243,7 @@ export default function Reports() {
     if (activeTab === 'slots') fetchAdvanced('slots', '/reports/attendance-slots');
     if (activeTab === 'courses') fetchAdvanced('courses', '/reports/course-completion');
     if (activeTab === 'capacity') fetchAdvanced('capacity', '/reports/capacity');
+    if (activeTab === 'quizzes') fetchAdvanced('quizzes', '/reports/quizzes');
   }, [activeTab, isComplete]);
 
   // Drill-down: open a single student's combined statement in a modal.
@@ -1482,6 +1488,31 @@ export default function Reports() {
                 />
               </div>
 
+              {/* Learning outcomes — academy-wide quiz performance, with a jump
+                  to the per-quiz breakdown. Only shown once a quiz is attempted. */}
+              {(overallReport.quiz?.attempts || 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('quizzes')}
+                  className="w-full card flex items-center gap-4 text-left hover:border-indigo-300 transition-colors group"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0">
+                    <ListChecks className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Learning outcomes</p>
+                    <p className="text-sm text-gray-600 mt-0.5">
+                      <span className="font-semibold text-gray-900">{overallReport.quiz.pass_rate}%</span> pass rate
+                      {' · '}<span className="font-semibold text-gray-900">{overallReport.quiz.avg_score}%</span> avg score
+                      {' · '}{overallReport.quiz.attempts} attempt{overallReport.quiz.attempts === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <span className="ml-auto text-xs font-medium text-indigo-600 inline-flex items-center gap-1 flex-shrink-0">
+                    Per-quiz <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                </button>
+              )}
+
               {/* Visual overview — colourful, theme-aware charts from the same data */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="card">
@@ -2097,6 +2128,65 @@ export default function Reports() {
                     />
                   </div>
                 </>
+              )}
+            </div>
+          );
+        }
+
+        // ---------- Quiz Outcomes (overview → deep-link to QuizMaster) ----------
+        if (activeTab === 'quizzes') {
+          const list = data('quizzes')?.quizzes || [];
+          const assocLabel = (a) => a?.kind === 'course' ? `Course: ${a.name}`
+            : a?.kind === 'assignment' ? `Assignment: ${a.name}` : 'Standalone';
+          return (
+            <div className="card">
+              <AdvHeader>
+                <ExportBar
+                  title="Quiz Outcomes"
+                  columns={[
+                    { key: 'title', label: 'Quiz' },
+                    { key: 'attempts', label: 'Attempts', align: 'right' },
+                    { key: 'avg_score', label: 'Avg %', align: 'right', text: (r) => `${r.avg_score}%` },
+                    { key: 'pass_rate', label: 'Pass %', align: 'right', text: (r) => `${r.pass_rate}%` },
+                  ]}
+                  rows={list}
+                />
+              </AdvHeader>
+              {list.length === 0 ? (
+                <EmptyState icon={ListChecks} title="No quizzes yet" message="Create a quiz in the Quizzes module. Once students attempt it, outcomes appear here." />
+              ) : (
+                <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                  {list.map((qz) => (
+                    <Link
+                      key={qz.lesson_id}
+                      to={`/quizzes/${qz.lesson_id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0">
+                        <ListChecks className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{qz.title}</p>
+                        <p className="text-xs text-gray-400 truncate">{assocLabel(qz.association)} · {qz.question_count} Q</p>
+                      </div>
+                      <div className="flex items-center gap-3 sm:gap-5 flex-shrink-0">
+                        <div className="text-right w-14">
+                          <p className="text-sm font-semibold text-gray-900 tabular-nums">{qz.attempts}</p>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">attempts</p>
+                        </div>
+                        <div className="text-right w-12 hidden sm:block">
+                          <p className="text-sm font-semibold text-gray-900 tabular-nums">{qz.avg_score}%</p>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">avg</p>
+                        </div>
+                        <div className="text-right w-12">
+                          <p className={`text-sm font-semibold tabular-nums ${qz.pass_rate >= 70 ? 'text-emerald-600' : qz.pass_rate >= 40 ? 'text-amber-600' : 'text-rose-600'}`}>{qz.pass_rate}%</p>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">pass</p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-500 flex-shrink-0" />
+                    </Link>
+                  ))}
+                </div>
               )}
             </div>
           );

@@ -19,6 +19,8 @@ import {
   Edit2,
   UserMinus,
   Video,
+  CalendarClock,
+  Ban,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -93,6 +95,64 @@ export default function Attendance() {
   const [dateAttendance, setDateAttendance] = useState([]);
   // Post-record view: filter the "Marked attendance" list by status to cut clutter.
   const [recordStatusFilter, setRecordStatusFilter] = useState('all'); // all | present | absent
+
+  // Cancel / move a single class occurrence for the selected date (writes to
+  // Classes.exceptions, same endpoint the timetable uses). moveClass holds the
+  // occurrence being rescheduled while its modal is open.
+  const [moveClass, setMoveClass] = useState(null);
+  const [moveForm, setMoveForm] = useState({ new_date: '', new_start_time: '', new_end_time: '' });
+  const [moveSaving, setMoveSaving] = useState(false);
+
+  // Only a real recurring class (a numeric Classes id) can be cancelled/moved —
+  // not camp days or one-off ad-hoc sessions.
+  const isReschedulable = (cls) => !!cls && !cls._isCamp && /^\d+$/.test(String(cls.id));
+
+  const cancelOccurrence = async (cls) => {
+    if (!isReschedulable(cls)) return;
+    const ok = await confirm({
+      title: 'Cancel this class?',
+      message: `${cls.name} on ${selectedDate} will be marked cancelled for this date only. The weekly schedule stays the same.`,
+      confirmText: 'Cancel class',
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/classes/${cls.id}/exceptions`, { exception_date: selectedDate, status: 'cancelled' });
+      toast.success('Class cancelled for this date');
+      setSelectedClass(null);
+      fetchClassesForDate();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message || 'Failed to cancel');
+    }
+  };
+
+  const openMove = (cls) => {
+    if (!isReschedulable(cls)) return;
+    setMoveForm({ new_date: selectedDate, new_start_time: cls.start_time || '', new_end_time: cls.end_time || '' });
+    setMoveClass(cls);
+  };
+
+  const saveMove = async () => {
+    if (!moveClass) return;
+    if (!moveForm.new_date) { toast.error('Pick a new date'); return; }
+    setMoveSaving(true);
+    try {
+      await api.post(`/classes/${moveClass.id}/exceptions`, {
+        exception_date: selectedDate,
+        status: 'moved',
+        new_date: moveForm.new_date,
+        new_start_time: moveForm.new_start_time || undefined,
+        new_end_time: moveForm.new_end_time || undefined,
+      });
+      toast.success('Class moved to ' + moveForm.new_date);
+      setMoveClass(null);
+      setSelectedClass(null);
+      fetchClassesForDate();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e.message || 'Failed to move');
+    } finally {
+      setMoveSaving(false);
+    }
+  };
 
   function formatDateLocal(date) {
     const y = date.getFullYear();
@@ -1121,6 +1181,26 @@ export default function Attendance() {
                   Send meeting link
                 </button>
               )}
+              {isReschedulable(selectedClass) && (
+                <>
+                  <button
+                    onClick={() => openMove(selectedClass)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    title="Move this class to another date or time (this date only)"
+                  >
+                    <CalendarClock className="w-4 h-4" />
+                    <span className="hidden sm:inline">Move</span>
+                  </button>
+                  <button
+                    onClick={() => cancelOccurrence(selectedClass)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-50 text-red-600 hover:bg-red-100"
+                    title="Cancel this class for this date only"
+                  >
+                    <Ban className="w-4 h-4" />
+                    <span className="hidden sm:inline">Cancel class</span>
+                  </button>
+                </>
+              )}
               <span className="text-green-600 font-medium">
                 <Check className="w-4 h-4 inline mr-1" />{presentCount} Present
               </span>
@@ -1587,6 +1667,53 @@ export default function Attendance() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Move a single class occurrence to another date/time (this date only). */}
+      <Modal
+        isOpen={!!moveClass}
+        onClose={() => setMoveClass(null)}
+        title={moveClass ? `Move ${moveClass.name}` : 'Move class'}
+        size="sm"
+        onSave={saveMove}
+        saving={moveSaving}
+        saveLabel="Move class"
+        saveDisabled={!moveForm.new_date}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            This moves only the {selectedDate} session. The weekly schedule stays the same.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">New date</label>
+            <input
+              type="date"
+              value={moveForm.new_date}
+              onChange={(e) => setMoveForm((f) => ({ ...f, new_date: e.target.value }))}
+              className="input-field"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start time</label>
+              <input
+                type="time"
+                value={moveForm.new_start_time}
+                onChange={(e) => setMoveForm((f) => ({ ...f, new_start_time: e.target.value }))}
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End time</label>
+              <input
+                type="time"
+                value={moveForm.new_end_time}
+                onChange={(e) => setMoveForm((f) => ({ ...f, new_end_time: e.target.value }))}
+                className="input-field"
+              />
+            </div>
+          </div>
+        </div>
       </Modal>
     </div>
   );

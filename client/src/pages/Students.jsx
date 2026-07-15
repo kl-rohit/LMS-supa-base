@@ -31,6 +31,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
 import Loader from '../components/Loader';
+import { ListPageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import StudentDetailPanel from '../components/StudentDetailPanel';
 import ImageCropper from '../components/ImageCropper';
@@ -602,7 +603,7 @@ export default function Students() {
     );
   };
 
-  if (loading) return <Loader text="Loading students..." />;
+  if (loading) return <ListPageSkeleton rows={8} />;
 
   // Seat usage: prefer the live count from the loaded list (updates as the
   // owner sets students active/inactive), falling back to the server figure.

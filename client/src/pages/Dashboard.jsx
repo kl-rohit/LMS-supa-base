@@ -19,6 +19,7 @@ import CountUpAmount from '../components/CountUpAmount';
 import Loader from '../components/Loader';
 import { PageHeader, MetricCard, Panel, SectionLabel } from '../components/ConsoleUI';
 import { Donut, BarChart, CHART_COLORS } from '../components/Charts';
+import { DashboardSkeleton } from '../components/Skeleton';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { useOrgBranding } from '../hooks/useOrgBranding';
@@ -73,7 +74,7 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) return <Loader text="Loading dashboard..." />;
+  if (loading) return <DashboardSkeleton />;
   if (!data) return <div className="text-center py-12 text-gray-500">Failed to load dashboard data.</div>;
 
   const totalStudents = data.stats?.total_active_students || 0;

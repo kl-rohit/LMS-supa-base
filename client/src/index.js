@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import ErrorBoundary from './components/ErrorBoundary';
+import '@fontsource-variable/inter';
 import './index.css';
 import { bootTheme } from './utils/theme';
 

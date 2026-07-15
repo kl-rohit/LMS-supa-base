@@ -41,6 +41,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Select from '../components/Select';
 import { Donut, BarChart, LineChart, GroupedBarChart, TrendArrow, MobileCardTable, CHART_COLORS } from '../components/Charts';
 import { PageHeader, MetricCard } from '../components/ConsoleUI';
+import { ReportSkeleton } from '../components/Skeleton';
 import { exportCsv, exportPdf, printSection } from '../utils/reportExport';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 
@@ -601,7 +602,7 @@ export default function Reports() {
   // already-scaled 0..100 number.
   const asPctSafe = (v) => { const n = Number(v) || 0; return Math.round(n <= 1 ? n * 100 : n); };
 
-  if (loading || !planLoaded) return <Loader text="Loading..." />;
+  if (loading || !planLoaded) return <ReportSkeleton />;
 
   return (
     <div className="space-y-4">

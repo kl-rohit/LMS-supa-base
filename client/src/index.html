@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>VidyaSetu — Bridging Teachers and Learners</title>
 
-    <!-- Brand typeface. Inter is declared as the app's font-sans; load it here so
-         the whole UI renders in it (falls back to the system stack offline). -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Brand typeface (Inter) is self-hosted via @fontsource-variable/inter,
+         imported in index.js — bundled with the app so it loads instantly and
+         works fully offline, with the system stack as fallback. -->
 
     <!-- Speed up the parent-portal video player: warm up TCP/TLS to YouTube's
          hosts so the IFrame API + first video segment load faster. -->

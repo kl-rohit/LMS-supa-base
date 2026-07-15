@@ -163,24 +163,56 @@
 @layer base {
   body {
     @apply font-sans antialiased text-gray-800;
+    /* Inter reads best with a hair of negative tracking + its stylistic set for
+       a single-storey a and disambiguated glyphs — small touches that lift the
+       whole UI from "system font" to "brand font". */
+    letter-spacing: -0.006em;
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Tighten large headings the way premium UIs do (Inter loosens at big sizes). */
+  h1, h2, h3, .page-header {
+    letter-spacing: -0.018em;
+  }
+
+  /* Keyboard focus that looks intentional — one consistent accent ring app-wide,
+     only for keyboard users (not mouse clicks). */
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-indigo-500, 99 102 241));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* Respect reduced-motion: anyone who asks their OS to minimise motion gets an
+   essentially still UI. Mandatory once transitions/animations are in play. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
 @layer components {
+  /* Buttons share one motion recipe: quick colour/shadow ease + a small press
+     scale for tactile feedback. active:scale gives the "click" a physical feel. */
   .btn-primary {
-    @apply bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 active:scale-[0.98] inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
 
   .btn-secondary {
-    @apply bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg border border-gray-300 transition-colors duration-200 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg border border-gray-300 transition-all duration-150 active:scale-[0.98] inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
 
   .btn-danger {
-    @apply bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 active:scale-[0.98] inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
 
   .btn-success {
-    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-150 active:scale-[0.98] inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
 
   .btn-sm {
@@ -203,7 +235,13 @@
   }
 
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6 transition-shadow duration-200;
+  }
+
+  /* Clickable cards/rows: a gentle lift + accent border on hover. Add this class
+     to any card that is itself a button or link. */
+  .card-interactive {
+    @apply cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-200;
   }
 
   .page-header {
@@ -261,5 +299,25 @@
 
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  /* Content enter: a subtle rise + fade used on page bodies and modal panels so
+     views settle in rather than snap. Kept short (180ms) and disabled under
+     prefers-reduced-motion by the global guard above. */
+  .animate-in {
+    animation: posh-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes posh-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Modal/dialog overlays fade their backdrop in. */
+  .animate-fade {
+    animation: posh-fade 0.15s ease-out both;
+  }
+  @keyframes posh-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
 }

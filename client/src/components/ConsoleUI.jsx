@@ -54,14 +54,14 @@ export function MetricCard({ label, value, sub, tone = 'muted', accent = 'indigo
     <div
       onClick={onClick}
       data-tour={dataTour}
-      className={`relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4 ${onClick ? 'cursor-pointer hover:border-gray-300 transition-colors' : ''}`}
+      className={`relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4 transition-all duration-200 ${onClick ? 'cursor-pointer hover:border-indigo-200 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0' : ''}`}
     >
       <span className={`absolute top-0 inset-x-0 h-[3px] ${ACCENT_BAR[accent] || ACCENT_BAR.indigo} opacity-80`} />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400 truncate">{label}</span>
         {Icon && <Icon className="w-4 h-4 text-gray-300 flex-shrink-0" />}
       </div>
-      <div className="text-2xl font-semibold text-gray-900 mt-2 leading-none">{value}</div>
+      <div className="text-2xl font-semibold text-gray-900 mt-2 leading-none tabular-nums">{value}</div>
       {sub && <div className={`text-[11px] mt-1.5 ${TONE[tone] || TONE.muted}`}>{sub}</div>}
     </div>
   );

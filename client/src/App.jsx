@@ -299,6 +299,8 @@ function TeacherLayout() {
               Loader has a short delay so the spinner doesn't flash on a
               fast network — feels instant when the chunk is small. */}
           <Suspense fallback={<Loader text="Loading..." />}>
+            {/* Keyed on the path so each navigation replays a subtle settle-in. */}
+            <div className="animate-in" key={location.pathname}>
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
@@ -320,6 +322,7 @@ function TeacherLayout() {
               <Route path="/help" element={<Help />} />
               <Route path="/help/:slug" element={<Help />} />
             </Routes>
+            </div>
           </Suspense>
         </main>
       </div>
@@ -380,7 +383,7 @@ export default function App() {
         position="top-right"
         toastOptions={{
           duration: 3000,
-          style: { borderRadius: '10px', background: '#333', color: '#fff' },
+          style: { borderRadius: '12px', background: '#1e293b', color: '#fff', fontSize: '14px', fontWeight: 500, boxShadow: '0 10px 30px rgba(15,23,42,0.25)', padding: '10px 14px' },
         }}
       />
       {/* Pops up a quick game when the device goes offline; closes itself once

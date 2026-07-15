@@ -193,6 +193,7 @@ export default function ParentLayout() {
 
         <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-auto">
           <Suspense fallback={<Loader text="Loading..." />}>
+            <div className="animate-in" key={location.pathname}>
             <Routes>
               <Route path="/" element={<Navigate to="/portal/dashboard" replace />} />
               <Route path="dashboard" element={<PortalDashboard />} />
@@ -206,6 +207,7 @@ export default function ParentLayout() {
               <Route path="help" element={<PortalHelp />} />
               <Route path="help/:slug" element={<PortalHelp />} />
             </Routes>
+            </div>
           </Suspense>
         </main>
       </div>

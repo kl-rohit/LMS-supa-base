@@ -163,6 +163,7 @@ export default function Dashboard() {
           value={<CountUp value={totalStudents} />}
           accent="indigo"
           icon={Users}
+          onClick={() => navigate('/students')}
         />
         <MetricCard
           label="Classes Today"

@@ -28,7 +28,7 @@ const TONE = {
   muted: 'text-gray-400',
 };
 
-export function PageTitle({ title, subtitle, live = true }) {
+export function PageTitle({ title, subtitle, live = false }) {
   return (
     <div className="flex items-center gap-2.5 min-w-0">
       {live && <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse flex-shrink-0" />}
@@ -40,7 +40,7 @@ export function PageTitle({ title, subtitle, live = true }) {
   );
 }
 
-export function PageHeader({ title, subtitle, right, live = true }) {
+export function PageHeader({ title, subtitle, right, live = false }) {
   return (
     <div className="flex items-start justify-between gap-3 flex-wrap">
       <PageTitle title={title} subtitle={subtitle} live={live} />

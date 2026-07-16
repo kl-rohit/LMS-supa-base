@@ -127,8 +127,27 @@ function applyAccent(accent) {
   INDIGO_SHADES.forEach((s) => root.style.setProperty(`--c-indigo-${s}`, ramp[s]));
 }
 
+// Valid stored modes. 'system' follows the OS light/dark preference live.
+export const MODES = ['light', 'dark', 'system'];
+
+function systemPrefersDark() {
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch (_e) { return false; }
+}
+
+// Resolve a stored mode ('light' | 'dark' | 'system') to the mode we actually
+// paint. 'system' (the default) reads the OS preference at call time.
+export function resolveMode(mode) {
+  if (mode === 'dark') return 'dark';
+  if (mode === 'light') return 'light';
+  return systemPrefersDark() ? 'dark' : 'light';
+}
+
 function applyMode(mode) {
-  document.documentElement.classList.toggle('dark', mode === 'dark');
+  document.documentElement.classList.toggle('dark', resolveMode(mode) === 'dark');
 }
 
 function tripletToHex(triplet) {
@@ -140,15 +159,34 @@ function tripletToHex(triplet) {
 function applyMetaThemeColor(accent, mode) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) return;
-  if (mode === 'dark') { meta.setAttribute('content', '#1e2126'); return; }
+  if (resolveMode(mode) === 'dark') { meta.setAttribute('content', '#1e2126'); return; }
   const ramp = resolveAccentRamp(accent);
   meta.setAttribute('content', ramp ? tripletToHex(ramp[600]) : '#4f46e5');
 }
 
+// The theme we last applied — used by the OS-preference listener to re-resolve
+// 'system' mode without the caller having to re-supply it.
+let current = { accent: 'default', mode: 'system' };
+
 export function applyTheme({ accent, mode }) {
+  current = { accent, mode };
   applyAccent(accent);
   applyMode(mode);
   applyMetaThemeColor(accent, mode);
+}
+
+// When the mode is 'system', repaint the moment the OS flips light/dark. Wired
+// once (idempotent) from bootTheme so it covers the whole app lifetime.
+let systemWatchAttached = false;
+function watchSystemPreference() {
+  if (systemWatchAttached) return;
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => { if (current.mode === 'system' || !MODES.includes(current.mode)) applyTheme(current); };
+    if (mq.addEventListener) mq.addEventListener('change', handler);
+    else if (mq.addListener) mq.addListener(handler); // older Safari
+    systemWatchAttached = true;
+  } catch (_e) { /* matchMedia unavailable — static resolve is fine */ }
 }
 
 export function loadTheme() {
@@ -158,11 +196,12 @@ export function loadTheme() {
       const parsed = JSON.parse(raw);
       return {
         accent: parsed.accent || 'default',
-        mode: parsed.mode === 'dark' ? 'dark' : 'light',
+        mode: MODES.includes(parsed.mode) ? parsed.mode : 'system',
       };
     }
   } catch (_e) { /* ignore */ }
-  return { accent: 'default', mode: 'light' };
+  // No stored preference → follow the OS by default.
+  return { accent: 'default', mode: 'system' };
 }
 
 export function saveTheme(theme) {
@@ -172,4 +211,18 @@ export function saveTheme(theme) {
 // Apply the persisted theme. Call once at boot (index.js) before React renders.
 export function bootTheme() {
   applyTheme(loadTheme());
+  watchSystemPreference();
+}
+
+// The parent portal always follows the OS light/dark preference, regardless of
+// any admin device preference stored on this browser. Accent is left untouched
+// (whatever is already applied). Returns a restore fn so the caller can put the
+// device preference back when leaving the portal (shared-device safety).
+export function applyPortalMode() {
+  const restore = { ...current };
+  current = { ...current, mode: 'system' };
+  applyMode('system');
+  applyMetaThemeColor(current.accent, 'system');
+  watchSystemPreference();
+  return () => applyTheme(restore);
 }

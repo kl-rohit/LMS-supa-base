@@ -5,7 +5,8 @@
 // no `dark:` variants.
 
 import { useState } from 'react';
-import { Users, UsersRound, UserRound, Search, Check } from 'lucide-react';
+import { Users, UsersRound, UserRound, Search, Check, Plus } from 'lucide-react';
+import QuickCreateModal from './QuickCreateModal';
 
 const MODES = [
   { key: 'all', label: 'Everyone', icon: Users },
@@ -13,11 +14,18 @@ const MODES = [
   { key: 'students', label: 'Specific students', icon: UserRound },
 ];
 
-export default function TargetPicker({ value, groups = [], students = [], onChange, label = 'Assign to' }) {
+// onCreateStudent / onCreateGroup: optional. When supplied, an inline "New"
+// button appears so the admin can create the missing student/group without
+// leaving this picker. The callback receives the created record and should
+// re-fetch the parent's students/groups list so it shows up here. The picker
+// selects the new record immediately regardless.
+export default function TargetPicker({ value, groups = [], students = [], onChange, label = 'Assign to', onCreateStudent, onCreateGroup }) {
   const target_type = value?.target_type || 'all';
   const target_id = value?.target_id || '';
   const target_ids = Array.isArray(value?.target_ids) ? value.target_ids : [];
   const [q, setQ] = useState('');
+  const [quickStudent, setQuickStudent] = useState(false);
+  const [quickGroup, setQuickGroup] = useState(false);
 
   const set = (patch) => onChange({ target_type, target_id, target_ids, ...patch });
   const ids = new Set(target_ids.map(String));
@@ -47,6 +55,16 @@ export default function TargetPicker({ value, groups = [], students = [], onChan
     ? students.filter((s) => (s.name || '').toLowerCase().includes(q.toLowerCase()))
     : students;
 
+  const handleQuickStudent = (student) => {
+    if (student?.id) set({ target_ids: [...new Set([...target_ids.map(String), String(student.id)])] });
+    onCreateStudent?.(student);
+  };
+
+  const handleQuickGroup = (group) => {
+    if (group?.id) set({ target_id: String(group.id) });
+    onCreateGroup?.(group);
+  };
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
@@ -68,20 +86,34 @@ export default function TargetPicker({ value, groups = [], students = [], onChan
       </div>
 
       {target_type === 'group' && (
-        <select value={target_id} onChange={(e) => set({ target_id: e.target.value })} className="input-field" required>
-          <option value="">Select a group…</option>
-          {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0})</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <select value={target_id} onChange={(e) => set({ target_id: e.target.value })} className="input-field flex-1" required>
+            <option value="">Select a group…</option>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count || 0})</option>)}
+          </select>
+          {onCreateGroup && (
+            <button type="button" onClick={() => setQuickGroup(true)} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
+              <Plus className="w-3.5 h-3.5" /> New
+            </button>
+          )}
+        </div>
       )}
 
       {target_type === 'students' && (
         <div>
-          {groups.length > 0 && (
-            <select value="" onChange={(e) => addGroup(e.target.value)} className="input-field text-sm mb-2">
-              <option value="">+ Add a whole group…</option>
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count ?? (g.members ? g.members.length : 0)})</option>)}
-            </select>
-          )}
+          <div className="flex items-center gap-2 mb-2">
+            {groups.length > 0 && (
+              <select value="" onChange={(e) => addGroup(e.target.value)} className="input-field text-sm flex-1">
+                <option value="">+ Add a whole group…</option>
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count ?? (g.members ? g.members.length : 0)})</option>)}
+              </select>
+            )}
+            {onCreateStudent && (
+              <button type="button" onClick={() => setQuickStudent(true)} className={`btn-secondary btn-sm flex-shrink-0 whitespace-nowrap ${groups.length > 0 ? '' : 'ml-auto'}`}>
+                <Plus className="w-3.5 h-3.5" /> New student
+              </button>
+            )}
+          </div>
           <div className="border border-gray-200 rounded-lg overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
             <Search className="w-4 h-4 text-gray-400 shrink-0" />
@@ -115,6 +147,23 @@ export default function TargetPicker({ value, groups = [], students = [], onChan
           </div>
           </div>
         </div>
+      )}
+
+      {onCreateStudent && (
+        <QuickCreateModal
+          type="student"
+          isOpen={quickStudent}
+          onClose={() => setQuickStudent(false)}
+          onCreated={handleQuickStudent}
+        />
+      )}
+      {onCreateGroup && (
+        <QuickCreateModal
+          type="group"
+          isOpen={quickGroup}
+          onClose={() => setQuickGroup(false)}
+          onCreated={handleQuickGroup}
+        />
       )}
     </div>
   );

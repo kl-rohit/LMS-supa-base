@@ -189,7 +189,15 @@ export default function QuizMaster() {
       >
         <div className="space-y-3">
           <p className="text-sm text-gray-500">Choose who takes this quiz. Students see it in their portal under Assignments, and their scores flow back here.</p>
-          <TargetPicker value={target} groups={groups} students={students} onChange={setTarget} label="Assign to" />
+          <TargetPicker
+            value={target}
+            groups={groups}
+            students={students}
+            onChange={setTarget}
+            label="Assign to"
+            onCreateStudent={() => api.get('/students?limit=500').then((r) => setStudents(r.students || [])).catch(() => {})}
+            onCreateGroup={() => api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {})}
+          />
           {existingAsg && (
             <button type="button" onClick={unassign} className="text-sm text-red-600 hover:text-red-700 font-medium inline-flex items-center gap-1.5">
               <Trash2 className="w-4 h-4" /> Unassign (remove from students)

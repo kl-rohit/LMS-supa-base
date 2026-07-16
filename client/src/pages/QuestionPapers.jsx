@@ -199,6 +199,8 @@ export default function QuestionPapers() {
             students={students}
             onChange={(v) => setForm((f) => ({ ...f, ...v }))}
             label="Share with"
+            onCreateStudent={fetchData}
+            onCreateGroup={fetchData}
           />
         </form>
       </Modal>

@@ -28,6 +28,7 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Timetable from '../components/Timetable';
 import ShareMeetingLinkDialog from '../components/ShareMeetingLinkDialog';
+import QuickCreateModal from '../components/QuickCreateModal';
 import { useModuleFlags } from '../hooks/useModuleFlags';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -64,6 +65,9 @@ export default function Classes() {
   const [shareDialog, setShareDialog] = useState({ open: false, cls: null });
   const [typeFilter, setTypeFilter] = useState('all');
   const [studentSearch, setStudentSearch] = useState('');
+  // Inline quick-create. `target` decides where the created record lands:
+  // 'class-student' | 'class-group' (batch on the class form) | 'camp-group'.
+  const [quickCreate, setQuickCreate] = useState({ open: false, type: 'student', target: null });
   // Schedule sub-view: 'timetable' (date-aware time-grid) | 'list' (day cards)
   const [scheduleView, setScheduleView] = useState('timetable');
 
@@ -119,6 +123,38 @@ export default function Classes() {
       setLoading(false);
     }
   };
+
+  // Light refresh of just students + groups (no full-page loader) after an
+  // inline quick-create, so the picker updates without collapsing the modal.
+  const refreshPeople = async () => {
+    try {
+      const [studentsData, groupsData] = await Promise.all([
+        api.get('/students'),
+        api.get('/groups'),
+      ]);
+      setStudents((studentsData.students || []).filter((s) => s.status === 'active'));
+      setGroups(groupsData.groups || []);
+    } catch { /* non-fatal */ }
+  };
+
+  // Route a freshly quick-created record to whichever picker launched it.
+  const handleQuickCreated = async (record) => {
+    const target = quickCreate.target;
+    await refreshPeople();
+    if (!record?.id) return;
+    const id = String(record.id);
+    if (target === 'class-student') {
+      setForm((prev) => prev.student_ids.some((sid) => String(sid) === id)
+        ? prev
+        : { ...prev, student_ids: [...prev.student_ids, record.id] });
+    } else if (target === 'class-group') {
+      setForm((prev) => ({ ...prev, group_id: id }));
+    } else if (target === 'camp-group') {
+      setCampForm((prev) => ({ ...prev, group_id: id }));
+    }
+  };
+
+  const openQuickCreate = (type, target) => setQuickCreate({ open: true, type, target });
 
   // Refresh camps whenever the user switches into the Camps tab or changes the
   // status filter. Loaded lazily so visiting the page doesn't trigger an extra
@@ -895,16 +931,21 @@ export default function Classes() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Group *</label>
-              <select
-                value={campForm.group_id}
-                onChange={(e) => setCampForm({ ...campForm, group_id: e.target.value })}
-                className="select-field text-sm"
-              >
-                <option value="">Select group...</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name} {g.member_count ? `(${g.member_count})` : ''}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={campForm.group_id}
+                  onChange={(e) => setCampForm({ ...campForm, group_id: e.target.value })}
+                  className="select-field text-sm flex-1"
+                >
+                  <option value="">Select group...</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name} {g.member_count ? `(${g.member_count})` : ''}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => openQuickCreate('group', 'camp-group')} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
+                  <Plus className="w-3.5 h-3.5" /> New
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Start date *</label>
@@ -1310,16 +1351,21 @@ export default function Classes() {
           {isGroupType(form.class_type) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Batch *</label>
-              <select
-                value={form.group_id}
-                onChange={(e) => setForm({ ...form, group_id: e.target.value })}
-                className="select-field"
-              >
-                <option value="">Select a batch...</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={form.group_id}
+                  onChange={(e) => setForm({ ...form, group_id: e.target.value })}
+                  className="select-field flex-1"
+                >
+                  <option value="">Select a batch...</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => openQuickCreate('group', 'class-group')} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
+                  <Plus className="w-3.5 h-3.5" /> New
+                </button>
+              </div>
               <p className="text-xs text-gray-400 mt-1">Every batch member is included automatically.</p>
             </div>
           )}
@@ -1388,6 +1434,9 @@ export default function Classes() {
                   className="input-field flex-1"
                   placeholder="Search students..."
                 />
+                <button type="button" onClick={() => openQuickCreate('student', 'class-student')} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
+                  <Plus className="w-3.5 h-3.5" /> New
+                </button>
                 <button type="button" onClick={() => setForm((prev) => ({ ...prev, student_ids: students.map((s) => s.id) }))} className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
                   Select All
                 </button>
@@ -1450,6 +1499,14 @@ export default function Classes() {
         open={shareDialog.open}
         classObj={shareDialog.cls ? { id: shareDialog.cls.id, name: shareDialog.cls.name, meeting_link: shareDialog.cls.meeting_link } : null}
         onClose={() => setShareDialog({ open: false, cls: null })}
+      />
+
+      {/* Inline quick-create a student or group without leaving the class/camp form */}
+      <QuickCreateModal
+        type={quickCreate.type}
+        isOpen={quickCreate.open}
+        onClose={() => setQuickCreate((q) => ({ ...q, open: false }))}
+        onCreated={handleQuickCreated}
       />
     </div>
   );

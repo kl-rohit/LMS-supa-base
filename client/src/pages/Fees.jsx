@@ -27,6 +27,7 @@ import EmptyState from '../components/EmptyState';
 import Select from '../components/Select';
 import CountUpAmount from '../components/CountUpAmount';
 import Pagination, { usePagination } from '../components/Pagination';
+import QuickCreateModal from '../components/QuickCreateModal';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 
@@ -85,6 +86,7 @@ export default function Fees() {
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
   const [additionalFees, setAdditionalFees] = useState([]);
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false);
+  const [quickStudentOpen, setQuickStudentOpen] = useState(false);
   const [groups, setGroups] = useState([]); // for the "add a group" bulk-select
   // adjustment_type: 'fee' (positive) | 'discount' (stored as negative amount).
   // We reuse the AdditionalFees table for both — discounts are just rows with
@@ -270,6 +272,18 @@ export default function Fees() {
       return { ...prev, student_ids: [...set] };
     });
     toast.success(`Added ${memberIds.length} from ${g.name}`);
+  };
+
+  // A student created inline from the add-fee modal is refreshed into the list
+  // and pre-selected so the admin can apply the fee to them right away.
+  const handleQuickStudent = async (student) => {
+    await fetchStudents();
+    if (student?.id) {
+      setFeeForm((prev) => ({
+        ...prev,
+        student_ids: [...new Set([...prev.student_ids.map(String), String(student.id)])],
+      }));
+    }
   };
 
   // Load groups the first time the add-fee modal opens (one read, only if used).
@@ -1154,6 +1168,9 @@ export default function Fees() {
                 className="input-field flex-1"
                 placeholder="Search students..."
               />
+              <button type="button" onClick={() => setQuickStudentOpen(true)} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
+                <Plus className="w-3.5 h-3.5" /> New
+              </button>
               <button type="button" onClick={selectAllStudents} className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
                 Select All
               </button>
@@ -1246,6 +1263,14 @@ export default function Fees() {
           </div>
         </form>
       </Modal>
+
+      {/* Inline quick-create a student without leaving the add-fee modal */}
+      <QuickCreateModal
+        type="student"
+        isOpen={quickStudentOpen}
+        onClose={() => setQuickStudentOpen(false)}
+        onCreated={handleQuickStudent}
+      />
 
       {/* Edit existing additional fee / discount */}
       <Modal

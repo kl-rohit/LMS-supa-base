@@ -987,6 +987,8 @@ export default function Lessons() {
                 students={unenrolledStudents}
                 onChange={setEnrollTarget}
                 label="Enrol which students?"
+                onCreateStudent={() => { if (selectedCourse?.id) fetchCourseDetail(selectedCourse.id); }}
+                onCreateGroup={() => api.get('/groups').then((r) => setGroups(r.groups || [])).catch(() => {})}
               />
             )}
             {enrollTarget.target_type === 'all' && (

@@ -4,6 +4,7 @@
 // with the portal URL.
 
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Mail,
   MessageSquare,
@@ -70,6 +71,7 @@ function whatsappLink(mobile, opts) {
 }
 
 export default function StudentLogins() {
+  const navigate = useNavigate();
   const branding = useOrgBranding();
   const emailReveal = useRevealTimer(20000);
   const [students, setStudents] = useState([]);
@@ -373,8 +375,17 @@ export default function StudentLogins() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-sm text-gray-400">
-                    No students match the search.
+                  <td colSpan={5} className="py-8 text-center">
+                    {students.length === 0 ? (
+                      <div>
+                        <p className="text-sm text-gray-500 mb-3">You have not added any students yet. Add a student first, then create their portal login here.</p>
+                        <button onClick={() => navigate('/students')} className="btn-primary btn-sm mx-auto">
+                          Add a student
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">No students match the search.</span>
+                    )}
                   </td>
                 </tr>
               )}
@@ -472,7 +483,16 @@ export default function StudentLogins() {
             );
           })}
           {rows.length === 0 && (
-            <div className="py-8 text-center text-sm text-gray-400">No students match the search.</div>
+            students.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-sm text-gray-500 mb-3">You have not added any students yet. Add a student first, then create their portal login here.</p>
+                <button onClick={() => navigate('/students')} className="btn-primary btn-sm mx-auto">
+                  Add a student
+                </button>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-gray-400">No students match the search.</div>
+            )
           )}
         </div>
 

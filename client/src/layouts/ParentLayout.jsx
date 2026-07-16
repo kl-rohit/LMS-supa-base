@@ -21,6 +21,7 @@ import { useModuleFlags } from '../hooks/useModuleFlags';
 import { useOrgBranding } from '../hooks/useOrgBranding';
 import api from '../utils/api';
 import { BRAND_NAME } from '../config';
+import { applyPortalMode } from '../utils/theme';
 import Loader from '../components/Loader';
 import NotificationBell from '../components/NotificationBell';
 import OnboardingTour from '../components/OnboardingTour';
@@ -70,6 +71,14 @@ export default function ParentLayout() {
     }
   }, [displayName]);
   const isAdmin = user?.role === 'App Administrator';
+
+  // The parent portal always follows the device's OS light/dark preference
+  // (web + PWA), independent of any admin theme saved on this browser. Restore
+  // the device preference when leaving the portal (shared-device safety).
+  useEffect(() => {
+    const restore = applyPortalMode();
+    return restore;
+  }, []);
 
   // Fetch the linked student's name once. Skipped for admin (they'll be redirected).
   useEffect(() => {

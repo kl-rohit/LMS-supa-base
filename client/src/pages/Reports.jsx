@@ -31,7 +31,7 @@ import {
   ListChecks,
   ArrowRight,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 import Loader from '../components/Loader';
@@ -126,6 +126,7 @@ function parseTs(v) {
 
 export default function Reports() {
   const now = new Date();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overall');
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1477,15 +1478,16 @@ export default function Reports() {
 
               {/* Summary Cards \u2014 clean console tiles (match the Dashboard). */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <MetricCard label="Total Students" value={(overallReport.students?.active || 0).toLocaleString('en-IN')} accent="indigo" icon={Users} />
-                <MetricCard label="Classes Conducted" value={(overallReport.attendance?.total_records || 0).toLocaleString('en-IN')} accent="blue" icon={ClipboardCheck} />
-                <MetricCard label="Total Fees" value={`\u20B9${Number(overallReport.fees?.grand_total || 0).toLocaleString('en-IN')}`} accent="amber" icon={IndianRupee} />
+                <MetricCard label="Total Students" value={(overallReport.students?.active || 0).toLocaleString('en-IN')} accent="indigo" icon={Users} onClick={() => navigate('/students')} />
+                <MetricCard label="Classes Conducted" value={(overallReport.attendance?.total_records || 0).toLocaleString('en-IN')} accent="blue" icon={ClipboardCheck} onClick={() => navigate('/attendance')} />
+                <MetricCard label="Total Fees" value={`\u20B9${Number(overallReport.fees?.grand_total || 0).toLocaleString('en-IN')}`} accent="amber" icon={IndianRupee} onClick={() => navigate('/fees')} />
                 <MetricCard
                   label="Avg Attendance"
                   value={`${Math.round(overallReport.attendance?.overall_rate || 0)}%`}
                   accent="emerald"
                   icon={TrendingUp}
                   tone={(overallReport.attendance?.overall_rate || 0) >= 80 ? 'good' : (overallReport.attendance?.overall_rate || 0) >= 60 ? 'warn' : 'bad'}
+                  onClick={() => navigate('/attendance')}
                 />
               </div>
 
@@ -2075,6 +2077,7 @@ export default function Reports() {
                     <MobileCardTable
                       keyField="course_id"
                       rows={courses}
+                      onRowClick={() => navigate('/lessons')}
                       columns={[
                         { key: 'name', label: 'Course' },
                         { key: 'lessons_total', label: 'Lessons', align: 'right' },
@@ -2120,6 +2123,7 @@ export default function Reports() {
                     <MobileCardTable
                       keyField="class_id"
                       rows={classes}
+                      onRowClick={() => navigate('/classes')}
                       columns={[
                         { key: 'name', label: 'Class' },
                         { key: 'day', label: 'Day' },

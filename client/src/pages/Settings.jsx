@@ -29,6 +29,7 @@ import {
   Palette,
   Sun,
   Moon,
+  Monitor,
   Check,
   Clock,
   Lock,
@@ -49,7 +50,7 @@ import TemplatesEditor from '../components/TemplatesEditor';
 import DataMigration from '../components/DataMigration';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { invalidateOrgBranding, useOrgBranding } from '../hooks/useOrgBranding';
-import { PRESETS, presetSwatch, applyTheme, saveTheme } from '../utils/theme';
+import { PRESETS, presetSwatch, applyTheme, saveTheme, loadTheme } from '../utils/theme';
 import { DAY_NAMES, parseWorkingHours, serializeWorkingHours } from '../utils/workingHours';
 import { SUPPORT_PHONE_TEL, BRAND_NAME } from '../config';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -167,11 +168,15 @@ export default function Settings() {
         if (res?.plan) setPlan(res.plan);
         if (res?.entitlements) setEntitlements(res.entitlements);
         const merged = { ...EMPTY_SETTINGS, ...(settings || {}) };
+        // Light/dark mode is a per-DEVICE preference (defaults to following the
+        // OS), so it must NOT be overwritten by the academy's stored mode — that
+        // was what made the theme flip when switching orgs. Accent DOES follow
+        // the academy. So: take accent from the org, keep mode from this device.
+        const deviceMode = loadTheme().mode;
+        merged['appearance.mode'] = deviceMode;
         setForm(merged);
         navFlagsRef.current = pickModuleFlags(merged);
-        // Reconcile the server's saved appearance with this device: apply it
-        // and cache it so the theme follows the academy across devices.
-        const theme = { accent: merged['appearance.accent'], mode: merged['appearance.mode'] };
+        const theme = { accent: merged['appearance.accent'], mode: deviceMode };
         applyTheme(theme);
         saveTheme(theme);
       } catch (e) {
@@ -885,7 +890,7 @@ function BillingTab({ form, set, setForm }) {
 
 function AppearanceTab({ form, setForm }) {
   const accent = form['appearance.accent'] || 'default';
-  const mode = form['appearance.mode'] || 'light';
+  const mode = form['appearance.mode'] || 'system';
 
   // Apply changes live (instant preview) AND cache to localStorage so the look
   // survives a reload even before the user hits Save (which persists to the
@@ -976,12 +981,13 @@ function AppearanceTab({ form, setForm }) {
       <div className="card space-y-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900">Theme mode</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Switch the whole app between light and dark.</p>
+          <p className="text-xs text-gray-500 mt-0.5">Light, dark, or match your device. This is saved for this device, so each person can pick their own.</p>
         </div>
-        <div className="grid grid-cols-2 gap-3 max-w-sm">
+        <div className="grid grid-cols-3 gap-3 max-w-md">
           {[
             { id: 'light', label: 'Light', icon: Sun },
             { id: 'dark', label: 'Dark', icon: Moon },
+            { id: 'system', label: 'System', icon: Monitor },
           ].map((opt) => {
             const Icon = opt.icon;
             const selected = mode === opt.id;

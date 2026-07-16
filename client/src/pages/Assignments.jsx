@@ -268,6 +268,8 @@ export default function Assignments() {
             groups={groups}
             students={students}
             onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+            onCreateStudent={fetchData}
+            onCreateGroup={fetchData}
           />
         </form>
       </Modal>

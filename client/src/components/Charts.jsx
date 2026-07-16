@@ -156,13 +156,16 @@ export function BarChart({ data = [], fmt = (v) => Number(v).toLocaleString('en-
 // Console-style stat tile: a coloured accent top-bar + uppercase micro-label,
 // matching the Dashboard MetricCard. `color` drives the accent bar (defaults to
 // the theme indigo). Surface + text use base classes so it inverts light/dark.
-export function StatTile({ label, value, color, sub }) {
+export function StatTile({ label, value, color, sub, onClick }) {
   const bar = color || 'var(--color-primary-500, #6366f1)';
   return (
-    <div className="relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4">
+    <div
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-xl bg-white border border-gray-200 p-4 transition-all duration-200 ${onClick ? 'cursor-pointer hover:border-indigo-200 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0' : ''}`}
+    >
       <span className="absolute top-0 inset-x-0 h-[3px] opacity-80" style={{ backgroundColor: bar }} />
       <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">{label}</p>
-      <p className="text-2xl font-semibold text-gray-900 mt-1.5 leading-none">{value}</p>
+      <p className="text-2xl font-semibold text-gray-900 mt-1.5 leading-none tabular-nums">{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1.5">{sub}</p>}
     </div>
   );
@@ -421,7 +424,7 @@ export function MobileCardTable({ columns = [], rows = [], keyField, onRowClick 
             <tr
               key={keyOf(row, i)}
               onClick={clickable ? () => onRowClick(row) : undefined}
-              className={`border-b border-gray-200 ${clickable ? 'cursor-pointer' : ''}`}
+              className={`border-b border-gray-200 ${clickable ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
             >
               {columns.map((col) => (
                 <td key={col.key} className={`py-2 px-3 text-gray-900 ${alignClass(col.align)}`}>{cell(col, row)}</td>
@@ -436,7 +439,7 @@ export function MobileCardTable({ columns = [], rows = [], keyField, onRowClick 
           <div
             key={keyOf(row, i)}
             onClick={clickable ? () => onRowClick(row) : undefined}
-            className={`rounded-xl bg-gray-50 p-3 space-y-1 ${clickable ? 'cursor-pointer' : ''}`}
+            className={`rounded-xl bg-gray-50 p-3 space-y-1 ${clickable ? 'cursor-pointer active:bg-gray-100 transition-colors' : ''}`}
           >
             {columns.map((col) => (
               <div key={col.key} className="flex items-center justify-between gap-3 text-sm">

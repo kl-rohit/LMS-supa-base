@@ -484,6 +484,8 @@ export default function Messages() {
               students={students}
               onChange={setComposeTarget}
               label="Send to"
+              onCreateStudent={fetchData}
+              onCreateGroup={fetchData}
             />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>

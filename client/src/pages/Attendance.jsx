@@ -29,6 +29,7 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import ShareMeetingLinkDialog from '../components/ShareMeetingLinkDialog';
+import QuickCreateModal from '../components/QuickCreateModal';
 import { useConfirm } from '../contexts/ConfirmContext';
 
 const isOnlineClassType = (t) => t === 'online' || t === 'online_group';
@@ -84,6 +85,7 @@ export default function Attendance() {
   const [adhocTopic, setAdhocTopic] = useState('');
   // Filter the ad-hoc student list by group. '' means show all students.
   const [adhocGroupFilter, setAdhocGroupFilter] = useState('');
+  const [quickStudentOpen, setQuickStudentOpen] = useState(false);
   // Class-mode toggle: 'today' uses date-filtered classes, 'any' lets you pick from all classes
   const [classMode, setClassMode] = useState('today');
   const [allClasses, setAllClasses] = useState([]);
@@ -422,6 +424,19 @@ export default function Attendance() {
     setAdhocStudentIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  };
+
+  // A student created inline from the ad-hoc session gets refreshed into the
+  // list and pre-selected. Clear any group filter so they are visible.
+  const handleQuickStudent = async (student) => {
+    try {
+      const data = await api.get('/students');
+      setStudents((data.students || []).filter((s) => s.status === 'active'));
+    } catch { /* non-fatal */ }
+    if (student?.id) {
+      setAdhocGroupFilter('');
+      setAdhocStudentIds((prev) => prev.some((sid) => String(sid) === String(student.id)) ? prev : [...prev, student.id]);
+    }
   };
 
   // Resolve students for the ad-hoc group filter.
@@ -1029,6 +1044,9 @@ export default function Attendance() {
                   className="input-field text-sm flex-1 min-w-[150px]"
                   placeholder="Search students..."
                 />
+                <button type="button" onClick={() => setQuickStudentOpen(true)} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
+                  <Plus className="w-3.5 h-3.5" /> New
+                </button>
                 <button
                   type="button"
                   onClick={() => setAdhocStudentIds(adhocVisibleStudents.map((s) => s.id))}
@@ -1715,6 +1733,14 @@ export default function Attendance() {
           </div>
         </div>
       </Modal>
+
+      {/* Inline quick-create a student without leaving the ad-hoc session form */}
+      <QuickCreateModal
+        type="student"
+        isOpen={quickStudentOpen}
+        onClose={() => setQuickStudentOpen(false)}
+        onCreated={handleQuickStudent}
+      />
     </div>
   );
 }

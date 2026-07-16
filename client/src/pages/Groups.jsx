@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Edit2,
@@ -18,8 +19,10 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
+import QuickCreateModal from '../components/QuickCreateModal';
 
 export default function Groups() {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +36,7 @@ export default function Groups() {
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [quickStudentOpen, setQuickStudentOpen] = useState(false);
   // Status filter for the groups list (mirrors the Students page pattern).
   const [statusFilter, setStatusFilter] = useState('active'); // active | inactive | all
 
@@ -154,6 +158,17 @@ export default function Groups() {
       fetchData();
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  // A student created inline from the Add Members modal should land straight
+  // into the group the admin is building, and refresh the roster so it shows.
+  const handleQuickStudent = async (student) => {
+    if (!student?.id) { fetchData(); return; }
+    if (selectedGroup) {
+      await addMember(student.id);
+    } else {
+      fetchData();
     }
   };
 
@@ -418,17 +433,38 @@ export default function Groups() {
         size="sm"
       >
         <div className="space-y-3">
-          <input
-            type="text"
-            placeholder="Search students..."
-            value={memberSearch}
-            onChange={(e) => setMemberSearch(e.target.value)}
-            className="input-field"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search students..."
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              className="input-field flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => setQuickStudentOpen(true)}
+              className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> New
+            </button>
+          </div>
           {filteredNonMembers.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">
-              {nonMembers.length === 0 ? 'All students are already in this group.' : 'No matching students found.'}
-            </p>
+            students.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-gray-500 mb-3">You have not added any students yet.</p>
+                <button
+                  onClick={() => navigate('/students')}
+                  className="btn-primary btn-sm mx-auto"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> Add a student
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-4">
+                {nonMembers.length === 0 ? 'Everyone is already in this group.' : 'No matching students found.'}
+              </p>
+            )
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-2 scrollbar-thin">
               {filteredNonMembers.map((student) => (
@@ -449,6 +485,14 @@ export default function Groups() {
           )}
         </div>
       </Modal>
+
+      {/* Inline quick-create a student without leaving the Add Members modal */}
+      <QuickCreateModal
+        type="student"
+        isOpen={quickStudentOpen}
+        onClose={() => setQuickStudentOpen(false)}
+        onCreated={handleQuickStudent}
+      />
 
       {/* Delete / Deactivate Confirmation */}
       <ConfirmDialog

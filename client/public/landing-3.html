@@ -83,7 +83,10 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 /* Product mockup + annotations */
 .showcase{position:relative;margin:64px auto 0;max-width:1040px;z-index:1}
 .frame{position:relative;border-radius:20px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-lg);overflow:hidden;opacity:0;transform:perspective(1600px) rotateX(9deg) translateY(40px) scale(.97);transition:opacity 1s cubic-bezier(.16,1,.3,1),transform 1.1s cubic-bezier(.16,1,.3,1)}
-.frame.in{opacity:1;transform:perspective(1600px) rotateX(0) translateY(0) scale(1)}
+.frame.in{opacity:1;transform:perspective(1600px) rotateX(0) translateY(0) scale(1);animation:frameFloat 8s ease-in-out 1.2s infinite}
+@keyframes frameFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.f-row.enter{opacity:0;transform:translateY(-10px)}
+.f-row.enter.show{opacity:1;transform:none;transition:opacity .5s ease,transform .5s cubic-bezier(.16,1,.3,1)}
 .f-bar{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid var(--line);background:var(--bg-soft)}
 .f-dot{width:11px;height:11px;border-radius:50%}
 .f-url{margin:0 auto;font-size:12px;color:var(--ink-4);background:#fff;border:1px solid var(--line);border-radius:100px;padding:5px 18px}
@@ -360,10 +363,10 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
               <span class="f-chip">Automated ✓</span>
             </div>
             <div class="f-cards">
-              <div class="f-c"><div class="l">Collected this month</div><div class="big mint">₹1,42,500</div><div class="s">On track, 6 gentle reminders sent</div></div>
-              <div class="f-c"><div class="l">Attendance today</div><div class="big violet">96%</div><div class="s">2 to follow up on</div></div>
+              <div class="f-c"><div class="l">Collected this month</div><div class="big mint" id="lp-amt" data-to="142500" data-money>₹1,42,500</div><div class="s">On track, 6 gentle reminders sent</div></div>
+              <div class="f-c"><div class="l">Attendance today</div><div class="big violet" id="lp-att" data-to="96" data-suffix="%">96%</div><div class="s">2 to follow up on</div></div>
             </div>
-            <div class="f-tbl">
+            <div class="f-tbl" id="lp-tbl">
               <div class="f-row"><span>Student</span><span>Class</span><span>Status</span></div>
               <div class="f-row"><span>Aarav Menon</span><span>Veena, batch A</span><span class="f-b ok">Present</span></div>
               <div class="f-row"><span>Diya Rao</span><span>Vocals, batch B</span><span class="f-b ok">Present</span></div>
@@ -675,8 +678,38 @@ document.querySelectorAll('.reveal,.stag').forEach(function(el){io.observe(el)})
 var marq=document.getElementById('marq');
 if(marq){marq.innerHTML+=marq.innerHTML;}
 
-// Frame + annotations sequence
+// Frame + annotations sequence, plus a "live" dashboard (count-ups + a fresh
+// row that keeps sliding in, echoing a real product filling with activity)
 var frame=document.getElementById('frame');
+var reduceMotion=matchMedia('(prefers-reduced-motion:reduce)').matches;
+function liveCount(el){
+  var to=parseFloat(el.getAttribute('data-to')), money=el.hasAttribute('data-money'), suf=el.getAttribute('data-suffix')||'', t0=null;
+  function fmt(v){ return money ? '₹'+Math.round(v).toLocaleString('en-IN') : Math.round(v)+suf; }
+  function step(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/1100,1); el.textContent=fmt(to*(1-Math.pow(1-p,3))); if(p<1)requestAnimationFrame(step); }
+  requestAnimationFrame(step);
+}
+function liveRows(){
+  var tbl=document.getElementById('lp-tbl'); if(!tbl)return;
+  var pool=[
+    ['Meera Iyer','Vocals, batch B','ok','Present'],
+    ['Rohan Das','Keyboard, 1-on-1','ok','Present'],
+    ['Sara Khan','Veena, batch A','warn','Reminder due'],
+    ['Ishaan Gupta','Guitar, batch C','ok','Present'],
+    ['Ananya R.','Vocals, batch B','ok','Paid ₹500']
+  ], i=0;
+  function insert(){
+    var d=pool[i%pool.length]; i++;
+    var row=document.createElement('div');
+    row.className='f-row enter';
+    row.innerHTML='<span>'+d[0]+'</span><span>'+d[1]+'</span><span class="f-b '+d[2]+'">'+d[3]+'</span>';
+    tbl.appendChild(row);
+    void row.offsetWidth; row.classList.add('show');
+    // keep the newest 3 data rows (index 0 is the header)
+    var data=tbl.querySelectorAll('.f-row');
+    if(data.length>4){ tbl.removeChild(data[1]); }
+  }
+  setTimeout(function loop(){ insert(); setTimeout(loop, 2800); }, 2600);
+}
 if(frame){
   var fio=new IntersectionObserver(function(es){
     es.forEach(function(e){ if(!e.isIntersecting)return;
@@ -684,6 +717,8 @@ if(frame){
       document.querySelectorAll('.annot').forEach(function(a){
         setTimeout(function(){a.classList.add('in')}, parseInt(a.getAttribute('data-delay')||'0',10)+300);
       });
+      document.querySelectorAll('#frame [data-to]').forEach(liveCount);
+      if(!reduceMotion) liveRows();
       fio.unobserve(frame);
     });
   },{threshold:.25});

@@ -304,12 +304,16 @@
   /* Content enter: a subtle rise + fade used on page bodies and modal panels so
      views settle in rather than snap. Kept short (180ms) and disabled under
      prefers-reduced-motion by the global guard above. */
+  /* Opacity-only on purpose: a transform here (even translateY(0)) persists via
+     fill-mode and would make any descendant position:fixed element (Settings
+     overlay, every Modal) resolve against this box instead of the viewport,
+     collapsing it. Fade alone gives the settle-in without that side effect. */
   .animate-in {
-    animation: posh-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: posh-in 0.2s ease-out both;
   }
   @keyframes posh-in {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
 
   /* Modal/dialog overlays fade their backdrop in. */

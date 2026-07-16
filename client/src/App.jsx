@@ -205,15 +205,27 @@ function TeacherLayout() {
                 data-tour={`nav-${item.to.replace(/^\//, '')}`}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  `relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? 'bg-indigo-50 text-gray-900 dark:bg-indigo-600 dark:text-white'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:translate-x-0.5'
                   }`
                 }
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                {item.label}
+                {({ isActive }) => (
+                  <>
+                    {/* Active indicator — a little accent bar that grows in on the
+                        selected item. Contrasts on both the light pill and the
+                        dark solid-indigo pill. */}
+                    <span
+                      className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 rounded-r-full transition-all duration-200 bg-indigo-600 dark:bg-white ${
+                        isActive ? 'h-5 opacity-100' : 'h-0 opacity-0'
+                      }`}
+                    />
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {item.label}
+                  </>
+                )}
               </NavLink>
             );
           })}

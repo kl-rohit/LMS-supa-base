@@ -3,7 +3,22 @@
 // hex (vivid in both light and dark); all surfaces/text use the app's themed
 // classes (bg-white, text-gray-*, bg-gray-100), which index.css remaps under
 // .dark — so charts recolour correctly with the theme automatically.
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+// Flips to true one frame after mount, so charts can animate from an empty
+// state to their real values on entry (bars grow, arcs sweep, lines draw).
+// Under prefers-reduced-motion the transitions are ~0ms (global guard), so it
+// simply snaps to the final state — no motion.
+function useEntered() {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return entered;
+}
+
+const ENTER_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 // Small floating tooltip. Rendered inside a `relative` wrapper and positioned
 // via inline left/top. pointer-events-none so it never blocks the element
@@ -31,6 +46,7 @@ export function Donut({ data = [], size = 160, thickness = 22, centervalue, cent
   let offset = 0;
   const cx = size / 2;
   const [hover, setHover] = useState(null); // hovered segment index or null
+  const entered = useEntered();
   const fmtVal = (v) => Number(v).toLocaleString('en-IN');
   // Tooltip anchored near the top of the ring, in the SVG's own pixel space.
   const tip = hover != null && data[hover]
@@ -57,11 +73,11 @@ export function Donut({ data = [], size = 160, thickness = 22, centervalue, cent
                 cx={cx} cy={cx} r={r} fill="none"
                 strokeWidth={active ? thickness + 4 : thickness}
                 stroke={d.color}
-                strokeDasharray={`${len} ${c - len}`}
+                strokeDasharray={entered ? `${len} ${c - len}` : `0 ${c}`}
                 strokeDashoffset={-offset}
                 transform={`rotate(-90 ${cx} ${cx})`}
                 strokeLinecap="butt"
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', transition: `stroke-dasharray 0.7s ${ENTER_EASE}` }}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover((h) => (h === i ? null : h))}
                 onClick={() => setHover((h) => (h === i ? null : i))}
@@ -98,6 +114,7 @@ export function Donut({ data = [], size = 160, thickness = 22, centervalue, cent
 export function BarChart({ data = [], fmt = (v) => Number(v).toLocaleString('en-IN') }) {
   const max = Math.max(1, ...data.map((d) => Number(d.value) || 0));
   const [hover, setHover] = useState(null); // hovered row index or null
+  const entered = useEntered();
   return (
     <div className="space-y-3">
       {data.map((d, i) => (
@@ -118,9 +135,10 @@ export function BarChart({ data = [], fmt = (v) => Number(v).toLocaleString('en-
               <div
                 className="h-full rounded-full"
                 style={{
-                  width: `${((Number(d.value) || 0) / max) * 100}%`,
+                  width: entered ? `${((Number(d.value) || 0) / max) * 100}%` : '0%',
                   backgroundColor: d.color,
                   outline: hover === i ? '1px solid currentColor' : 'none',
+                  transition: `width 0.7s ${ENTER_EASE}`,
                 }}
               />
             </div>
@@ -173,6 +191,7 @@ export function LineChart({ series = [], height = 180, fmt = (v) => Number(v).to
   // pixel space; the SVG scales to its container so the box stays anchored to
   // the dot. Clamp the tooltip x so it never spills past the chart edges.
   const [hover, setHover] = useState(null);
+  const entered = useEntered();
   let tip = null;
   if (hover) {
     const [hsi, hi] = hover.split(':').map(Number);
@@ -198,7 +217,12 @@ export function LineChart({ series = [], height = 180, fmt = (v) => Number(v).to
           const pts = s.points.map((p, i) => `${xAt(i)},${yAt(p.y)}`).join(' ');
           return (
             <g key={si}>
-              <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              <polyline
+                points={pts} fill="none" stroke={s.color} strokeWidth="2"
+                strokeLinejoin="round" strokeLinecap="round"
+                pathLength="1" strokeDasharray="1" strokeDashoffset={entered ? 0 : 1}
+                style={{ transition: `stroke-dashoffset 0.8s ${ENTER_EASE}` }}
+              />
               {s.points.map((p, i) => {
                 const key = `${si}:${i}`;
                 const active = hover === key;
@@ -208,7 +232,7 @@ export function LineChart({ series = [], height = 180, fmt = (v) => Number(v).to
                     cx={xAt(i)} cy={yAt(p.y)}
                     r={active ? 4.5 : 2.5}
                     fill={s.color}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', opacity: entered ? 1 : 0, transition: 'opacity 0.3s ease 0.5s' }}
                     onMouseEnter={() => setHover(key)}
                     onMouseLeave={() => setHover((h) => (h === key ? null : h))}
                     onClick={() => setHover((h) => (h === key ? null : key))}
@@ -259,6 +283,7 @@ export function GroupedBarChart({ groups = [], series = [], fmt = (v) => Number(
   const barW = Math.max(2, barAreaW / valid.length);
   const yAt = (v) => padT + plotH - (plotH * ((Number(v) || 0) / maxY));
   const gridLines = 4;
+  const entered = useEntered();
   // hovered bar key "gi:si" or null. Tooltip is positioned in the SVG's own
   // pixel space (converted to % so it tracks the responsive scaling) and shows
   // the series name plus the formatted value. x is clamped to the plot area so
@@ -299,12 +324,12 @@ export function GroupedBarChart({ groups = [], series = [], fmt = (v) => Number(
                   <rect
                     key={si}
                     x={gx + barW * si}
-                    y={y}
+                    y={entered ? y : padT + plotH}
                     width={Math.max(1, barW - 1)}
-                    height={Math.max(0, padT + plotH - y)}
+                    height={entered ? Math.max(0, padT + plotH - y) : 0}
                     rx="1.5"
                     fill={s.color}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', transition: `y 0.6s ${ENTER_EASE}, height 0.6s ${ENTER_EASE}` }}
                     fillOpacity={hover && !active ? 0.55 : 1}
                     stroke={active ? 'currentColor' : 'none'}
                     strokeWidth={active ? 0.75 : 0}

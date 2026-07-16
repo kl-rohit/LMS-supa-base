@@ -20,6 +20,7 @@ import Loader from '../components/Loader';
 import { PageHeader, MetricCard, Panel, SectionLabel } from '../components/ConsoleUI';
 import { Donut, BarChart, CHART_COLORS } from '../components/Charts';
 import { DashboardSkeleton } from '../components/Skeleton';
+import CountUp from '../components/CountUp';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { useOrgBranding } from '../hooks/useOrgBranding';
@@ -159,20 +160,20 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" data-tour="dashboard-stats">
         <MetricCard
           label="Total Students"
-          value={totalStudents.toLocaleString('en-IN')}
+          value={<CountUp value={totalStudents} />}
           accent="indigo"
           icon={Users}
         />
         <MetricCard
           label="Classes Today"
-          value={classesToday.length}
+          value={<CountUp value={classesToday.length} />}
           accent="blue"
           icon={Calendar}
           onClick={() => navigate('/classes')}
         />
         <MetricCard
           label="Attendance Rate"
-          value={`${attRate}%`}
+          value={<CountUp value={attRate} format={(n) => `${n}%`} />}
           sub="This month"
           tone={attTone}
           accent="emerald"

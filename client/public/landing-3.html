@@ -224,6 +224,21 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .netfeat li b{color:var(--ink);font-weight:700}
 .netfeat .nk{color:var(--brand);font-weight:800;flex-shrink:0}
 
+/* India reach map (dotted, with pulsing academy hubs) */
+.india-wrap{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;margin-top:24px}
+@media(max-width:900px){.india-wrap{grid-template-columns:1fr;gap:22px}.india-stage{order:-1}}
+.india-stage{position:relative;width:100%;max-width:440px;margin-inline:auto}
+.india-svg{width:100%;height:auto;overflow:visible}
+.in-dot{fill:var(--brand);opacity:.16}
+.in-hub{fill:var(--brand)}
+.in-hub-ring{fill:none;stroke:var(--brand);opacity:.5;animation:inPulse 2.8s ease-out infinite}
+@keyframes inPulse{0%{r:5;opacity:.55}70%,100%{r:17;opacity:0}}
+.in-arc{fill:none;stroke:url(#inArc);stroke-width:1.5;opacity:.4}
+.in-flow{fill:none;stroke:var(--brand);stroke-width:2;stroke-linecap:round;stroke-dasharray:4 58;opacity:.8;animation:inFlow 3s linear infinite}
+@keyframes inFlow{to{stroke-dashoffset:-62}}
+.in-cap{position:absolute;left:0;bottom:-6px;font-size:12px;font-weight:600;color:var(--ink-3);background:#fff;border:1px solid var(--line);border-radius:100px;padding:7px 15px;box-shadow:var(--shadow-sm)}
+.in-cap b{color:var(--brand-d)}
+
 /* Automation cycle */
 .cycle{position:relative;max-width:760px;margin:42px auto 0;aspect-ratio:5/3}
 .cycle-svg{width:100%;height:100%;overflow:visible}
@@ -440,6 +455,49 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
     <div class="stat"><div class="n" data-count="1" data-suffix=" day">1 day</div><div class="l">To go live</div></div>
     <div class="stat"><div class="n" data-count="15" data-prefix="" data-suffix=" free">15 free</div><div class="l">Students included</div></div>
     <div class="stat"><div class="n" data-count="0" data-suffix="₹0" data-raw="₹0">₹0</div><div class="l">Setup fee</div></div>
+  </div>
+</section>
+
+<!-- ACROSS INDIA (dotted reach map) -->
+<section class="sec">
+  <div class="container">
+    <div class="india-wrap">
+      <div class="reveal">
+        <span class="eyebrow">Made in India</span>
+        <h2>Built for academies across India.</h2>
+        <p>From city studios to small-town coaching centres, VidyaSetu runs the same calm way, on any phone, in any language your parents read.</p>
+        <ul class="netfeat">
+          <li><span class="nk">→</span><span>Rupee-first <b>fees, UPI and QR</b>, the way India pays.</span></li>
+          <li><span class="nk">→</span><span>Works on <b>any phone</b>, installs like an app, no store needed.</span></li>
+          <li><span class="nk">→</span><span>Real human support, <b>on call</b>.</span></li>
+        </ul>
+      </div>
+      <div class="india-stage reveal">
+        <svg class="india-svg" viewBox="0 0 402 440" role="img" aria-label="A dotted map of India with pulsing academy locations connected by lines">
+          <defs><linearGradient id="inArc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b53ff"/><stop offset="1" stop-color="#22c1e6"/></linearGradient></defs>
+          <g id="in-dots"></g>
+          <!-- connection arcs between academy hubs -->
+          <path class="in-arc" d="M113,75 Q60,150 75,239"/>
+          <path class="in-arc" d="M75,239 Q70,290 113,314"/>
+          <path class="in-arc" d="M113,314 Q126,298 138,314"/>
+          <path class="in-arc" d="M113,75 Q200,95 251,176"/>
+          <path class="in-arc" d="M126,251 Q165,160 113,75"/>
+          <path class="in-flow" d="M113,75 Q60,150 75,239"/>
+          <path class="in-flow" d="M113,75 Q200,95 251,176" style="animation-delay:-1s"/>
+          <path class="in-flow" d="M126,251 Q165,160 113,75" style="animation-delay:-2s"/>
+          <!-- academy hubs (approx: Delhi, Mumbai, Hyderabad, Bengaluru, Chennai, Kolkata) -->
+          <g>
+            <circle class="in-hub-ring" cx="113" cy="75"/><circle class="in-hub" cx="113" cy="75" r="4"/>
+            <circle class="in-hub-ring" cx="75" cy="239" style="animation-delay:-.5s"/><circle class="in-hub" cx="75" cy="239" r="4"/>
+            <circle class="in-hub-ring" cx="126" cy="251" style="animation-delay:-1s"/><circle class="in-hub" cx="126" cy="251" r="4"/>
+            <circle class="in-hub-ring" cx="113" cy="314" style="animation-delay:-1.5s"/><circle class="in-hub" cx="113" cy="314" r="4"/>
+            <circle class="in-hub-ring" cx="138" cy="314" style="animation-delay:-2s"/><circle class="in-hub" cx="138" cy="314" r="4"/>
+            <circle class="in-hub-ring" cx="251" cy="176" style="animation-delay:-2.4s"/><circle class="in-hub" cx="251" cy="176" r="4"/>
+          </g>
+        </svg>
+        <span class="in-cap">Built in India, <b>for Indian academies</b></span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -672,6 +730,20 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
 </footer>
 
 <script>
+// Dotted India map — dots sampled from the real map geometry, built here to
+// keep the markup light.
+var IN_DOTS=[[63,0],[75,0],[88,0],[101,0],[75,13],[88,13],[101,13],[113,13],[138,13],[151,13],[75,25],[88,25],[101,25],[113,25],[126,25],[138,25],[151,25],[75,38],[88,38],[101,38],[113,38],[126,38],[138,38],[151,38],[75,50],[88,50],[101,50],[113,50],[126,50],[138,50],[88,63],[101,63],[113,63],[126,63],[138,63],[151,63],[88,75],[101,75],[113,75],[126,75],[138,75],[88,88],[101,88],[113,88],[126,88],[138,88],[75,101],[88,101],[101,101],[113,101],[126,101],[138,101],[151,101],[163,101],[75,113],[88,113],[101,113],[113,113],[126,113],[138,113],[151,113],[163,113],[63,126],[75,126],[88,126],[101,126],[113,126],[126,126],[138,126],[151,126],[365,126],[377,126],[390,126],[50,138],[63,138],[75,138],[88,138],[101,138],[113,138],[126,138],[138,138],[151,138],[163,138],[176,138],[352,138],[365,138],[377,138],[390,138],[402,138],[25,151],[38,151],[50,151],[63,151],[75,151],[88,151],[101,151],[113,151],[126,151],[138,151],[151,151],[163,151],[176,151],[189,151],[201,151],[277,151],[339,151],[352,151],[365,151],[377,151],[390,151],[402,151],[25,163],[38,163],[50,163],[63,163],[75,163],[88,163],[101,163],[113,163],[126,163],[138,163],[151,163],[163,163],[176,163],[189,163],[201,163],[214,163],[226,163],[239,163],[277,163],[289,163],[302,163],[314,163],[327,163],[339,163],[352,163],[365,163],[25,176],[38,176],[50,176],[63,176],[75,176],[88,176],[101,176],[113,176],[126,176],[138,176],[151,176],[163,176],[176,176],[189,176],[201,176],[214,176],[226,176],[239,176],[251,176],[264,176],[302,176],[314,176],[327,176],[339,176],[352,176],[365,176],[38,189],[50,189],[63,189],[75,189],[88,189],[101,189],[113,189],[126,189],[138,189],[151,189],[163,189],[176,189],[189,189],[201,189],[214,189],[226,189],[239,189],[251,189],[264,189],[277,189],[339,189],[352,189],[365,189],[0,201],[38,201],[50,201],[63,201],[75,201],[88,201],[101,201],[113,201],[126,201],[138,201],[151,201],[163,201],[176,201],[189,201],[201,201],[214,201],[226,201],[239,201],[251,201],[264,201],[277,201],[339,201],[352,201],[0,214],[13,214],[25,214],[38,214],[50,214],[63,214],[75,214],[88,214],[101,214],[113,214],[126,214],[138,214],[151,214],[163,214],[176,214],[189,214],[201,214],[214,214],[226,214],[239,214],[251,214],[264,214],[277,214],[327,214],[339,214],[25,226],[38,226],[50,226],[63,226],[75,226],[88,226],[101,226],[113,226],[126,226],[138,226],[151,226],[163,226],[176,226],[189,226],[201,226],[214,226],[226,226],[239,226],[251,226],[264,226],[277,226],[339,226],[13,239],[25,239],[38,239],[63,239],[75,239],[88,239],[101,239],[113,239],[126,239],[138,239],[151,239],[163,239],[176,239],[189,239],[201,239],[214,239],[226,239],[239,239],[251,239],[264,239],[25,251],[38,251],[63,251],[75,251],[88,251],[101,251],[113,251],[126,251],[138,251],[151,251],[163,251],[176,251],[189,251],[201,251],[214,251],[226,251],[239,251],[251,251],[63,264],[75,264],[88,264],[101,264],[113,264],[126,264],[138,264],[151,264],[163,264],[176,264],[189,264],[201,264],[214,264],[226,264],[239,264],[251,264],[63,277],[75,277],[88,277],[101,277],[113,277],[126,277],[138,277],[151,277],[163,277],[176,277],[189,277],[201,277],[214,277],[226,277],[63,289],[75,289],[88,289],[101,289],[113,289],[126,289],[138,289],[151,289],[163,289],[176,289],[189,289],[201,289],[214,289],[63,302],[75,302],[88,302],[101,302],[113,302],[126,302],[138,302],[151,302],[163,302],[176,302],[189,302],[201,302],[63,314],[75,314],[88,314],[101,314],[113,314],[126,314],[138,314],[151,314],[163,314],[176,314],[189,314],[75,327],[88,327],[101,327],[113,327],[126,327],[138,327],[151,327],[163,327],[75,339],[88,339],[101,339],[113,339],[126,339],[138,339],[151,339],[88,352],[101,352],[113,352],[126,352],[138,352],[151,352],[88,365],[101,365],[113,365],[126,365],[138,365],[151,365],[88,377],[101,377],[113,377],[126,377],[138,377],[151,377],[101,390],[113,390],[126,390],[138,390],[151,390],[339,390],[101,402],[113,402],[126,402],[138,402],[151,402],[113,415],[126,415],[138,415],[113,427],[126,427],[138,427],[126,440]];
+(function(){
+  var g=document.getElementById('in-dots'); if(!g) return;
+  var NS='http://www.w3.org/2000/svg';
+  IN_DOTS.forEach(function(p){
+    var c=document.createElementNS(NS,'circle');
+    c.setAttribute('cx',p[0]); c.setAttribute('cy',p[1]); c.setAttribute('r','2.3');
+    c.setAttribute('class','in-dot');
+    g.appendChild(c);
+  });
+})();
+
 // Scroll progress + nav state
 var nav=document.getElementById('nav'), prog=document.getElementById('prog');
 function onScroll(){

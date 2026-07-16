@@ -55,7 +55,7 @@ a{color:inherit;text-decoration:none}
 section{position:relative}
 
 /* Hero */
-.hero{padding:180px 0 90px;text-align:center}
+.hero{padding:150px 0 40px;text-align:center}
 .hero h1{font-family:var(--font-display);font-weight:400;font-size:clamp(44px,7vw,86px);line-height:1.04;letter-spacing:-.02em;margin:26px auto 0;max-width:14ch}
 .hero h1 .em{font-style:italic;background:linear-gradient(120deg,var(--violet),var(--cyan));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .hero p{max-width:56ch;margin:26px auto 0;color:var(--text-2);font-size:clamp(16px,2vw,19px)}
@@ -68,8 +68,76 @@ section{position:relative}
 .hero-note{margin-top:22px;font-family:var(--font-mono);font-size:12px;color:var(--text-3)}
 .hero-note b{color:var(--mint);font-weight:500}
 
+/* ============ SHOWCASE: annotated product mockup ============ */
+.showcase{margin:70px auto 0;max-width:1000px;position:relative}
+.mock{position:relative;border-radius:16px;border:1px solid var(--border-hi);background:linear-gradient(180deg,var(--bg-2),var(--bg-1));box-shadow:0 40px 120px -30px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.02);overflow:hidden;opacity:0;transform:translateY(26px) scale(.985);transition:opacity .9s ease,transform .9s ease}
+.mock.in{opacity:1;transform:none}
+.mock-bar{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
+.mock-dot{width:11px;height:11px;border-radius:50%}
+.mock-url{margin:0 auto;font-family:var(--font-mono);font-size:11px;color:var(--text-3);background:rgba(255,255,255,.04);padding:5px 16px;border-radius:100px;border:1px solid var(--border)}
+.mock-body{display:grid;grid-template-columns:180px 1fr;min-height:360px}
+.mock-side{border-right:1px solid var(--border);padding:20px 16px;background:rgba(255,255,255,.015)}
+.mock-side .ms-brand{font-family:var(--font-display);font-size:16px;display:flex;align-items:center;gap:8px;margin-bottom:22px}
+.mock-side .ms-brand span{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--violet),var(--mint));display:inline-block}
+.ms-nav{list-style:none;display:flex;flex-direction:column;gap:4px}
+.ms-nav li{font-size:13px;color:var(--text-2);padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:9px}
+.ms-nav li.act{background:rgba(139,124,255,.14);color:var(--text);border:1px solid rgba(139,124,255,.22)}
+.ms-nav li .di{width:6px;height:6px;border-radius:2px;background:var(--text-3)}
+.ms-nav li.act .di{background:var(--violet)}
+.mock-main{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.mm-hi{font-family:var(--font-display);font-size:22px;color:var(--text)}
+.mm-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:11px;background:rgba(95,245,196,.07);border:1px solid rgba(95,245,196,.18)}
+.mm-banner .t{font-size:12.5px;color:var(--text-2)}
+.mm-banner .t b{color:var(--text);font-weight:600}
+.mm-pill{font-family:var(--font-mono);font-size:10.5px;color:#08090F;background:var(--mint);padding:6px 12px;border-radius:100px;white-space:nowrap}
+.mm-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mm-card{border:1px solid var(--border);border-radius:12px;padding:14px;background:rgba(255,255,255,.02)}
+.mm-card .lbl{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.mm-card .big{font-family:var(--font-display);font-size:26px;margin-top:5px}
+.mm-card .sub{font-size:11.5px;color:var(--text-2);margin-top:3px}
+.mm-card .big.mint{color:var(--mint)}
+.mm-card .big.violet{color:var(--violet)}
+.mm-table{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.mm-row{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;padding:10px 14px;font-size:12px;align-items:center;border-top:1px solid var(--border)}
+.mm-row:first-child{border-top:none;color:var(--text-3);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.mm-row .nm{color:var(--text-2)}
+.mm-badge{font-size:10.5px;padding:3px 9px;border-radius:100px;justify-self:start}
+.mm-badge.ok{background:rgba(95,245,196,.14);color:var(--mint)}
+.mm-badge.warn{background:rgba(255,181,71,.14);color:var(--amber)}
+
+/* Floating annotation callouts */
+.callout{position:absolute;width:230px;background:rgba(19,20,31,.92);backdrop-filter:blur(10px);border:1px solid var(--border-hi);border-radius:14px;padding:14px 15px;box-shadow:0 20px 50px -12px rgba(0,0,0,.7);opacity:0;transform:translateY(10px) scale(.96);z-index:5}
+.callout.in{animation:calloutIn .7s cubic-bezier(.16,1,.3,1) forwards}
+@keyframes calloutIn{to{opacity:1;transform:none}}
+.callout h4{font-size:13.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.callout h4 .cd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.callout p{font-size:12px;color:var(--text-2);margin-top:6px;line-height:1.5}
+.callout .code{font-family:var(--font-mono);font-size:10.5px;color:var(--text-3);margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}
+.callout .code b{color:var(--mint);font-weight:400}
+.callout .code i{color:var(--violet);font-style:normal}
+.callout::after{content:'';position:absolute;width:10px;height:10px;background:inherit;border:1px solid var(--border-hi);border-left:none;border-top:none}
+.c1{top:64px;left:-118px}
+.c1::after{right:-6px;top:26px;transform:rotate(-45deg);border:1px solid var(--border-hi);border-left:none;border-bottom:none}
+.c2{top:8px;right:-120px}
+.c2::after{left:-6px;top:26px;transform:rotate(135deg);border:1px solid var(--border-hi);border-left:none;border-bottom:none}
+.c3{bottom:96px;right:-130px}
+.c3::after{left:-6px;top:26px;transform:rotate(135deg);border:1px solid var(--border-hi);border-left:none;border-bottom:none}
+.c4{bottom:20px;left:-110px}
+.c4::after{right:-6px;top:26px;transform:rotate(-45deg);border:1px solid var(--border-hi);border-left:none;border-bottom:none}
+.cd-violet{background:var(--violet);box-shadow:0 0 10px var(--violet)}
+.cd-mint{background:var(--mint);box-shadow:0 0 10px var(--mint)}
+.cd-amber{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.cd-cyan{background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+@media(max-width:1180px){
+  .callout{position:static;width:auto;opacity:1;transform:none;animation:none;margin:0}
+  .callout::after{display:none}
+  .callout-rail{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+}
+@media(min-width:1181px){.callout-rail{display:contents}}
+@media(max-width:560px){.callout-rail{grid-template-columns:1fr}.mock-body{grid-template-columns:1fr}.mock-side{display:none}}
+
 /* Stat strip */
-.stats{display:flex;justify-content:center;gap:56px;flex-wrap:wrap;margin-top:64px;padding-top:40px;border-top:1px solid var(--border)}
+.stats{display:flex;justify-content:center;gap:56px;flex-wrap:wrap;margin-top:74px;padding-top:40px;border-top:1px solid var(--border)}
 .stat{text-align:center}
 .stat-n{font-family:var(--font-display);font-size:40px;line-height:1}
 .stat-l{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-top:8px}
@@ -77,8 +145,50 @@ section{position:relative}
 /* Section headings */
 .sec{padding:90px 0}
 .sec-head{max-width:40ch}
+.sec-head.center{margin:0 auto;text-align:center}
+.sec-head.center .eyebrow{justify-content:center}
 .sec-head h2{font-family:var(--font-display);font-weight:400;font-size:clamp(30px,4.5vw,52px);line-height:1.1;letter-spacing:-.01em;margin-top:18px}
 .sec-head p{color:var(--text-2);margin-top:16px;font-size:17px}
+
+/* ============ CONNECTED NETWORK ============ */
+.net-wrap{display:grid;grid-template-columns:1fr 1.05fr;gap:48px;align-items:center;margin-top:20px}
+@media(max-width:900px){.net-wrap{grid-template-columns:1fr;gap:24px}}
+.net-stage{position:relative;aspect-ratio:6/5;width:100%}
+.net-svg{width:100%;height:100%;overflow:visible}
+.net-link{fill:none;stroke:url(#netgrad);stroke-width:1.3;opacity:.5}
+.net-flow{fill:none;stroke:var(--mint);stroke-width:1.6;stroke-linecap:round;stroke-dasharray:5 90;opacity:.9;animation:flow 3.4s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-95}}
+.net-node circle{transition:.3s}
+.net-hub-ring{fill:none;stroke:var(--violet);stroke-width:1.5;opacity:.6;transform-origin:center;animation:hubpulse 3s ease-in-out infinite}
+@keyframes hubpulse{0%,100%{opacity:.6;r:46}50%{opacity:.15;r:56}}
+.net-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.04em;fill:var(--text-2)}
+.net-hub-label{font-family:var(--font-display);font-size:15px;fill:var(--text)}
+.net-badge{position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;color:var(--text-2);background:rgba(19,20,31,.85);border:1px solid var(--border-hi);border-radius:100px;padding:8px 16px;white-space:nowrap}
+.net-badge b{color:var(--mint);font-weight:500}
+.netfeat{list-style:none;display:flex;flex-direction:column;gap:14px;margin-top:24px}
+.netfeat li{display:flex;gap:12px;font-size:14.5px;color:var(--text-2)}
+.netfeat li b{color:var(--text);font-weight:600}
+.netfeat .nk{color:var(--mint);flex-shrink:0}
+
+/* ============ AUTOMATION CYCLE ============ */
+.cycle-stage{position:relative;max-width:720px;margin:44px auto 0;aspect-ratio:5/3}
+.cycle-svg{width:100%;height:100%;overflow:visible}
+.cycle-track{fill:none;stroke:var(--border-hi);stroke-width:1.4;stroke-dasharray:3 7}
+.cycle-dot{fill:var(--mint);filter:drop-shadow(0 0 6px var(--mint))}
+.cyc-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;width:56%}
+.cyc-center .k{font-family:var(--font-display);font-style:italic;font-size:15px;color:var(--violet)}
+.cyc-center h3{font-family:var(--font-display);font-size:clamp(24px,3.4vw,38px);line-height:1.08;margin-top:4px}
+.cyc-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:140px;text-align:center}
+.cyc-ic{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--surface-2);border:1px solid var(--border-hi);box-shadow:0 8px 24px -8px rgba(0,0,0,.6)}
+.cyc-node .cn{font-size:12.5px;color:var(--text-2);line-height:1.3}
+.cyc-node .cn b{color:var(--text);font-weight:600;display:block}
+@media(max-width:900px){
+  .cycle-stage{aspect-ratio:auto;max-width:420px}
+  .cycle-svg{display:none}
+  .cyc-center{position:static;transform:none;width:auto;margin-bottom:18px}
+  .cyc-node{position:static !important;transform:none !important;width:auto;flex-direction:row;gap:12px;text-align:left;justify-content:flex-start;padding:10px 0;border-top:1px solid var(--border)}
+  .cyc-node .cn{text-align:left}
+}
 
 /* Feature grid */
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}
@@ -89,10 +199,9 @@ section{position:relative}
 .card .ico{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px;background:rgba(139,124,255,.12);border:1px solid rgba(139,124,255,.25)}
 .card h3{font-size:18px;font-weight:600;letter-spacing:-.01em}
 .card p{color:var(--text-2);font-size:14px;margin-top:8px}
-.card .tag{position:absolute;top:20px;right:20px;font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--text-3)}
 
 /* Steps */
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:48px;counter-reset:s}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:48px}
 @media(max-width:820px){.steps{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.steps{grid-template-columns:1fr}}
 .step{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px}
@@ -126,8 +235,15 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
 .foot-links{display:flex;gap:24px;font-size:13px;color:var(--text-2);flex-wrap:wrap}
 .foot-links a:hover{color:var(--text)}
 .foot-copy{font-family:var(--font-mono);font-size:11px;color:var(--text-3);margin-top:28px;letter-spacing:.05em}
+
 .reveal{opacity:0;transform:translateY(20px);transition:opacity .7s,transform .7s}
 .reveal.in{opacity:1;transform:none}
+
+@media(prefers-reduced-motion:reduce){
+  *{animation:none !important;transition:none !important}
+  .reveal,.mock,.callout{opacity:1 !important;transform:none !important}
+  .net-flow{display:none}
+}
 </style>
 </head>
 <body>
@@ -139,7 +255,8 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
   <a class="brand" href="#top"><span class="brand-dot"></span>VidyaSetu</a>
   <div class="nav-links">
     <a href="#features">Features</a>
-    <a href="#how">How it works</a>
+    <a href="#connected">Connected</a>
+    <a href="#automation">Automation</a>
     <a href="#pricing">Pricing</a>
     <a href="/app/landing-demo.html">Live demo</a>
     <a class="nav-cta" href="/app/login">Sign in →</a>
@@ -148,7 +265,7 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
 
 <a id="top"></a>
 
-<!-- HERO -->
+<!-- HERO + ANNOTATED MOCKUP -->
 <section class="hero wrap">
   <span class="eyebrow">Academy operating system</span>
   <h1>Your whole academy, <span class="em">one calm place.</span></h1>
@@ -159,6 +276,80 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
   </div>
   <p class="hero-note">From <b>₹500/month</b> · Set up in a day · No app store needed</p>
 
+  <!-- Showcase: a stylised dashboard with floating feature callouts -->
+  <div class="showcase">
+    <div class="mock" id="mock">
+      <div class="mock-bar">
+        <span class="mock-dot" style="background:#FF6058"></span>
+        <span class="mock-dot" style="background:#FFBE2F"></span>
+        <span class="mock-dot" style="background:#2ACA44"></span>
+        <span class="mock-url">🔒 app.vidyasetu.in</span>
+      </div>
+      <div class="mock-body">
+        <aside class="mock-side">
+          <div class="ms-brand"><span></span>VidyaSetu</div>
+          <ul class="ms-nav">
+            <li class="act"><i class="di"></i>Home</li>
+            <li><i class="di"></i>Students</li>
+            <li><i class="di"></i>Attendance</li>
+            <li><i class="di"></i>Fees</li>
+            <li><i class="di"></i>Lessons</li>
+            <li><i class="di"></i>Reports</li>
+          </ul>
+        </aside>
+        <main class="mock-main">
+          <div class="mm-hi">Namaste, Sunada Music School</div>
+          <div class="mm-banner">
+            <div class="t"><b>All caught up.</b> Reminders and digests are going out on schedule.</div>
+            <span class="mm-pill">Automated ✓</span>
+          </div>
+          <div class="mm-cards">
+            <div class="mm-card">
+              <div class="lbl">Collected this month</div>
+              <div class="big mint">₹1,42,500</div>
+              <div class="sub">On track, 6 gentle reminders sent</div>
+            </div>
+            <div class="mm-card">
+              <div class="lbl">Attendance today</div>
+              <div class="big violet">96%</div>
+              <div class="sub">2 absences flagged for follow-up</div>
+            </div>
+          </div>
+          <div class="mm-table">
+            <div class="mm-row"><span>Student</span><span>Class</span><span>Status</span></div>
+            <div class="mm-row"><span class="nm">Aarav Menon</span><span class="nm">Veena, batch A</span><span class="mm-badge ok">Present</span></div>
+            <div class="mm-row"><span class="nm">Diya Rao</span><span class="nm">Vocals, batch B</span><span class="mm-badge ok">Present</span></div>
+            <div class="mm-row"><span class="nm">Kabir Shah</span><span class="nm">Veena, batch A</span><span class="mm-badge warn">Reminder due</span></div>
+          </div>
+        </main>
+      </div>
+
+      <!-- Floating callouts (position over the mock on wide screens) -->
+      <div class="callout-rail">
+        <div class="callout c1" data-delay="200">
+          <h4><span class="cd cd-violet"></span>One roster</h4>
+          <p>Every learner, parent, batch and fee plan in one clean place.</p>
+          <div class="code"><b>vidyasetu</b>.open(<i>'students'</i>)</div>
+        </div>
+        <div class="callout c2" data-delay="450">
+          <h4><span class="cd cd-mint"></span>Attendance in seconds</h4>
+          <p>Mark a class fast. Absences are spotted before they become a pattern.</p>
+          <div class="code"><b>vidyasetu</b>.open(<i>'attendance'</i>)</div>
+        </div>
+        <div class="callout c3" data-delay="700">
+          <h4><span class="cd cd-amber"></span>Fees that chase themselves</h4>
+          <p>Know who owes what. Reminders and a UPI QR go out on their own.</p>
+          <div class="code"><b>vidyasetu</b>.open(<i>'fees'</i>)</div>
+        </div>
+        <div class="callout c4" data-delay="950">
+          <h4><span class="cd cd-cyan"></span>Parents kept in the loop</h4>
+          <p>Attendance, fees and progress reach parents automatically.</p>
+          <div class="code"><b>vidyasetu</b>.open(<i>'portal'</i>)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="stats">
     <div class="stat"><div class="stat-n">5-in-1</div><div class="stat-l">Tools replaced</div></div>
     <div class="stat"><div class="stat-n">1 day</div><div class="stat-l">To go live</div></div>
@@ -166,28 +357,132 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
   </div>
 </section>
 
-<!-- PROBLEM -->
-<section class="sec wrap reveal">
-  <div class="sec-head">
-    <span class="eyebrow">The problem</span>
-    <h2>Running an academy shouldn't feel like five separate jobs.</h2>
-    <p>A register here, fee notes there, lessons on a drive, reminders typed by hand at night. VidyaSetu folds all of it into one connected place, nothing falls through the cracks.</p>
+<!-- CONNECTED NETWORK -->
+<section class="sec wrap reveal" id="connected">
+  <div class="net-wrap">
+    <div>
+      <div class="sec-head">
+        <span class="eyebrow">Every part, connected</span>
+        <h2>One system. Everything talks to everything.</h2>
+        <p>Add a student once and they flow through the whole academy, attendance, fees, lessons and the parent portal all stay in step, with no double entry.</p>
+      </div>
+      <ul class="netfeat">
+        <li><span class="nk">→</span><span>Mark attendance and the <b>fee for that class</b> is counted the same moment.</span></li>
+        <li><span class="nk">→</span><span>Enroll a batch once and every member gets <b>lessons and quizzes</b> together.</span></li>
+        <li><span class="nk">→</span><span>Anything a parent should know reaches their <b>portal automatically</b>.</span></li>
+      </ul>
+    </div>
+    <div class="net-stage">
+      <svg class="net-svg" viewBox="0 0 600 500" role="img" aria-label="A hub-and-spoke diagram of VidyaSetu connecting students, parents, attendance, fees, lessons and reports">
+        <defs>
+          <linearGradient id="netgrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#5FF5C4"/>
+          </linearGradient>
+        </defs>
+        <!-- links hub(300,250) -> nodes -->
+        <path class="net-link" d="M300,250 L300,90"/>
+        <path class="net-link" d="M300,250 L520,150"/>
+        <path class="net-link" d="M300,250 L520,360"/>
+        <path class="net-link" d="M300,250 L300,430"/>
+        <path class="net-link" d="M300,250 L80,360"/>
+        <path class="net-link" d="M300,250 L80,150"/>
+        <!-- flowing pulses -->
+        <path class="net-flow" d="M300,250 L300,90"/>
+        <path class="net-flow" d="M300,250 L520,150" style="animation-delay:-.6s"/>
+        <path class="net-flow" d="M300,250 L520,360" style="animation-delay:-1.2s"/>
+        <path class="net-flow" d="M300,250 L300,430" style="animation-delay:-1.8s"/>
+        <path class="net-flow" d="M300,250 L80,360" style="animation-delay:-2.4s"/>
+        <path class="net-flow" d="M300,250 L80,150" style="animation-delay:-3s"/>
+        <!-- hub -->
+        <circle class="net-hub-ring" cx="300" cy="250" r="46"/>
+        <circle cx="300" cy="250" r="38" fill="rgba(139,124,255,.16)" stroke="#8B7CFF" stroke-width="1.5"/>
+        <text class="net-hub-label" x="300" y="248" text-anchor="middle">Vidya</text>
+        <text class="net-hub-label" x="300" y="266" text-anchor="middle">Setu</text>
+        <!-- nodes -->
+        <g class="net-node">
+          <circle cx="300" cy="90" r="26" fill="var(--surface-2)" stroke="var(--border-hi)"/>
+          <text class="net-label" x="300" y="94" text-anchor="middle">Students</text>
+          <circle cx="520" cy="150" r="26" fill="var(--surface-2)" stroke="var(--border-hi)"/>
+          <text class="net-label" x="520" y="154" text-anchor="middle">Fees</text>
+          <circle cx="520" cy="360" r="26" fill="var(--surface-2)" stroke="var(--border-hi)"/>
+          <text class="net-label" x="520" y="364" text-anchor="middle">Lessons</text>
+          <circle cx="300" cy="430" r="26" fill="var(--surface-2)" stroke="var(--border-hi)"/>
+          <text class="net-label" x="300" y="434" text-anchor="middle">Reports</text>
+          <circle cx="80" cy="360" r="26" fill="var(--surface-2)" stroke="var(--border-hi)"/>
+          <text class="net-label" x="80" y="364" text-anchor="middle">Parents</text>
+          <circle cx="80" cy="150" r="30" fill="var(--surface-2)" stroke="var(--border-hi)"/>
+          <text class="net-label" x="80" y="147" text-anchor="middle">Atten</text>
+          <text class="net-label" x="80" y="161" text-anchor="middle">dance</text>
+        </g>
+      </svg>
+      <div class="net-badge"><b>5-in-1</b> · one connected system, no more juggling tabs</div>
+    </div>
   </div>
 </section>
 
 <!-- FEATURES -->
 <section class="sec wrap reveal" id="features">
   <div class="sec-head">
-    <span class="eyebrow">Every part, connected</span>
+    <span class="eyebrow">What you get</span>
     <h2>One system for the whole academy.</h2>
   </div>
   <div class="grid">
     <div class="card"><div class="ico">👥</div><h3>Students &amp; groups</h3><p>Every learner, parent, batch and fee plan in one clean roster you actually enjoy opening.</p></div>
-    <div class="card"><div class="ico">✅</div><h3>Attendance</h3><p>Mark a class in seconds. Absences are spotted and flagged before they become a pattern.</p></div>
+    <div class="card"><div class="ico">✅</div><h3>Attendance</h3><p>Mark a class in seconds. Absences are spotted and flagged early, before they become a pattern.</p></div>
     <div class="card"><div class="ico">₹</div><h3>Fees &amp; reminders</h3><p>Know who owes what at a glance. Gentle reminders and UPI QR go out on their own.</p></div>
     <div class="card"><div class="ico">🎥</div><h3>Lessons &amp; quizzes</h3><p>Share recordings, papers and exam-grade quizzes. See exactly how each student did.</p></div>
     <div class="card"><div class="ico">💬</div><h3>Parent updates</h3><p>Attendance, fees and progress reach parents automatically, no midnight message typing.</p></div>
     <div class="card"><div class="ico">📊</div><h3>Reports</h3><p>Revenue, retention, attendance and learning trends, the numbers that actually run the place.</p></div>
+  </div>
+</section>
+
+<!-- AUTOMATION CYCLE -->
+<section class="sec wrap reveal" id="automation">
+  <div class="sec-head center">
+    <span class="eyebrow">Runs itself</span>
+    <h2>Your academy day, automated.</h2>
+    <p>From a scheduled class to a paid fee and a happy parent, VidyaSetu carries each step to the next so nothing waits on you.</p>
+  </div>
+
+  <div class="cycle-stage">
+    <svg class="cycle-svg" viewBox="0 0 720 432" aria-hidden="true">
+      <ellipse class="cycle-track" cx="360" cy="216" rx="300" ry="150"/>
+      <circle class="cycle-dot" r="6">
+        <animateMotion dur="9s" repeatCount="indefinite" rotate="auto"
+          path="M660,216 A300,150 0 1,1 60,216 A300,150 0 1,1 660,216"/>
+      </circle>
+    </svg>
+
+    <div class="cyc-center">
+      <div class="k">Manage</div>
+      <h3>The whole cycle, handled</h3>
+    </div>
+
+    <!-- 6 nodes placed around the ellipse (desktop absolute; stacked on mobile) -->
+    <div class="cyc-node" style="left:50%;top:8%">
+      <div class="cyc-ic">🗓️</div>
+      <div class="cn"><b>Class scheduled</b>on the timetable</div>
+    </div>
+    <div class="cyc-node" style="left:89%;top:33%">
+      <div class="cyc-ic">✅</div>
+      <div class="cn"><b>Attendance marked</b>in one tap</div>
+    </div>
+    <div class="cyc-node" style="left:89%;top:70%">
+      <div class="cyc-ic">🔔</div>
+      <div class="cn"><b>Parents notified</b>automatically</div>
+    </div>
+    <div class="cyc-node" style="left:50%;top:95%">
+      <div class="cyc-ic">₹</div>
+      <div class="cn"><b>Fee reminder sent</b>with a UPI QR</div>
+    </div>
+    <div class="cyc-node" style="left:11%;top:70%">
+      <div class="cyc-ic">💳</div>
+      <div class="cn"><b>Payment received</b>and recorded</div>
+    </div>
+    <div class="cyc-node" style="left:11%;top:33%">
+      <div class="cyc-ic">💚</div>
+      <div class="cn"><b>Happy academy</b>ready for the next class</div>
+    </div>
   </div>
 </section>
 
@@ -206,19 +501,10 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
   </div>
 </section>
 
-<!-- AUTOMATION -->
-<section class="sec wrap reveal">
-  <div class="sec-head">
-    <span class="eyebrow">Works for you</span>
-    <h2>More teaching. Happier parents. Money collected on time.</h2>
-    <p>Fee reminders, class digests and absence alerts run automatically in the background, the software does the chasing so you don't have to.</p>
-  </div>
-</section>
-
 <!-- PRICING -->
 <section class="sec wrap reveal" id="pricing">
-  <div class="sec-head" style="text-align:center;margin:0 auto">
-    <span class="eyebrow" style="justify-content:center">Pricing</span>
+  <div class="sec-head center">
+    <span class="eyebrow">Pricing</span>
     <h2>One simple plan.</h2>
   </div>
   <div class="price-box">
@@ -245,7 +531,7 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
     <details><summary>Do parents need to install an app?</summary><p>No app store needed. VidyaSetu opens in any browser and can be added to the home screen, it then feels and works just like a native app, offline-friendly and full-screen.</p></details>
     <details><summary>Can I move my existing student data in?</summary><p>Yes. Add students in minutes or import them in bulk. Most academies are fully live the same day they sign up.</p></details>
     <details><summary>How do fee reminders work?</summary><p>VidyaSetu knows who owes what and sends gentle reminders on a schedule you set, with a UPI QR code for one-tap payment, no manual chasing.</p></details>
-    <details><summary>Is my data safe?</summary><p>Each academy's data is isolated and backed up automatically every day, so you never lose a record.</p></details>
+    <details><summary>Is my data safe?</summary><p>Each academy's data is isolated and backed up automatically every day, so you keep every record.</p></details>
   </div>
 </section>
 
@@ -255,7 +541,8 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
     <a class="brand" href="#top"><span class="brand-dot"></span>VidyaSetu</a>
     <div class="foot-links">
       <a href="#features">Features</a>
-      <a href="#how">How it works</a>
+      <a href="#connected">Connected</a>
+      <a href="#automation">Automation</a>
       <a href="#pricing">Pricing</a>
       <a href="/app/landing-demo.html">Live demo</a>
       <a href="/app/login">Sign in</a>
@@ -269,9 +556,27 @@ footer{border-top:1px solid var(--border);margin-top:60px;padding:56px 0 40px}
 // Nav border on scroll
 var nav=document.getElementById('nav');
 addEventListener('scroll',function(){nav.classList.toggle('scrolled',scrollY>10)});
+
 // Reveal-on-scroll
 var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.12});
 document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
+
+// Showcase: reveal the mock, then fire the callouts in sequence
+var mock=document.getElementById('mock');
+if(mock){
+  var mio=new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(!e.isIntersecting) return;
+      mock.classList.add('in');
+      document.querySelectorAll('.callout').forEach(function(c){
+        var d=parseInt(c.getAttribute('data-delay')||'0',10);
+        setTimeout(function(){c.classList.add('in')}, d+300);
+      });
+      mio.unobserve(mock);
+    });
+  },{threshold:.3});
+  mio.observe(mock);
+}
 </script>
 </body>
 </html>

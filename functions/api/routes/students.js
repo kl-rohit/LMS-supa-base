@@ -138,6 +138,178 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// --- date helpers for the activity bundle's upcoming-classes math ----------
+// All date math is plain JS (no SQL date functions) so it stays portable.
+const _pad2 = (n) => String(n).padStart(2, '0');
+const _isoDate = (d) => `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`;
+function _parseHM(t) {
+  const m = String(t || '').match(/^(\d{1,2}):(\d{2})/);
+  return m ? { h: parseInt(m[1], 10), mm: parseInt(m[2], 10) } : { h: 0, mm: 0 };
+}
+function _parseExceptions(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+// Next calendar occurrence of a weekly class from `now`, honouring cancelled /
+// moved exceptions. Returns the resolved date + times, or null if it keeps
+// rolling past our lookahead window.
+function _nextOccurrence(cls, now) {
+  const dow = Number(cls.day_of_week);
+  if (!Number.isInteger(dow) || dow < 0 || dow > 6) return null;
+  const { h, mm } = _parseHM(cls.start_time);
+  const exceptions = _parseExceptions(cls.exceptions);
+  let d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const delta = (dow - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + delta);
+  // If the class day is today but its start time has already passed, roll to
+  // next week so we never surface a class that has already begun.
+  if (delta === 0) {
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mm);
+    if (now.getTime() > startToday.getTime()) d.setDate(d.getDate() + 7);
+  }
+  let start_time = cls.start_time;
+  let end_time = cls.end_time;
+  // Resolve exceptions: cancelled occurrences roll forward a week; a moved
+  // occurrence relocates to its new date/time. Bounded loop so a run of
+  // cancellations can never spin forever.
+  for (let i = 0; i < 12; i++) {
+    const ds = _isoDate(d);
+    const ex = exceptions.find((e) => e && e.date === ds);
+    if (!ex) break;
+    if (ex.status === 'cancelled') { d.setDate(d.getDate() + 7); continue; }
+    if (ex.status === 'moved') {
+      if (ex.new_date) {
+        const [Y, M, D] = String(ex.new_date).split('-').map(Number);
+        if (Y && M && D) d = new Date(Y, M - 1, D);
+      }
+      if (ex.new_start_time) start_time = ex.new_start_time;
+      if (ex.new_end_time) end_time = ex.new_end_time;
+    }
+    break;
+  }
+  const hm = _parseHM(start_time);
+  const ts = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hm.h, hm.mm).getTime();
+  return { next_date: _isoDate(d), start_time, end_time, ts };
+}
+function _nextLabel(iso, now) {
+  const today = _isoDate(now);
+  const tmrw = _isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+  if (iso === today) return 'Today';
+  if (iso === tmrw) return 'Tomorrow';
+  const [Y, M, D] = iso.split('-').map(Number);
+  return new Date(Y, M - 1, D).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// GET /api/students/:id/activity — one bundle of the student's cross-module
+// activity for the detail panel: groups, upcoming classes, attendance summary,
+// and quizzes taken. Each sub-section is independently guarded so a missing
+// table (or empty data) degrades to []/zeros rather than 500-ing the panel.
+router.get('/:id/activity', async (req, res) => {
+  try {
+    const student = await getById(req, 'Students', req.params.id);
+    if (!student || Number(student.org_id) !== Number(req.orgId)) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    const sid = req.params.id;
+    const orgId = Number(req.orgId);
+
+    // Groups the student is in (+ ids, reused for the class lookup / via label).
+    let groups = []; let groupIds = []; const groupNameById = new Map();
+    try {
+      const links = await zcql(req, `SELECT GroupStudents.group_id FROM GroupStudents WHERE GroupStudents.student_id = ${sid} AND GroupStudents.org_id = ${orgId}`);
+      groupIds = unwrap(links, 'GroupStudents').map((l) => l.group_id).filter(Boolean);
+      if (groupIds.length) {
+        const gRows = await zcql(req, `SELECT * FROM Groups WHERE ROWID IN (${groupIds.join(',')}) AND Groups.org_id = ${orgId}`);
+        groups = unwrap(gRows, 'Groups').map(normalize).map((g) => {
+          groupNameById.set(String(g.id), g.name);
+          return { id: g.id, name: g.name };
+        });
+      }
+    } catch { groups = []; groupIds = []; }
+
+    // Upcoming classes: the next occurrence of each ACTIVE class the student is
+    // in (directly via student_id, or through one of their groups).
+    let upcoming_classes = [];
+    try {
+      const orParts = [`Classes.student_id = ${sid}`];
+      if (groupIds.length) orParts.push(`Classes.group_id IN (${groupIds.join(',')})`);
+      const cRows = await zcql(req, `SELECT * FROM Classes WHERE (${orParts.join(' OR ')}) AND Classes.is_active = 1 AND Classes.org_id = ${orgId}`);
+      const classes = unwrap(cRows, 'Classes').map(normalize);
+      const now = new Date();
+      upcoming_classes = classes.map((c) => {
+        const occ = _nextOccurrence(c, now);
+        if (!occ) return null;
+        const via = String(c.student_id) === String(sid)
+          ? 'direct'
+          : (groupNameById.get(String(c.group_id)) || 'group');
+        return {
+          id: c.id,
+          name: c.name,
+          class_type: c.class_type,
+          day_of_week: c.day_of_week,
+          start_time: occ.start_time,
+          end_time: occ.end_time,
+          next_date: occ.next_date,
+          next_label: _nextLabel(occ.next_date, now),
+          via,
+          _ts: occ.ts,
+        };
+      }).filter(Boolean)
+        .sort((a, b) => a._ts - b._ts)
+        .slice(0, 8)
+        .map(({ _ts, ...rest }) => rest);
+    } catch { upcoming_classes = []; }
+
+    // Attendance summary + the 5 most recent marks.
+    let attendance = { total: 0, present: 0, absent: 0, rate: 0, recent: [] };
+    try {
+      const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.student_id = ${sid} AND Attendance.org_id = ${orgId} ORDER BY Attendance.class_date DESC`, 'Attendance');
+      const list = unwrap(aRows, 'Attendance').map(normalize);
+      const total = list.length;
+      const present = list.filter((a) => a.status === 'present').length;
+      const absent = list.filter((a) => a.status === 'absent').length;
+      attendance = {
+        total,
+        present,
+        absent,
+        rate: total > 0 ? Math.round((present / total) * 100) : 0,
+        recent: list.slice(0, 5).map((a) => ({ date: a.class_date, status: a.status, topic: a.topic || '' })),
+      };
+    } catch { attendance = { total: 0, present: 0, absent: 0, rate: 0, recent: [] }; }
+
+    // Quizzes taken (one row per lesson attempted), newest first, with the
+    // lesson title resolved in a single batched Lessons read.
+    let quizzes = [];
+    try {
+      const qRows = await zcql(req, `SELECT * FROM QuizAttempts WHERE QuizAttempts.student_id = ${sid} AND QuizAttempts.org_id = ${orgId} ORDER BY QuizAttempts.MODIFIEDTIME DESC`);
+      const attempts = unwrap(qRows, 'QuizAttempts').map(normalize);
+      const lessonName = new Map();
+      const lids = [...new Set(attempts.map((a) => safeId(a.lesson_id)).filter(Boolean))];
+      if (lids.length) {
+        try {
+          const lRows = await zcql(req, `SELECT ROWID, title FROM Lessons WHERE ROWID IN (${lids.join(',')}) AND Lessons.org_id = ${orgId}`);
+          for (const l of unwrap(lRows, 'Lessons').map(normalize)) lessonName.set(String(l.id), l.title || '');
+        } catch { /* Lessons table absent */ }
+      }
+      quizzes = attempts.map((a) => ({
+        lesson_id: a.lesson_id ? String(a.lesson_id) : '',
+        lesson_name: lessonName.get(String(a.lesson_id)) || 'Quiz',
+        score: Number(a.score) || 0,
+        correct_count: Number(a.correct_count) || 0,
+        total_questions: Number(a.total_questions) || 0,
+        attempts: Number(a.attempts) || 0,
+        passed: a.passed === true || a.passed === 1,
+        date: a.updated_at || a.created_at || null,
+      }));
+    } catch { quizzes = []; }
+
+    res.json({ groups, upcoming_classes, attendance, quizzes });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch student activity', detail: e.message });
+  }
+});
+
 // POST /api/students
 router.post('/', async (req, res) => {
   try {

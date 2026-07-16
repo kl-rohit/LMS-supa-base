@@ -34,6 +34,8 @@ import {
   ChevronDown,
   Plus,
   Loader2,
+  Trophy,
+  CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -277,6 +279,10 @@ export default function StudentDetailPanel({
           {personalRows.length > 0 && <Section title="Personal" rows={personalRows} />}
           {feeRows.length > 0 && <Section title="Fees" rows={feeRows} />}
 
+          {/* Cross-module activity — groups, upcoming classes, attendance, and
+              quizzes. Fetched lazily on mount, keyed per student so it resets. */}
+          <StudentActivity key={student.id} studentId={student.id} />
+
           {/* One-click course enrollment. Courses load lazily on first open, so
               this adds no reads unless the admin actually uses it. */}
           <EnrollSection key={student.id} studentId={student.id} studentName={student.name} />
@@ -293,6 +299,169 @@ export default function StudentDetailPanel({
       </aside>
     </>
   );
+}
+
+// Cross-module activity for the open student. One /activity read on mount
+// (mounted with key={student.id} so it resets per student) returns groups,
+// upcoming classes, an attendance summary, and quizzes taken. Every subsection
+// renders only when it has something to show, matching the panel's
+// "only show what has a value" philosophy — and the whole block renders nothing
+// when the student has no activity yet.
+function StudentActivity({ studentId }) {
+  const [data, setData] = useState(null); // null = loading
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await api.get(`/students/${studentId}/activity`);
+        if (alive) setData(r || {});
+      } catch {
+        if (alive) { setData({}); setFailed(true); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [studentId]);
+
+  if (data === null) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500 py-1">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading activity…
+      </div>
+    );
+  }
+  if (failed) return null;
+
+  const groups = Array.isArray(data.groups) ? data.groups : [];
+  const classes = Array.isArray(data.upcoming_classes) ? data.upcoming_classes : [];
+  const att = data.attendance || {};
+  const quizzes = Array.isArray(data.quizzes) ? data.quizzes : [];
+  const hasAtt = Number(att.total) > 0;
+
+  // Nothing to show at all → render nothing (no empty header).
+  if (!groups.length && !classes.length && !hasAtt && !quizzes.length) return null;
+
+  const shownClasses = classes.slice(0, 5);
+  const moreClasses = classes.length - shownClasses.length;
+  const shownQuizzes = quizzes.slice(0, 5);
+  const moreQuizzes = quizzes.length - shownQuizzes.length;
+  const fmtTime = (t) => {
+    const m = String(t || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return '';
+    let h = parseInt(m[1], 10);
+    const ap = h < 12 ? 'AM' : 'PM';
+    h = h % 12 || 12;
+    return `${h}:${m[2]} ${ap}`;
+  };
+
+  return (
+    <div className="space-y-5">
+      {groups.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Groups</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {groups.map((g) => (
+              <span key={g.id} className="rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs">
+                {g.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {classes.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Upcoming classes</h3>
+          <div className="space-y-2">
+            {shownClasses.map((c) => (
+              <div key={c.id} className="flex items-start gap-2.5 text-sm">
+                <CalendarClock className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-gray-800 font-medium truncate">{c.name}</span>
+                    {c.via && c.via !== 'direct' && (
+                      <span className="rounded-full bg-gray-100 text-gray-600 px-2 py-0.5 text-[11px]">{c.via}</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {c.next_label}{c.start_time ? ` · ${fmtTime(c.start_time)}` : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {moreClasses > 0 && (
+              <div className="text-xs text-gray-400 pl-6">+{moreClasses} more</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {hasAtt && (
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Attendance</h3>
+          <div className="flex items-baseline gap-2">
+            <span className="text-lg font-semibold text-gray-900">{att.rate}% present</span>
+            <span className="text-xs text-gray-500">{att.present} of {att.total} marked</span>
+          </div>
+          {Array.isArray(att.recent) && att.recent.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {att.recent.map((r, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${r.status === 'present' ? 'bg-emerald-500' : r.status === 'absent' ? 'bg-rose-500' : 'bg-amber-500'}`}
+                  />
+                  <span className="text-gray-600 text-xs w-24 flex-shrink-0">{prettyDate(r.date)}</span>
+                  <span className="text-gray-700 truncate flex-1">{r.topic || (r.status === 'present' ? 'Present' : r.status === 'absent' ? 'Away' : 'Late')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {quizzes.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Quizzes taken</h3>
+          <div className="space-y-2">
+            {shownQuizzes.map((qz, i) => (
+              <div key={qz.lesson_id || i} className="flex items-start gap-2.5 text-sm">
+                <Trophy className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-gray-800 font-medium truncate">{qz.lesson_name}</span>
+                    <span className="text-gray-500 text-xs">{qz.score}%</span>
+                    {qz.passed ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px]">
+                        <CheckCircle2 className="w-3 h-3" /> Passed
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[11px]">In progress</span>
+                    )}
+                  </div>
+                  {Number(qz.total_questions) > 0 && (
+                    <div className="text-xs text-gray-500 mt-0.5">{qz.correct_count} of {qz.total_questions} correct</div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {moreQuizzes > 0 && (
+              <div className="text-xs text-gray-400 pl-6">+{moreQuizzes} more</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Short date for the attendance list — "21 Jul" style, en-IN.
+function prettyDate(d) {
+  if (!d) return '';
+  const iso = String(d).slice(0, 10);
+  const [Y, M, D] = iso.split('-').map(Number);
+  if (!Y || !M || !D) return iso;
+  return new Date(Y, M - 1, D).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
 // One-click enrollment from the student panel. Courses are fetched LAZILY on

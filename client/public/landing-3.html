@@ -237,12 +237,20 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .in-dot.cy{fill:var(--cyan);opacity:.4}
 .in-dot.mn{fill:var(--mint);opacity:.36}
 .in-dot.amb{fill:var(--brand);opacity:.13}
-.in-hub{fill:var(--brand)}
-.in-hub-ring{fill:none;stroke:var(--brand);opacity:.5;animation:inPulse 2.8s ease-out infinite}
-@keyframes inPulse{0%{r:5;opacity:.55}70%,100%{r:17;opacity:0}}
+/* capital hubs (small, always-on) */
+.in-hub2{fill:var(--brand);opacity:.85}
+/* a live connection: arc trail fades in and out over its lifetime */
+.conn{fill:none;stroke:url(#inArc);stroke-width:1.6;stroke-linecap:round;opacity:0}
+.conn.live{animation:connLife 2.1s ease-in-out forwards}
+@keyframes connLife{0%{opacity:0}18%{opacity:.6}72%{opacity:.5}100%{opacity:0}}
+/* the travelling ball, pitched from one capital to another */
+.ball{fill:var(--brand);filter:drop-shadow(0 0 5px rgba(91,83,255,.75));animation:ballFade 2s ease-out forwards}
+@keyframes ballFade{0%{opacity:0}12%{opacity:1}78%{opacity:1}100%{opacity:0}}
+/* endpoint ripple when a connection lands */
+.ripple{fill:none;stroke:var(--brand);opacity:.6;animation:rip 1.1s ease-out forwards}
+@keyframes rip{0%{r:3;opacity:.6}100%{r:16;opacity:0}}
+/* static fallback arcs when motion is reduced */
 .in-arc{fill:none;stroke:url(#inArc);stroke-width:1.5;opacity:.4}
-.in-flow{fill:none;stroke:var(--brand);stroke-width:2;stroke-linecap:round;stroke-dasharray:4 58;opacity:.8;animation:inFlow 3s linear infinite}
-@keyframes inFlow{to{stroke-dashoffset:-62}}
 .in-cap{position:absolute;left:0;bottom:-6px;font-size:12px;font-weight:600;color:var(--ink-3);background:#fff;border:1px solid var(--line);border-radius:100px;padding:7px 15px;box-shadow:var(--shadow-sm)}
 .in-cap b{color:var(--brand-d)}
 
@@ -485,24 +493,10 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
         <svg class="india-svg" viewBox="0 0 402 440" role="img" aria-label="A dotted map of India with pulsing academy locations connected by lines">
           <defs><linearGradient id="inArc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b53ff"/><stop offset="1" stop-color="#22c1e6"/></linearGradient></defs>
           <g id="in-dots"></g>
-          <!-- connection arcs between academy hubs -->
-          <path class="in-arc" d="M113,75 Q60,150 75,239"/>
-          <path class="in-arc" d="M75,239 Q70,290 113,314"/>
-          <path class="in-arc" d="M113,314 Q126,298 138,314"/>
-          <path class="in-arc" d="M113,75 Q200,95 251,176"/>
-          <path class="in-arc" d="M126,251 Q165,160 113,75"/>
-          <path class="in-flow" d="M113,75 Q60,150 75,239"/>
-          <path class="in-flow" d="M113,75 Q200,95 251,176" style="animation-delay:-1s"/>
-          <path class="in-flow" d="M126,251 Q165,160 113,75" style="animation-delay:-2s"/>
-          <!-- academy hubs (approx: Delhi, Mumbai, Hyderabad, Bengaluru, Chennai, Kolkata) -->
-          <g>
-            <circle class="in-hub-ring" cx="113" cy="75"/><circle class="in-hub" cx="113" cy="75" r="4"/>
-            <circle class="in-hub-ring" cx="75" cy="239" style="animation-delay:-.5s"/><circle class="in-hub" cx="75" cy="239" r="4"/>
-            <circle class="in-hub-ring" cx="126" cy="251" style="animation-delay:-1s"/><circle class="in-hub" cx="126" cy="251" r="4"/>
-            <circle class="in-hub-ring" cx="113" cy="314" style="animation-delay:-1.5s"/><circle class="in-hub" cx="113" cy="314" r="4"/>
-            <circle class="in-hub-ring" cx="138" cy="314" style="animation-delay:-2s"/><circle class="in-hub" cx="138" cy="314" r="4"/>
-            <circle class="in-hub-ring" cx="251" cy="176" style="animation-delay:-2.4s"/><circle class="in-hub" cx="251" cy="176" r="4"/>
-          </g>
+          <!-- Live connection layer: arcs pitch a ball between random capitals,
+               then fade, in batches (built by JS) -->
+          <g id="in-conns"></g>
+          <g id="in-hubs"></g>
         </svg>
         <span class="in-cap">Built in India, <b>for Indian academies</b></span>
       </div>
@@ -753,6 +747,49 @@ var IN_DOTS=[[69,0],[77,0],[85,0],[93,0],[100,0],[62,8],[69,8],[77,8],[85,8],[93
   });
   // A few ambient dots scattered around the map for a lively, signal-like feel
   for(var i=0;i<16;i++){ dot(Math.round(Math.random()*401), Math.round(Math.random()*440), 1.7, 'in-dot amb'); }
+})();
+
+// Living connection network: ~22 capital hubs; batches of arcs pitch a ball
+// from one capital to another, then fade, so it reads as continuous activity
+// with no single start point.
+var IN_HUBS=[[93,20],[107,60],[113,78],[126,104],[92,120],[150,132],[60,188],[116,188],[214,152],[352,150],[386,158],[251,176],[200,182],[162,214],[75,239],[216,222],[126,251],[85,293],[150,258],[113,314],[147,309],[116,401]];
+(function(){
+  var svg=document.querySelector('.india-svg');
+  var conns=document.getElementById('in-conns'), hubsG=document.getElementById('in-hubs');
+  if(!svg||!conns||!hubsG) return;
+  var NS='http://www.w3.org/2000/svg';
+  function el(tag,attrs){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);return e;}
+  IN_HUBS.forEach(function(h){ hubsG.appendChild(el('circle',{cx:h[0],cy:h[1],r:2.9,'class':'in-hub2'})); });
+  function arcPath(a,b){
+    var mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, dx=b[0]-a[0], dy=b[1]-a[1];
+    var len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, bow=len*0.22*(Math.random()<0.5?1:-1);
+    return 'M'+a[0]+','+a[1]+' Q'+(mx+nx*bow).toFixed(1)+','+(my+ny*bow).toFixed(1)+' '+b[0]+','+b[1];
+  }
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches){
+    for(var i=0;i<6;i++){ conns.appendChild(el('path',{'class':'in-arc',d:arcPath(IN_HUBS[(i*4)%IN_HUBS.length],IN_HUBS[(i*4+7)%IN_HUBS.length])})); }
+    return;
+  }
+  function ripple(p){ var r=el('circle',{cx:p[0],cy:p[1],r:3,'class':'ripple'}); conns.appendChild(r); setTimeout(function(){r.remove();},1100); }
+  function fire(){
+    var a=IN_HUBS[Math.floor(Math.random()*IN_HUBS.length)], b;
+    do{ b=IN_HUBS[Math.floor(Math.random()*IN_HUBS.length)]; }while(b===a);
+    var d=arcPath(a,b);
+    var path=el('path',{'class':'conn',d:d}); conns.appendChild(path); path.getBBox(); path.classList.add('live');
+    var ball=el('circle',{r:3.1,cx:a[0],cy:a[1],'class':'ball'});
+    var am=el('animateMotion',{dur:'1.15s',path:d,begin:'indefinite',fill:'freeze',calcMode:'spline',keyPoints:'0;1',keyTimes:'0;1',keySplines:'.4 0 .2 1'});
+    ball.appendChild(am); conns.appendChild(ball);
+    try{ am.beginElement(); }catch(e){}
+    ripple(a); setTimeout(function(){ ripple(b); },1050);
+    setTimeout(function(){ path.remove(); ball.remove(); },2100);
+  }
+  function batch(){ for(var i=0;i<5;i++) setTimeout(fire, i*140); }
+  // Kick off shortly after load and keep firing batches; pause while the tab is
+  // hidden to save battery.
+  var timer=null;
+  function start(){ if(timer) return; batch(); timer=setInterval(batch,2100); }
+  function stop(){ if(timer){ clearInterval(timer); timer=null; } }
+  document.addEventListener('visibilitychange',function(){ document.hidden?stop():start(); });
+  setTimeout(start,600);
 })();
 
 // Scroll progress + nav state

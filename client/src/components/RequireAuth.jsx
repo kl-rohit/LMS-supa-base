@@ -8,6 +8,7 @@ import { Navigate } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Loader from './Loader';
+import Splash from './Splash';
 
 // Shown when we can't verify the session because the device is offline. We must
 // NOT redirect here: the service worker serves the cached app shell for any
@@ -50,11 +51,7 @@ export default function RequireAuth({ children, role }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader />
-      </div>
-    );
+    return <Splash />;
   }
 
   if (!user) {

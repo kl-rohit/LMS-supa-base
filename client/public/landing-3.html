@@ -90,10 +90,13 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .trustrow b{color:var(--ink);font-weight:700}
 
 /* Product mockup + annotations */
-.showcase{position:relative;margin:64px auto 0;max-width:1040px;z-index:1}
+.showcase{position:relative;width:100%;margin:64px auto 0;max-width:1140px;z-index:1}
 .showcase.floaty{animation:frameFloat 8s ease-in-out infinite}
 @keyframes frameFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
-.frame{position:relative;border-radius:20px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-lg);overflow:hidden;opacity:0;transform:perspective(1600px) rotateX(9deg) translateY(40px) scale(.97);transition:opacity 1s cubic-bezier(.16,1,.3,1),transform 1.1s cubic-bezier(.16,1,.3,1);transform-style:preserve-3d}
+/* The frame is narrower than the showcase, leaving side room for the floating
+   callouts to sit beside it (they live OUTSIDE the frame so its overflow:hidden
+   never clips them). */
+.frame{position:relative;max-width:840px;margin-inline:auto;border-radius:20px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-lg);overflow:hidden;opacity:0;transform:perspective(1600px) rotateX(9deg) translateY(40px) scale(.97);transition:opacity 1s cubic-bezier(.16,1,.3,1),transform 1.1s cubic-bezier(.16,1,.3,1);transform-style:preserve-3d}
 .frame.in{opacity:1;transform:perspective(1600px) rotateX(0) translateY(0) scale(1)}
 .frame.tilting{transition:transform .18s ease-out}
 /* Fake cursor that glides across the sidebar to hint interactivity */
@@ -144,16 +147,16 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .annot h4 .k{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .annot p{font-size:12px;color:var(--ink-3);margin-top:5px;line-height:1.5}
 .k-violet{background:var(--brand)} .k-mint{background:var(--mint)} .k-amber{background:var(--amber)} .k-cyan{background:var(--cyan)}
-.a1{top:80px;left:-120px} .a1::after{right:-5px;top:24px;transform:rotate(-45deg)}
-.a2{top:16px;right:-118px} .a2::after{left:-5px;top:24px;transform:rotate(135deg)}
-.a3{bottom:118px;right:-128px} .a3::after{left:-5px;top:24px;transform:rotate(135deg)}
-.a4{bottom:26px;left:-112px} .a4::after{right:-5px;top:24px;transform:rotate(-45deg)}
-@media(max-width:1220px){
+.a1{top:64px;left:0} .a1::after{right:-5px;top:24px;transform:rotate(-45deg)}
+.a2{top:12px;right:0} .a2::after{left:-5px;top:24px;transform:rotate(135deg)}
+.a3{bottom:104px;right:0} .a3::after{left:-5px;top:24px;transform:rotate(135deg)}
+.a4{bottom:22px;left:0} .a4::after{right:-5px;top:24px;transform:rotate(-45deg)}
+@media(max-width:1180px){
   .annot{position:static;width:auto;opacity:1;transform:none;animation:none;box-shadow:var(--shadow-sm)}
   .annot::after{display:none}
   .annot-rail{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
 }
-@media(min-width:1221px){.annot-rail{display:contents}}
+@media(min-width:1181px){.annot-rail{display:contents}}
 @media(max-width:600px){.annot-rail{grid-template-columns:1fr}.f-body{grid-template-columns:1fr}.f-side{display:none}.frame{transform:none !important;opacity:1 !important}}
 
 /* Sections */
@@ -186,7 +189,8 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .frow:first-of-type{margin-top:52px}
 .frow.rev .fr-media{order:2}
 @media(max-width:880px){.frow{grid-template-columns:1fr;gap:28px}.frow.rev .fr-media{order:0}}
-.fr-copy .ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;background:linear-gradient(135deg,rgba(91,83,255,.14),rgba(34,193,230,.14));border:1px solid rgba(91,83,255,.16)}
+.fr-copy .ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(91,83,255,.14),rgba(34,193,230,.14));border:1px solid rgba(91,83,255,.16)}
+.fr-copy .ic svg{width:24px;height:24px;fill:none;stroke:var(--brand);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fr-copy h3{font-size:clamp(24px,3vw,32px);font-weight:800;margin-top:16px}
 .fr-copy p{color:var(--ink-2);margin-top:12px;font-size:16.5px}
 .fr-list{list-style:none;margin-top:18px;display:flex;flex-direction:column;gap:10px}
@@ -248,7 +252,8 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .cyc-center .k{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--brand)}
 .cyc-center h3{font-size:clamp(22px,3.2vw,34px);font-weight:800;margin-top:6px}
 .cyc-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:140px;text-align:center}
-.cyc-ic{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:23px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-sm);transition:transform .25s,box-shadow .25s}
+.cyc-ic{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-sm);transition:transform .25s,box-shadow .25s}
+.cyc-ic svg{width:23px;height:23px;fill:none;stroke:var(--brand);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .cyc-node:hover .cyc-ic{transform:scale(1.1) translateY(-2px);box-shadow:var(--shadow)}
 .cyc-node .cn{font-size:12.5px;color:var(--ink-3);line-height:1.35}
 .cyc-node .cn b{color:var(--ink);font-weight:700;display:block}
@@ -418,12 +423,13 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
 
         <svg class="fakecursor" id="fakecursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2 L4 19 L9 14.5 L12.5 22 L15 21 L11.5 13.5 L18 13 Z" fill="#0a0e1f" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>
 
-        <div class="annot-rail">
-          <div class="annot a1" data-delay="200"><h4><span class="k k-violet"></span>One roster</h4><p>Every learner, parent, batch and fee plan in one clean place.</p></div>
-          <div class="annot a2" data-delay="420"><h4><span class="k k-mint"></span>Attendance in seconds</h4><p>Mark a class fast. Patterns are spotted early.</p></div>
-          <div class="annot a3" data-delay="640"><h4><span class="k k-amber"></span>Fees that chase themselves</h4><p>Reminders and a UPI QR go out on their own.</p></div>
-          <div class="annot a4" data-delay="860"><h4><span class="k k-cyan"></span>Parents in the loop</h4><p>Attendance, fees and progress reach parents automatically.</p></div>
-        </div>
+      </div>
+      <!-- Callouts live OUTSIDE the frame so its overflow:hidden never clips them -->
+      <div class="annot-rail">
+        <div class="annot a1" data-delay="200"><h4><span class="k k-violet"></span>One roster</h4><p>Every learner, parent, batch and fee plan in one clean place.</p></div>
+        <div class="annot a2" data-delay="420"><h4><span class="k k-mint"></span>Attendance in seconds</h4><p>Mark a class fast. Patterns are spotted early.</p></div>
+        <div class="annot a3" data-delay="640"><h4><span class="k k-amber"></span>Fees that chase themselves</h4><p>Reminders and a UPI QR go out on their own.</p></div>
+        <div class="annot a4" data-delay="860"><h4><span class="k k-cyan"></span>Parents in the loop</h4><p>Attendance, fees and progress reach parents automatically.</p></div>
       </div>
     </div>
   </div>
@@ -512,7 +518,7 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
 
     <div class="frow reveal">
       <div class="fr-copy">
-        <div class="ic">👥</div>
+        <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
         <h3>Students &amp; groups</h3>
         <p>Every learner, parent, batch and fee plan in one clean roster you actually enjoy opening.</p>
         <ul class="fr-list">
@@ -533,7 +539,7 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
 
     <div class="frow rev reveal">
       <div class="fr-copy">
-        <div class="ic">₹</div>
+        <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5.5 5.5 0 0 0 0-11"/></svg></div>
         <h3>Fees that collect themselves</h3>
         <p>Know who owes what at a glance. Gentle reminders and a UPI QR go out on a schedule you set.</p>
         <ul class="fr-list">
@@ -552,7 +558,7 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
 
     <div class="frow reveal">
       <div class="fr-copy">
-        <div class="ic">🎥</div>
+        <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></div>
         <h3>Lessons, quizzes &amp; reports</h3>
         <p>Share recordings and papers, set exam-grade quizzes, and see the numbers that actually run the place.</p>
         <ul class="fr-list">
@@ -626,12 +632,12 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
         <circle class="cyc-dot" r="6"><animateMotion dur="9s" repeatCount="indefinite" rotate="auto" path="M660,216 A300,150 0 1,1 60,216 A300,150 0 1,1 660,216"/></circle>
       </svg>
       <div class="cyc-center"><div class="k">Manage</div><h3>The whole cycle, handled</h3></div>
-      <div class="cyc-node" style="left:50%;top:8%"><div class="cyc-ic">🗓️</div><div class="cn"><b>Class scheduled</b>on the timetable</div></div>
-      <div class="cyc-node" style="left:89%;top:33%"><div class="cyc-ic">✅</div><div class="cn"><b>Attendance marked</b>in one tap</div></div>
-      <div class="cyc-node" style="left:89%;top:70%"><div class="cyc-ic">🔔</div><div class="cn"><b>Parents notified</b>automatically</div></div>
-      <div class="cyc-node" style="left:50%;top:95%"><div class="cyc-ic">₹</div><div class="cn"><b>Fee reminder sent</b>with a UPI QR</div></div>
-      <div class="cyc-node" style="left:11%;top:70%"><div class="cyc-ic">💳</div><div class="cn"><b>Payment received</b>and recorded</div></div>
-      <div class="cyc-node" style="left:11%;top:33%"><div class="cyc-ic">💚</div><div class="cn"><b>Happy academy</b>ready for the next class</div></div>
+      <div class="cyc-node" style="left:50%;top:8%"><div class="cyc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><div class="cn"><b>Class scheduled</b>on the timetable</div></div>
+      <div class="cyc-node" style="left:89%;top:33%"><div class="cyc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.8 10A10 10 0 1 1 17 3.3"/><path d="m9 11 3 3L22 4"/></svg></div><div class="cn"><b>Attendance marked</b>in one tap</div></div>
+      <div class="cyc-node" style="left:89%;top:70%"><div class="cyc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M3.3 15.3A1 1 0 0 0 4 17h16a1 1 0 0 0 .7-1.7C19.4 14 18 12.5 18 8a6 6 0 0 0-12 0c0 4.5-1.4 6-2.7 7.3"/></svg></div><div class="cn"><b>Parents notified</b>automatically</div></div>
+      <div class="cyc-node" style="left:50%;top:95%"><div class="cyc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5.5 5.5 0 0 0 0-11"/></svg></div><div class="cn"><b>Fee reminder sent</b>with a UPI QR</div></div>
+      <div class="cyc-node" style="left:11%;top:70%"><div class="cyc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div><div class="cn"><b>Payment received</b>and recorded</div></div>
+      <div class="cyc-node" style="left:11%;top:33%"><div class="cyc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></svg></div><div class="cn"><b>Happy academy</b>ready for the next class</div></div>
     </div>
   </div>
 </section>

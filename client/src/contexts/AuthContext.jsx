@@ -20,6 +20,10 @@ const ACTIVE_ORG_KEY = 'veena_active_org_id';
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True when the last session check failed for a NETWORK reason (offline /
+  // server unreachable), as opposed to a real "not signed in". Lets the guards
+  // show a reconnect screen instead of bouncing to the (uncached) landing page.
+  const [offline, setOffline] = useState(false);
   // True when the signed-in user still has an admin-issued temp password
   // (user_metadata.must_set_password). Forces the set-password screen.
   const [needsPasswordSet, setNeedsPasswordSet] = useState(false);
@@ -45,6 +49,7 @@ export function AuthProvider({ children }) {
       const resp = await api.get(url);
       const u = resp?.user || null;
       setUser(u);
+      setOffline(false);
       // Keep the stored pick in sync with what the server actually resolved.
       try {
         if (u && u.active_org_id != null) {
@@ -53,8 +58,17 @@ export function AuthProvider({ children }) {
           localStorage.removeItem(ACTIVE_ORG_KEY);
         }
       } catch { /* ignore */ }
-    } catch {
-      setUser(null);
+    } catch (e) {
+      // Distinguish "can't reach the server" (offline / network) from a real
+      // "not signed in". api.js throws an offline/network message for the
+      // former; only a genuine auth failure should clear the user + redirect.
+      const msg = String(e?.message || '');
+      const isNetwork = /offline|network trouble/i.test(msg)
+        || (typeof navigator !== 'undefined' && navigator.onLine === false);
+      setOffline(isNetwork);
+      // On a network failure keep any existing session (warm app stays usable
+      // from cache); only drop the user on an actual auth failure.
+      if (!isNetwork) setUser(null);
     } finally {
       setLoading(false);
     }
@@ -119,6 +133,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         loading,
+        offline,
         refresh,
         signOut,
         switchOrg,

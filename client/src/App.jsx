@@ -91,6 +91,7 @@ import { useModuleFlags } from './hooks/useModuleFlags';
 import { useOrgBranding } from './hooks/useOrgBranding';
 import { BRAND_NAME } from './config';
 import Splash from './components/Splash';
+import OfflineScreen from './components/OfflineScreen';
 
 // Every nav item gets a `flag` key — the name of the AppSettings toggle
 // that gates it. Items with flag: null are always visible (foundational).
@@ -345,30 +346,19 @@ function TeacherLayout() {
 // to their own home. The server independently enforces this on /api/platform/*,
 // so this guard is purely about not rendering the page.
 function RequirePlatform({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, offline } = useAuth();
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Splash />
-      </div>
-    );
+    return <Splash />;
   }
   if (!user) {
-    // Offline → don't redirect (it loops against the cached shell); just wait.
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader text="You're offline. Reconnect to continue." />
-        </div>
-      );
+    // Offline / server unreachable → show the reconnect screen, never redirect
+    // (the landing page is outside the SW cache and errors offline).
+    if (offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      return <OfflineScreen />;
     }
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     window.location.replace(`${base}/landing.html`);
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader />
-      </div>
-    );
+    return <Splash />;
   }
   if (user.role !== 'App Administrator') {
     return <Navigate to={roleHome(user.app_role)} replace />;

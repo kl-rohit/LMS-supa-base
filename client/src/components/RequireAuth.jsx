@@ -5,38 +5,9 @@
 // - Still loading session → spinner
 
 import { Navigate } from 'react-router-dom';
-import { WifiOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import Loader from './Loader';
 import Splash from './Splash';
-
-// Shown when we can't verify the session because the device is offline. We must
-// NOT redirect here: the service worker serves the cached app shell for any
-// offline navigation, so bouncing to the landing page just loops (the "disco"
-// flicker). A calm screen with Retry breaks the loop; reconnecting + Retry
-// re-runs the auth check.
-function OfflineNotice() {
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
-      <div className="w-full max-w-sm text-center bg-white rounded-2xl shadow-xl p-6">
-        <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mx-auto">
-          <WifiOff className="w-6 h-6 text-indigo-600" />
-        </div>
-        <h1 className="mt-4 text-lg font-semibold text-gray-900">You're offline</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Reconnect to sign in and load your academy. Your data is safe.
-        </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="mt-5 w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700"
-        >
-          Retry
-        </button>
-      </div>
-    </div>
-  );
-}
+import OfflineScreen from './OfflineScreen';
 
 // Where each role should land by default. `app_role` is resolved server-side
 // from app data (OrgMembership / Students link), NOT the Catalyst role — so a
@@ -48,30 +19,26 @@ export function roleHome(appRole) {
 }
 
 export default function RequireAuth({ children, role }) {
-  const { user, loading } = useAuth();
+  const { user, loading, offline } = useAuth();
 
   if (loading) {
     return <Splash />;
   }
 
   if (!user) {
-    // Offline → we couldn't verify the session (not necessarily logged out).
-    // Show a calm reconnect screen instead of redirecting, which would loop
-    // against the cached app shell.
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return <OfflineNotice />;
+    // Couldn't verify the session because we're offline / the server is
+    // unreachable (NOT necessarily logged out). Show the branded reconnect
+    // screen instead of redirecting to the landing page — which lives outside
+    // the service-worker cache scope and so just errors while offline.
+    if (offline || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      return <OfflineScreen />;
     }
-    // No session → send to the public marketing/landing page (a static file
-    // outside the SPA router). The landing page's "Sign in" button points at
-    // /app/login, so there's no redirect loop. Logged-in users never reach
-    // here — they fall through to their dashboard/portal home below.
+    // Genuinely no session (online) → send to the public marketing/landing page
+    // (a static file outside the SPA router). Its "Sign in" button points at
+    // /app/login, so there's no redirect loop.
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     window.location.replace(`${base}/landing.html`);
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader />
-      </div>
-    );
+    return <Splash />;
   }
 
   // Wrong role for this branch — send them to their own home.

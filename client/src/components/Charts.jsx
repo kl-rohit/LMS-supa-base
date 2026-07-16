@@ -5,16 +5,17 @@
 // .dark — so charts recolour correctly with the theme automatically.
 import { useState } from 'react';
 
-// Small, theme-aware floating tooltip. Rendered inside a `relative` wrapper and
-// positioned via inline left/top. pointer-events-none so it never blocks the
-// element underneath; bg-gray-900 inverts to a light surface under .dark, which
-// stays readable. tip: { x, y, text } or null. `align` keeps the box from
-// pushing past the right edge so it cannot trigger horizontal page scroll.
+// Small floating tooltip. Rendered inside a `relative` wrapper and positioned
+// via inline left/top. pointer-events-none so it never blocks the element
+// underneath. Uses .tooltip-surface (a FIXED dark surface): plain bg-gray-900
+// inverts to near-white in dark mode and would leave white-on-white text.
+// tip: { x, y, text } or null. The box is centre-anchored and callers clamp x
+// to the plot area so it never pushes past the edge.
 function ChartTip({ tip }) {
   if (!tip) return null;
   return (
     <div
-      className="absolute pointer-events-none z-10 px-2 py-1 rounded-md bg-gray-900 text-white text-xs shadow whitespace-nowrap -translate-x-1/2 -translate-y-full max-w-[60vw] overflow-hidden text-ellipsis"
+      className="tooltip-surface absolute pointer-events-none z-10 px-2 py-1 rounded-md text-xs whitespace-nowrap -translate-x-1/2 -translate-y-full max-w-[60vw] overflow-hidden text-ellipsis"
       style={{ left: tip.x, top: tip.y }}
     >
       {tip.text}

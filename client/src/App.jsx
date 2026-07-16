@@ -90,6 +90,7 @@ import RequireAuth, { roleHome } from './components/RequireAuth';
 import { useModuleFlags } from './hooks/useModuleFlags';
 import { useOrgBranding } from './hooks/useOrgBranding';
 import { BRAND_NAME } from './config';
+import Splash from './components/Splash';
 
 // Every nav item gets a `flag` key — the name of the AppSettings toggle
 // that gates it. Items with flag: null are always visible (foundational).
@@ -348,7 +349,7 @@ function RequirePlatform({ children }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader />
+        <Splash />
       </div>
     );
   }

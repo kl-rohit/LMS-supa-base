@@ -321,6 +321,22 @@
     to   { opacity: 1; }
   }
 
+  /* Tooltip / dark-chip surface. Do NOT use bg-gray-900 for these: the gray
+     scale is inverted in dark mode (gray-900 becomes near-white), so a
+     bg-gray-900 + text-white element turns into white-on-white and vanishes.
+     This class pins a fixed dark surface that stays readable in both themes,
+     with a hairline ring so it separates from dark cards. */
+  .tooltip-surface {
+    background-color: #1e293b;
+    color: #fff;
+    box-shadow: 0 6px 20px rgba(2, 6, 23, 0.28);
+  }
+  .dark .tooltip-surface {
+    background-color: #334155;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    outline: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
   /* Skeleton placeholder: a soft neutral block with a shimmer sweep, used while
      a page's real data loads. Neutral tone works on both themes; the shimmer is
      stilled under prefers-reduced-motion by the global guard. */
@@ -344,5 +360,18 @@
   }
   @keyframes skeleton-shimmer {
     100% { transform: translateX(100%); }
+  }
+
+  /* Branded splash (first app boot): the logo breathes and an indeterminate bar
+     slides, so the initial wait feels intentional rather than a bare spinner. */
+  .splash-logo { animation: splash-pulse 1.8s ease-in-out infinite; }
+  @keyframes splash-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.06); opacity: 0.85; }
+  }
+  .splash-bar { animation: splash-slide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+  @keyframes splash-slide {
+    0% { transform: translateX(-130%); }
+    100% { transform: translateX(330%); }
   }
 }

@@ -470,7 +470,7 @@ export default function DataMigration() {
                 <button
                   onClick={() => importModule(mod)}
                   disabled={busy !== null}
-                  className="inline-flex items-center gap-1 rounded-md bg-gray-900 text-white px-2.5 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md bg-gray-900 dark:bg-[#334155] text-white px-2.5 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50"
                   title="Import JSON or CSV into this module"
                 >
                   <Upload className="w-3.5 h-3.5" /> Import

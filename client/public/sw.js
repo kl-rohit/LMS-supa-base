@@ -13,7 +13,7 @@
  * Bump CACHE to force old caches to be discarded on the next activate.
  */
 
-const CACHE = 'veena-shell-v3';
+const CACHE = 'veena-shell-v4';
 const SHELL_URL = new URL('./', self.registration.scope).href; // e.g. https://host/app/
 
 // Precache the shell AND every emitted chunk, so a cold offline launch can

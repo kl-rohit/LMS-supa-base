@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const DIST = path.resolve(__dirname, '..', 'dist');
 
@@ -32,6 +33,24 @@ function main() {
   const out = path.join(DIST, 'asset-manifest.json');
   fs.writeFileSync(out, JSON.stringify({ assets }, null, 2) + '\n');
   console.log(`▶ gen-asset-manifest: ${assets.length} chunks → dist/asset-manifest.json`);
+
+  // Stamp the service worker's cache name with a build id derived from the
+  // emitted chunk hashes (which change every build). This makes dist/sw.js
+  // byte-different on every deploy, so the browser detects a new worker and the
+  // in-app update prompt fires — without this, the static CACHE constant means
+  // users keep serving the old cached shell until it's manually bumped.
+  const swPath = path.join(DIST, 'sw.js');
+  if (fs.existsSync(swPath)) {
+    const buildId = crypto.createHash('sha1').update(assets.join(',')).digest('hex').slice(0, 10);
+    let sw = fs.readFileSync(swPath, 'utf8');
+    const stamped = sw.replace(/const CACHE = '[^']*';/, `const CACHE = 'veena-shell-${buildId}';`);
+    if (stamped !== sw) {
+      fs.writeFileSync(swPath, stamped);
+      console.log(`▶ gen-asset-manifest: stamped sw.js cache = veena-shell-${buildId}`);
+    } else {
+      console.warn('▶ gen-asset-manifest: could not find CACHE constant to stamp in sw.js');
+    }
+  }
 }
 
 main();

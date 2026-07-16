@@ -81,46 +81,54 @@ async function buildCertificateDoc(cert) {
     } catch { /* bad image — skip, keep default header position */ }
   }
 
-  // Academy name (header).
+  // Academy name (header) — a clean sans caps line above the ceremonial serif
+  // title, with airy tracking so it reads as a masthead.
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(...BRAND);
-  doc.text(c.academy_name || 'Academy', cx, headerY, { align: 'center' });
-
-  // Title (editable).
-  doc.setFontSize(34);
-  doc.setTextColor(...DARK);
-  doc.text(c.title || 'Certificate of Completion', cx, headerY + 56, { align: 'center' });
-
-  let y = headerY + 56;
-
-  // Subtitle.
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(14);
-  doc.setTextColor(...GRAY);
-  doc.text('This is to certify that', cx, y + 44, { align: 'center' });
+  doc.setTextColor(...BRAND);
+  doc.text((c.academy_name || 'Academy').toUpperCase(), cx, headerY, { align: 'center', charSpace: 1.5 });
 
-  // Student name (wrapped if long).
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(28);
+  // Title (editable) — serif for a formal, premium certificate feel.
+  doc.setFont('times', 'bold');
+  doc.setFontSize(40);
+  doc.setTextColor(...DARK);
+  doc.text(c.title || 'Certificate of Completion', cx, headerY + 60, { align: 'center' });
+
+  // Brand accent rule under the title — a small centred flourish dividing the
+  // masthead from the body.
+  doc.setDrawColor(...BRAND);
+  doc.setLineWidth(2);
+  doc.line(cx - 46, headerY + 74, cx + 46, headerY + 74);
+
+  let y = headerY + 60;
+
+  // Subtitle — serif italic connector.
+  doc.setFont('times', 'italic');
+  doc.setFontSize(15);
+  doc.setTextColor(...GRAY);
+  doc.text('This is to certify that', cx, y + 56, { align: 'center' });
+
+  // Student name (wrapped if long) — the largest serif line, the focal point.
+  doc.setFont('times', 'bold');
+  doc.setFontSize(30);
   doc.setTextColor(...DARK);
   const nameLines = doc.splitTextToSize(c.student_name || 'Student', W - 240);
-  doc.text(nameLines, cx, y + 84, { align: 'center' });
-  let afterName = y + 84 + (nameLines.length - 1) * 30;
+  doc.text(nameLines, cx, y + 98, { align: 'center' });
+  const afterName = y + 98 + (nameLines.length - 1) * 32;
 
-  // Completion line (editable body).
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(14);
+  // Completion line (editable body) — serif italic connector.
+  doc.setFont('times', 'italic');
+  doc.setFontSize(15);
   doc.setTextColor(...GRAY);
-  doc.text(c.body || 'has successfully completed the course', cx, afterName + 34, { align: 'center' });
+  doc.text(c.body || 'has successfully completed the course', cx, afterName + 40, { align: 'center' });
 
-  // Course name (wrapped if long).
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(21);
+  // Course name (wrapped if long) — serif, brand colour.
+  doc.setFont('times', 'bold');
+  doc.setFontSize(23);
   doc.setTextColor(...BRAND);
   const courseLines = doc.splitTextToSize(c.course_name || 'Course', W - 240);
-  doc.text(courseLines, cx, afterName + 72, { align: 'center' });
-  const afterCourse = afterName + 72 + (courseLines.length - 1) * 24;
+  doc.text(courseLines, cx, afterName + 80, { align: 'center' });
+  const afterCourse = afterName + 80 + (courseLines.length - 1) * 26;
 
   // Date.
   let dateStr = '';
@@ -129,15 +137,16 @@ async function buildCertificateDoc(cert) {
       year: 'numeric', month: 'long', day: 'numeric',
     });
   } catch { dateStr = ''; }
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'italic');
   doc.setFontSize(13);
   doc.setTextColor(...GRAY);
-  if (dateStr) doc.text(`Completed on ${dateStr}`, cx, afterCourse + 40, { align: 'center' });
+  if (dateStr) doc.text(`Completed on ${dateStr}`, cx, afterCourse + 46, { align: 'center' });
 
   if (c.lessons_total) {
-    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
     doc.setTextColor(...LIGHT);
-    doc.text(`${c.lessons_total} lesson${c.lessons_total === 1 ? '' : 's'} completed`, cx, afterCourse + 60, { align: 'center' });
+    doc.text(`${c.lessons_total} lesson${c.lessons_total === 1 ? '' : 's'} completed`.toUpperCase(), cx, afterCourse + 64, { align: 'center', charSpace: 0.8 });
   }
 
   // Student photo (top-left, inside the inner border).
@@ -227,18 +236,21 @@ async function buildCertificateDoc(cert) {
       doc.addImage(c.signature_data, 'JPEG', sigCx - 60, sigBaseY - 46, 120, 38, undefined, 'FAST');
     } catch { /* skip bad signature */ }
   }
-  if (c.signatory_name || c.show_signature !== false) {
+  if (c.show_signature !== false) {
+    // Fall back to the academy name so the signature block never reads as an
+    // unfinished blank line when no explicit signatory was set.
+    const sigName = c.signatory_name || c.academy_name || '';
     doc.setDrawColor(...LIGHT);
     doc.setLineWidth(0.8);
     doc.line(sigCx - 70, sigBaseY, sigCx + 70, sigBaseY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
+    doc.setFont('times', 'bold');
+    doc.setFontSize(12);
     doc.setTextColor(...DARK);
-    if (c.signatory_name) doc.text(c.signatory_name, sigCx, sigBaseY + 16, { align: 'center' });
+    if (sigName) doc.text(sigName, sigCx, sigBaseY + 16, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor(...GRAY);
-    doc.text('Authorised Signatory', sigCx, sigBaseY + 28, { align: 'center' });
+    doc.text('AUTHORISED SIGNATORY', sigCx, sigBaseY + 28, { align: 'center', charSpace: 0.6 });
   }
 
   // Verification QR (bottom-centre) + small caption.

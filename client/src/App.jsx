@@ -301,8 +301,6 @@ function TeacherLayout() {
               Loader has a short delay so the spinner doesn't flash on a
               fast network — feels instant when the chunk is small. */}
           <Suspense fallback={<Loader text="Loading..." />}>
-            {/* Keyed on the path so each navigation replays a subtle settle-in. */}
-            <div className="animate-in" key={location.pathname}>
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
@@ -324,7 +322,6 @@ function TeacherLayout() {
               <Route path="/help" element={<Help />} />
               <Route path="/help/:slug" element={<Help />} />
             </Routes>
-            </div>
           </Suspense>
         </main>
       </div>

@@ -204,7 +204,13 @@ export default function Login() {
         </div>
 
         <p className="text-center text-sm text-gray-600 mt-6">
-          Want to start an academy? It's invite-only — reach out to get set up.
+          Want to start an academy? It's invite-only —{' '}
+          <a
+            href={`${(process.env.PUBLIC_URL || '/').replace(/\/$/, '')}/landing-3.html#contact`}
+            className="text-indigo-600 hover:underline font-medium"
+          >
+            contact us to get set up
+          </a>.
         </p>
         <p className="text-center text-xs text-gray-400 mt-2">
           Parents: contact your teacher for access.

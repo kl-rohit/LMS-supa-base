@@ -164,6 +164,23 @@ section{position:relative;scroll-margin-top:80px}
 .compare a{color:var(--brand-600);font-weight:700}
 .price-note{text-align:center;color:var(--ink-4);font-size:13px;margin-top:14px;max-width:60ch;margin-inline:auto}
 
+/* Contact / lead form */
+.lead-card{max-width:560px;margin:24px auto 0;background:#fff;border:1px solid var(--border);border-radius:20px;box-shadow:0 20px 50px rgba(15,23,42,.10);padding:26px;position:relative}
+.lf-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:520px){.lf-grid{grid-template-columns:1fr}}
+.lf-field{display:block;margin-top:14px}
+.lf-field>span{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.lf-field i{color:#e5484d;font-style:normal}
+.lf-field input,.lf-field select,.lf-field textarea{width:100%;border:1px solid var(--border-hi);border-radius:11px;padding:11px 13px;font:inherit;font-size:14px;color:var(--ink);background:#fff;transition:border-color .15s,box-shadow .15s}
+.lf-field input:focus,.lf-field select:focus,.lf-field textarea:focus{outline:none;border-color:var(--brand-600);box-shadow:0 0 0 3px rgba(79,70,229,.15)}
+.lf-field.invalid input,.lf-field.invalid select,.lf-field.invalid textarea{border-color:#e5484d;box-shadow:0 0 0 3px rgba(229,72,77,.14)}
+.lf-note{margin-top:14px;font-size:13px;border-radius:11px;padding:10px 13px}
+.lf-note.err{background:rgba(229,72,77,.1);color:#c4373b;border:1px solid rgba(229,72,77,.25)}
+.lf-note.ok{background:rgba(16,185,129,.1);color:#0a7f5a;border:1px solid rgba(16,185,129,.25)}
+.lead-card .btn{margin-top:18px}
+.lf-alt{margin-top:14px;text-align:center;font-size:13px;color:var(--ink-3)}
+.lf-alt a{color:var(--brand-600);font-weight:600}
+
 /* FAQ */
 .faq{margin-top:36px;border-top:1px solid var(--border)}
 .faq details{border-bottom:1px solid var(--border);padding:18px 2px}
@@ -265,7 +282,7 @@ footer{border-top:1px solid var(--border);padding:40px 0}
   <p class="lead">Attendance, fees, timetable, lessons and parent updates, all connected and automatic. One calm system, built for the way you actually teach.</p>
   <p class="accent">More time teaching. Less time managing.</p>
   <div class="hero-cta">
-    <a class="btn btn-primary" href="/app/landing-2.html#contact">Book a demo</a>
+    <a class="btn btn-primary" href="#contact">Book a demo</a>
     <a class="btn btn-ghost" href="#pricing">See pricing</a>
   </div>
   <p class="hero-note">Already set up? <a href="/app/login">Sign in to your academy</a>. New here? <a href="/app/landing-2.html#contact">Talk to an expert</a> and we will set you up.</p>
@@ -630,9 +647,25 @@ footer{border-top:1px solid var(--border);padding:40px 0}
 <section class="wrap reveal" id="contact">
   <div class="cta-banner">
     <h2>Run your whole academy from one calm place.</h2>
-    <p>Talk to us and we will set you up the same day.</p>
-    <a class="btn btn-primary" href="/app/landing-2.html#contact">Book a demo</a>
+    <p>New here? Accounts are set up by us. Share a few details and we will reach out the same day.</p>
   </div>
+  <form id="lead-form" class="lead-card" novalidate>
+    <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden"><input id="lf-company" tabindex="-1" autocomplete="off"></div>
+    <div class="lf-grid">
+      <label class="lf-field"><span>Your name <i>*</i></span><input id="lf-name" type="text" autocomplete="name" placeholder="e.g. Anita Sharma"></label>
+      <label class="lf-field"><span>Phone <i>*</i></span><input id="lf-phone" type="tel" autocomplete="tel" placeholder="+91 …"></label>
+    </div>
+    <label class="lf-field"><span>Email <i>*</i></span><input id="lf-email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+    <div class="lf-grid">
+      <label class="lf-field"><span>Academy type</span><select id="lf-type"><option value="">Select one</option><option>Music</option><option>Dance</option><option>Coaching</option><option>Tuition</option><option>Arts</option><option>Other</option></select></label>
+      <label class="lf-field"><span>Academy name</span><input id="lf-academy" type="text" placeholder="Optional"></label>
+    </div>
+    <label class="lf-field"><span>Message</span><textarea id="lf-message" rows="3" placeholder="Anything you'd like us to know (optional)"></textarea></label>
+    <div id="lf-err" class="lf-note err" hidden></div>
+    <div id="lf-ok" class="lf-note ok" hidden>Thanks! We'll be in touch within one business day.</div>
+    <button type="submit" id="lf-submit" class="btn btn-primary" style="width:100%;justify-content:center">Book a demo</button>
+    <p class="lf-alt">Prefer to talk? Call <a href="tel:+919360390883">+91 93603 90883</a></p>
+  </form>
 </section>
 
 <footer class="wrap">
@@ -717,6 +750,37 @@ footer{border-top:1px solid var(--border);padding:40px 0}
     stepEls.forEach(function(s,i){ s.classList.toggle('lit',i<lit); });
   }
   addEventListener('scroll',onStep,{passive:true}); onStep();
+})();
+
+// Contact / lead form — host-aware POST to /leads with per-field validation.
+(function(){
+  var form=document.getElementById('lead-form'); if(!form) return;
+  var API_BASE = location.pathname.indexOf('/app/')===0 ? '/server/api/api' : '/api';
+  var t0=Date.now();
+  var $=function(id){return document.getElementById(id);};
+  function fieldOf(id){ var el=$(id); return el && el.closest('.lf-field'); }
+  function mark(id,on){ var f=fieldOf(id); if(f) f.classList.toggle('invalid',!!on); }
+  var errBox=$('lf-err'), okBox=$('lf-ok'), btn=$('lf-submit');
+  var EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  ['lf-name','lf-phone','lf-email','lf-message'].forEach(function(id){ var el=$(id); if(el) el.addEventListener('input',function(){ mark(id,false); }); });
+  form.addEventListener('submit',function(e){
+    e.preventDefault();
+    ['lf-name','lf-phone','lf-email','lf-message'].forEach(function(id){ mark(id,false); });
+    if(errBox){errBox.hidden=true;} if(okBox){okBox.hidden=true;}
+    var name=$('lf-name').value.trim(), phone=$('lf-phone').value.trim(), email=$('lf-email').value.trim(), msg=$('lf-message').value.trim();
+    function fail(id,text){ mark(id,true); if(errBox){errBox.textContent=text; errBox.hidden=false;} $(id).focus(); }
+    if(!name) return fail('lf-name','Please enter your name.');
+    if(!EMAIL.test(email)) return fail('lf-email','That email doesn’t look right. Please check it.');
+    if(!phone) return fail('lf-phone','Please enter a phone number we can reach you on.');
+    if(msg.length>1000) return fail('lf-message','That message is a little long. Please keep it under 1000 characters.');
+    if($('lf-company').value) return; // honeypot
+    btn.disabled=true; var label=btn.innerHTML; btn.textContent='Sending…';
+    fetch(API_BASE+'/leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,phone:phone,email:email,academy_type:$('lf-type').value,academy_name:$('lf-academy').value.trim(),message:msg,company:'',elapsed_ms:Date.now()-t0})})
+      .then(function(r){ return r.json().catch(function(){return{};}).then(function(b){ return {ok:r.ok,b:b}; }); })
+      .then(function(r){ if(r.ok){ form.reset(); if(okBox){okBox.hidden=false; okBox.scrollIntoView({behavior:'smooth',block:'center'});} } else { if(errBox){errBox.textContent=(r.b&&(r.b.message||r.b.error))||'Something went wrong. Please try again.'; errBox.hidden=false;} } })
+      .catch(function(){ if(errBox){errBox.textContent='Network trouble. Please check your connection and try again.'; errBox.hidden=false;} })
+      .then(function(){ btn.disabled=false; btn.innerHTML=label; });
+  });
 })();
 </script>
 </body>

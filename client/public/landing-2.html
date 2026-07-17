@@ -1611,7 +1611,9 @@
       if (!form) return;
       // Mirrors client/src/utils/api.js: the Catalyst deploy serves the API
       // under /server/api/api. Keep these in sync if the mount ever changes.
-      var API_BASE = '/server/api/api';
+      // Host-aware: Catalyst serves under /app/ (API at /server/api/api); Netlify
+      // serves at root (API proxied at /api). Wrong base 404s the lead POST.
+      var API_BASE = location.pathname.indexOf('/app/') === 0 ? '/server/api/api' : '/api';
       var btn   = document.getElementById('lf-submit');
       var label = form.querySelector('.lf-label');
       var spin  = form.querySelector('.lf-spinner');

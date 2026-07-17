@@ -202,13 +202,31 @@ const api = {
   },
 
   // Mutations invalidate the GET cache so a write is never masked by a stale read.
-  post: (url, data) => request(url, { method: 'POST', body: data }).then((r) => { invalidateGetCache(); return r; }),
-
-  put: (url, data) => request(url, { method: 'PUT', body: data }).then((r) => { invalidateGetCache(); return r; }),
-
-  patch: (url, data) => request(url, { method: 'PATCH', body: data }).then((r) => { invalidateGetCache(); return r; }),
-
-  delete: (url) => request(url, { method: 'DELETE' }).then((r) => { invalidateGetCache(); return r; }),
+  // They also de-dupe: an identical mutation (same method + URL + body) fired
+  // again while the first is still in flight — OR within a short cooldown after
+  // it settles — shares the first promise instead of hitting the server twice.
+  // This is the app-wide guard against double/triple-click creating duplicate
+  // records (e.g. clicking "Create course" twice).
+  post: (url, data) => mutate('POST', url, data),
+  put: (url, data) => mutate('PUT', url, data),
+  patch: (url, data) => mutate('PATCH', url, data),
+  delete: (url) => mutate('DELETE', url),
 };
+
+// Dedupe window (ms) held AFTER a mutation settles, so a click that lands just
+// after the network round-trip completes is still absorbed.
+const MUT_COOLDOWN_MS = 1200;
+const _mutInflight = new Map(); // key → Promise
+
+function mutate(method, url, data) {
+  const key = `${method} ${withActiveOrg(url)} ${data ? JSON.stringify(data) : ''}`;
+  const existing = _mutInflight.get(key);
+  if (existing) return existing;
+  const p = request(url, { method, body: data })
+    .then((r) => { invalidateGetCache(); return r; })
+    .finally(() => { setTimeout(() => _mutInflight.delete(key), MUT_COOLDOWN_MS); });
+  _mutInflight.set(key, p);
+  return p;
+}
 
 export default api;

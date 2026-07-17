@@ -19,6 +19,9 @@ try {
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: config.JSON_BODY_LIMIT }));
+// Coarse anti-hammer guard: ~100 req/min per IP, 5-min block on trip. Health,
+// cron, and bulk import/export are exempt (see middleware/rateLimit.js).
+app.use(require('./middleware/rateLimit'));
 
 // Health + landing
 app.get('/', (_req, res) => {

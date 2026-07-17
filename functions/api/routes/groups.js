@@ -2,8 +2,19 @@
 // All queries are scoped to req.orgId set by middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
 const { overCapBlock } = require('../lib/studentLimit');
+
+// Group names are unique per org (case-insensitive). Returns true if another
+// group in this org already uses `name` (optionally excluding one id, for edits).
+async function groupNameTaken(req, name, excludeId) {
+  try {
+    const rows = await zcql(req, `SELECT * FROM Groups WHERE LOWER(Groups.name) = LOWER(${q(String(name).trim())}) AND Groups.org_id = ${Number(req.orgId)}`);
+    return unwrap(rows, 'Groups').map(normalize).some((g) => String(g.id) !== String(excludeId || ''));
+  } catch {
+    return false; // never block creation on a lookup failure
+  }
+}
 
 // Helper: fetch member students for a group (org-scoped on both ends).
 async function fetchMembers(req, groupId) {
@@ -83,8 +94,12 @@ router.get('/:id/students', async (req, res) => {
 // POST /api/groups
 router.post('/', async (req, res) => {
   try {
-    const { name, description } = req.body;
-    if (!name) return res.status(400).json({ error: 'name is required' });
+    const { description } = req.body;
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name_required', field: 'name', message: 'Please enter a group name.' });
+    if (await groupNameTaken(req, name)) {
+      return res.status(409).json({ error: 'duplicate_group', field: 'name', message: `A group named "${name}" already exists. Please pick a different name.` });
+    }
     // Group creation stays available only while the org is within its approved
     // seat count. Over the limit, reduce active students or upgrade first.
     const capped = await overCapBlock(req);
@@ -143,7 +158,14 @@ router.put('/:id', async (req, res) => {
     }
     const { name, description, status } = req.body;
     const patch = {};
-    if (name !== undefined) patch.name = name;
+    if (name !== undefined) {
+      const nm = String(name || '').trim();
+      if (!nm) return res.status(400).json({ error: 'name_required', field: 'name', message: 'Please enter a group name.' });
+      if (await groupNameTaken(req, nm, req.params.id)) {
+        return res.status(409).json({ error: 'duplicate_group', field: 'name', message: `A group named "${nm}" already exists. Please pick a different name.` });
+      }
+      patch.name = nm;
+    }
     if (description !== undefined) patch.description = description;
     if (status !== undefined) patch.status = status;
     const updated = await update(req, 'Groups', req.params.id, patch);

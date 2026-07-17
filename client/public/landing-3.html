@@ -742,6 +742,9 @@ var IN_DOTS=[[69,0],[77,0],[85,0],[93,0],[100,0],[62,8],[69,8],[77,8],[85,8],[93
   var NS='http://www.w3.org/2000/svg';
   function dot(x,y,r,cls){var c=document.createElementNS(NS,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r',r);c.setAttribute('class',cls);g.appendChild(c);}
   IN_DOTS.forEach(function(p){
+    // Drop the detached island specks (Andaman/Nicobar in the SE) so the map
+    // reads as one clean landmass.
+    if(p[0]>300 && p[1]>235) return;
     var rnd=Math.random();
     var cls=rnd<0.13?'in-dot cy':rnd<0.2?'in-dot mn':'in-dot';
     dot(p[0],p[1],2.4,cls);
@@ -751,16 +754,22 @@ var IN_DOTS=[[69,0],[77,0],[85,0],[93,0],[100,0],[62,8],[69,8],[77,8],[85,8],[93
 // Living connection network: ~22 capital hubs; batches of arcs pitch a ball
 // from one capital to another, then fade, so it reads as continuous activity
 // with no single start point.
-var IN_HUBS=[[93,20],[107,60],[113,78],[126,104],[92,120],[150,132],[60,188],[116,188],[214,152],[352,150],[386,158],[251,176],[200,182],[162,214],[75,239],[216,222],[126,251],[85,293],[150,258],[113,314],[147,309],[116,401]];
+// Capitals, nudged a little inland from the coast so the connecting arcs and
+// their travelling balls always stay over the landmass.
+var IN_HUBS=[[97,32],[107,64],[113,82],[124,106],[97,122],[150,134],[74,190],[116,188],[210,156],[344,152],[372,160],[240,180],[200,184],[162,214],[88,238],[206,224],[128,251],[100,289],[150,258],[120,308],[140,304],[122,388]];
 (function(){
   var svg=document.querySelector('.india-svg');
   var conns=document.getElementById('in-conns'), hubsG=document.getElementById('in-hubs');
   if(!svg||!conns||!hubsG) return;
   var NS='http://www.w3.org/2000/svg';
   function el(tag,attrs){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);return e;}
+  var CENTER=[150,235]; // rough centroid of the landmass
   function arcPath(a,b){
     var mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, dx=b[0]-a[0], dy=b[1]-a[1];
-    var len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, bow=len*0.22*(Math.random()<0.5?1:-1);
+    var len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
+    // bow TOWARD the interior (never out into the ocean)
+    var toward=nx*(CENTER[0]-mx)+ny*(CENTER[1]-my), sign=toward>=0?1:-1;
+    var bow=len*0.11*sign;
     return 'M'+a[0]+','+a[1]+' Q'+(mx+nx*bow).toFixed(1)+','+(my+ny*bow).toFixed(1)+' '+b[0]+','+b[1];
   }
   if(matchMedia('(prefers-reduced-motion:reduce)').matches){
@@ -777,7 +786,9 @@ var IN_HUBS=[[93,20],[107,60],[113,78],[126,104],[92,120],[150,132],[60,188],[11
     var na=el('circle',{cx:a[0],cy:a[1],r:4,'class':'in-node'});
     var nb=el('circle',{cx:b[0],cy:b[1],r:4,'class':'in-node'});
     conns.appendChild(na); conns.appendChild(nb);
-    var ball=el('circle',{r:3.1,cx:a[0],cy:a[1],'class':'ball'});
+    // cx/cy stay at the origin: animateMotion positions the ball by translating
+    // it along the path, so a non-zero cx/cy would double the coordinates.
+    var ball=el('circle',{r:3.1,cx:0,cy:0,'class':'ball'});
     var am=el('animateMotion',{dur:'1.15s',path:d,begin:'indefinite',fill:'freeze',calcMode:'spline',keyPoints:'0;1',keyTimes:'0;1',keySplines:'.4 0 .2 1'});
     ball.appendChild(am); conns.appendChild(ball);
     try{ am.beginElement(); }catch(e){}

@@ -458,8 +458,9 @@ export default function Classes() {
   // many were added and how many were already present.
   const addStudentsFromGroup = (gid) => {
     const memberIds = groupMemberIds(gid);
+    const groupName = groups.find((gr) => String(gr.id) === String(gid))?.name;
     if (!memberIds.length) {
-      toast('That group has no members yet');
+      toast(`${groupName || 'That group'} has no members yet`);
       return;
     }
     setForm((prev) => {
@@ -473,7 +474,7 @@ export default function Classes() {
         have.add(id);
         added++;
       });
-      if (added) toast.success(`Added ${added} student${added > 1 ? 's' : ''} from the group`);
+      if (added) toast.success(`Added ${added} student${added > 1 ? 's' : ''} from ${groupName || 'the group'}`);
       if (dup && !added) toast('All of that group is already associated', { icon: 'ℹ️' });
       else if (dup) toast(`${dup} already associated`, { icon: 'ℹ️' });
       return { ...prev, student_ids: merged };

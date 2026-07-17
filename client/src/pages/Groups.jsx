@@ -170,11 +170,14 @@ export default function Groups() {
     await fetchGroupMembers(group);
   };
 
-  const addMember = async (studentId) => {
+  const addMember = async (studentId, studentName) => {
     if (!selectedGroup) return;
+    // Prefer an explicitly passed name (e.g. a just-created student not yet in
+    // `students`), else look it up from the roster.
+    const name = studentName || students.find((s) => s.id === studentId)?.name;
     try {
       await api.post(`/groups/${selectedGroup.id}/students`, { student_id: studentId });
-      toast.success('Member added');
+      toast.success(name ? `${name} added to ${selectedGroup.name}` : `Added to ${selectedGroup.name}`);
       fetchGroupMembers(selectedGroup);
       fetchData();
     } catch (err) {
@@ -187,7 +190,7 @@ export default function Groups() {
   const handleQuickStudent = async (student) => {
     if (!student?.id) { fetchData(); return; }
     if (selectedGroup) {
-      await addMember(student.id);
+      await addMember(student.id, student.name);
     } else {
       fetchData();
     }
@@ -195,9 +198,10 @@ export default function Groups() {
 
   const removeMember = async (studentId) => {
     if (!selectedGroup) return;
+    const name = groupMembers.find((m) => (m.id || m.student_id) === studentId)?.name;
     try {
       await api.delete(`/groups/${selectedGroup.id}/students/${studentId}`);
-      toast.success('Member removed');
+      toast.success(name ? `${name} removed from ${selectedGroup.name}` : `Removed from ${selectedGroup.name}`);
       fetchGroupMembers(selectedGroup);
       fetchData();
     } catch (err) {

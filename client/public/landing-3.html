@@ -237,8 +237,9 @@ h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
 .in-dot.cy{fill:var(--cyan);opacity:.4}
 .in-dot.mn{fill:var(--mint);opacity:.36}
 .in-dot.amb{fill:var(--brand);opacity:.13}
-/* capital hubs (small, always-on) */
-.in-hub2{fill:var(--brand);opacity:.85}
+/* endpoint node: only the capitals of an active connection light up, then fade */
+.in-node{fill:var(--brand);animation:nodeLife 2.1s ease-out forwards}
+@keyframes nodeLife{0%{opacity:0}16%{opacity:1}72%{opacity:.95}100%{opacity:0}}
 /* a live connection: arc trail fades in and out over its lifetime */
 .conn{fill:none;stroke:url(#inArc);stroke-width:1.6;stroke-linecap:round;opacity:0}
 .conn.live{animation:connLife 2.1s ease-in-out forwards}
@@ -745,8 +746,6 @@ var IN_DOTS=[[69,0],[77,0],[85,0],[93,0],[100,0],[62,8],[69,8],[77,8],[85,8],[93
     var cls=rnd<0.13?'in-dot cy':rnd<0.2?'in-dot mn':'in-dot';
     dot(p[0],p[1],2.4,cls);
   });
-  // A few ambient dots scattered around the map for a lively, signal-like feel
-  for(var i=0;i<16;i++){ dot(Math.round(Math.random()*401), Math.round(Math.random()*440), 1.7, 'in-dot amb'); }
 })();
 
 // Living connection network: ~22 capital hubs; batches of arcs pitch a ball
@@ -759,7 +758,6 @@ var IN_HUBS=[[93,20],[107,60],[113,78],[126,104],[92,120],[150,132],[60,188],[11
   if(!svg||!conns||!hubsG) return;
   var NS='http://www.w3.org/2000/svg';
   function el(tag,attrs){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);return e;}
-  IN_HUBS.forEach(function(h){ hubsG.appendChild(el('circle',{cx:h[0],cy:h[1],r:2.9,'class':'in-hub2'})); });
   function arcPath(a,b){
     var mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, dx=b[0]-a[0], dy=b[1]-a[1];
     var len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, bow=len*0.22*(Math.random()<0.5?1:-1);
@@ -775,12 +773,16 @@ var IN_HUBS=[[93,20],[107,60],[113,78],[126,104],[92,120],[150,132],[60,188],[11
     do{ b=IN_HUBS[Math.floor(Math.random()*IN_HUBS.length)]; }while(b===a);
     var d=arcPath(a,b);
     var path=el('path',{'class':'conn',d:d}); conns.appendChild(path); path.getBBox(); path.classList.add('live');
+    // only the two capitals being connected light up (then fade)
+    var na=el('circle',{cx:a[0],cy:a[1],r:4,'class':'in-node'});
+    var nb=el('circle',{cx:b[0],cy:b[1],r:4,'class':'in-node'});
+    conns.appendChild(na); conns.appendChild(nb);
     var ball=el('circle',{r:3.1,cx:a[0],cy:a[1],'class':'ball'});
     var am=el('animateMotion',{dur:'1.15s',path:d,begin:'indefinite',fill:'freeze',calcMode:'spline',keyPoints:'0;1',keyTimes:'0;1',keySplines:'.4 0 .2 1'});
     ball.appendChild(am); conns.appendChild(ball);
     try{ am.beginElement(); }catch(e){}
     ripple(a); setTimeout(function(){ ripple(b); },1050);
-    setTimeout(function(){ path.remove(); ball.remove(); },2100);
+    setTimeout(function(){ path.remove(); ball.remove(); na.remove(); nb.remove(); },2100);
   }
   function batch(){ for(var i=0;i<5;i++) setTimeout(fire, i*140); }
   // Kick off shortly after load and keep firing batches; pause while the tab is

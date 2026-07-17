@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VidyaSetu pricing, Core vs Complete feature comparison</title>
+<meta name="description" content="Compare VidyaSetu Core and Complete plans feature by feature: students, attendance, fees, classes, communication, parent portal, lessons, quizzes, assignments, question papers, reports, PWA and multi-academy. From ₹1,000/month.">
+<link rel="icon" href="/app/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff; --bg-soft:#f7f8fc; --card:#ffffff;
+  --ink:#0a0e1f; --ink-2:#39405a; --ink-3:#6a7189; --ink-4:#9aa0b5;
+  --line:#e9ebf3; --line-2:#dfe2ee;
+  --brand:#5b53ff; --brand-d:#4a42e6; --brand-2:#8a7bff;
+  --mint:#0fb981; --amber:#f59e0b; --cyan:#22c1e6; --pink:#ff6ea9; --gold:#d4a017;
+  --shadow-sm:0 1px 2px rgba(16,18,40,.05),0 1px 3px rgba(16,18,40,.06);
+  --shadow:0 10px 30px -10px rgba(24,26,60,.18);
+  --shadow-lg:0 40px 90px -30px rgba(40,30,120,.35);
+  --disp:"Sora",-apple-system,BlinkMacSystemFont,sans-serif;
+  --sans:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+  --r:16px; --maxw:1200px; --gutter:clamp(20px,4.5vw,44px);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;overflow-x:clip;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+img,svg{display:block;max-width:100%}
+h1,h2,h3{font-family:var(--disp);letter-spacing:-.02em;line-height:1.05}
+.container{width:100%;max-width:var(--maxw);margin-inline:auto;padding-inline:var(--gutter)}
+.progress{position:fixed;top:0;left:0;height:3px;width:0;z-index:200;background:linear-gradient(90deg,var(--brand),var(--cyan),var(--pink));transition:width .1s linear}
+
+/* Nav */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;transition:background .3s,box-shadow .3s,padding .3s;padding:18px 0}
+.nav.scrolled{background:rgba(255,255,255,.82);backdrop-filter:blur(14px);box-shadow:0 1px 0 var(--line);padding:12px 0}
+.nav-in{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--disp);font-weight:800;font-size:20px;letter-spacing:-.02em}
+.brand .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--cyan));box-shadow:0 6px 16px -4px rgba(91,83,255,.6);position:relative;overflow:hidden}
+.brand .logo::after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,.55));transform:translateX(-120%);animation:sheen 5s ease-in-out infinite}
+@keyframes sheen{0%,60%{transform:translateX(-120%)}80%,100%{transform:translateX(120%)}}
+.nav-links{display:flex;align-items:center;gap:30px;font-size:14px;font-weight:500;color:var(--ink-2)}
+.nav-links a.lk{position:relative}
+.nav-links a.lk::after{content:"";position:absolute;left:0;right:100%;bottom:-4px;height:2px;background:var(--brand);border-radius:2px;transition:right .25s ease}
+.nav-links a.lk:hover{color:var(--ink)}
+.nav-links a.lk:hover::after{right:0}
+.btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--sans);font-weight:600;font-size:15px;border-radius:100px;padding:12px 22px;cursor:pointer;border:1px solid transparent;transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,background .2s,color .2s;white-space:nowrap}
+.btn .ar{transition:transform .22s}
+.btn:hover .ar{transform:translateX(4px)}
+.btn-primary{background:linear-gradient(120deg,var(--brand),var(--brand-2));color:#fff;box-shadow:0 12px 26px -10px rgba(91,83,255,.7)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 18px 40px -12px rgba(91,83,255,.8)}
+.btn-ghost{background:#fff;color:var(--ink);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
+.btn-ghost:hover{transform:translateY(-2px);border-color:var(--brand);color:var(--brand)}
+.btn-sm{padding:9px 18px;font-size:14px}
+@media(max-width:860px){.nav-links a.lk{display:none}}
+
+/* Sections */
+.sec{padding:96px 0;position:relative}
+.sec.soft{background:var(--bg-soft)}
+.eyebrow{font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--brand)}
+.head{max-width:52ch}
+.head.center{margin-inline:auto;text-align:center}
+.head h2{font-size:clamp(30px,4.4vw,50px);font-weight:800;margin-top:14px}
+.head p{margin-top:16px;font-size:18px;color:var(--ink-2)}
+
+/* Hero */
+.phero{padding:150px 0 30px;text-align:center;position:relative;overflow:hidden}
+.phero .mesh{position:absolute;inset:-30% -10% auto -10%;height:620px;z-index:0;filter:blur(70px);opacity:.8;pointer-events:none}
+.phero .mesh span{position:absolute;border-radius:50%;mix-blend-mode:multiply;opacity:.5}
+.phero .mesh .b1{width:460px;height:460px;background:radial-gradient(circle,#7c6cff,transparent 65%);top:-60px;left:6%}
+.phero .mesh .b2{width:420px;height:420px;background:radial-gradient(circle,#22c1e6,transparent 65%);top:-30px;right:8%}
+.phero .mesh .b3{width:380px;height:380px;background:radial-gradient(circle,#ff6ea9,transparent 65%);top:120px;left:40%}
+.phero-in{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
+.phero h1{font-size:clamp(34px,5.2vw,60px);font-weight:800;margin-top:18px;max-width:18ch}
+.phero h1 .grad{background:linear-gradient(100deg,var(--brand),var(--cyan) 55%,var(--pink));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.phero p.sub{margin-top:18px;max-width:60ch;font-size:clamp(16px,1.8vw,19px);color:var(--ink-2)}
+
+/* Plans */
+.offer-pill{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:#b4770a;background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.3);padding:6px 14px;border-radius:100px}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:840px;margin:44px auto 0;align-items:stretch}
+@media(max-width:720px){.plans{grid-template-columns:1fr}}
+.plan{background:#fff;border:1px solid var(--line);border-radius:20px;padding:30px;display:flex;flex-direction:column;transition:transform .28s,box-shadow .28s}
+.plan:hover{transform:translateY(-5px);box-shadow:var(--shadow-lg)}
+.plan.feature{border:2px solid var(--brand);box-shadow:0 24px 60px -24px rgba(91,83,255,.4);position:relative}
+.plan .tag{position:absolute;top:-12px;right:24px;background:linear-gradient(120deg,var(--brand),var(--brand-2));color:#fff;font-size:11px;font-weight:800;padding:5px 14px;border-radius:100px;box-shadow:var(--shadow)}
+.plan .phead{display:flex;align-items:center;justify-content:space-between}
+.plan h3{font-size:21px;font-weight:800}
+.plan .ppill{font-size:11px;font-weight:600;color:var(--ink-3);background:var(--bg-soft);border:1px solid var(--line);padding:3px 11px;border-radius:100px}
+.plan .blurb{color:var(--ink-3);font-size:13.5px;margin-top:9px;min-height:44px}
+.plan .price{margin-top:16px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.plan .amt{font-family:var(--disp);font-size:42px;font-weight:800;letter-spacing:-.02em}
+.plan .was{color:var(--ink-4);font-size:14px;font-weight:600;text-decoration:line-through}
+.plan .per{color:var(--ink-3);font-size:14px}
+.plan .after{font-size:13px;color:var(--ink-3);margin-top:4px}
+.plan .inc{margin-top:12px;align-self:flex-start;font-size:12px;font-weight:700;color:#b4770a;background:rgba(245,158,11,.12);border-radius:100px;padding:4px 13px}
+.plan ul{list-style:none;margin:20px 0;display:flex;flex-direction:column;gap:11px;flex:1}
+.plan li{display:flex;gap:9px;font-size:14.5px;color:var(--ink-2)}
+.plan li .ck{color:var(--mint);font-weight:800;flex-shrink:0}
+.plan li.off{color:var(--ink-4)} .plan li.off .ck{color:var(--ink-4)}
+.plan .cta{margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:12px;font-weight:700;transition:.2s}
+.plan .cta.ghost{border:1px solid var(--line-2);color:var(--ink)}
+.plan .cta.ghost:hover{background:var(--bg-soft);border-color:var(--brand);color:var(--brand)}
+.plan .cta.solid{background:linear-gradient(120deg,var(--brand),var(--brand-2));color:#fff;box-shadow:0 12px 26px -10px rgba(91,83,255,.6)}
+.plan .cta.solid:hover{transform:translateY(-2px);box-shadow:0 18px 40px -12px rgba(91,83,255,.75)}
+.price-note{text-align:center;color:var(--ink-4);font-size:13px;margin-top:16px;max-width:60ch;margin-inline:auto}
+
+/* Comparison table */
+.cmp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+.cmp-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink-2);background:#fff;border:1px solid var(--line-2);box-shadow:var(--shadow-sm);border-radius:100px;padding:8px 15px;cursor:pointer;transition:.2s}
+.cmp-toggle:hover{border-color:var(--brand);color:var(--brand)}
+.cmp-wrap{border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);background:#fff}
+.cmp-scroll{overflow-x:auto}
+table.cmp{width:100%;border-collapse:collapse;min-width:520px}
+table.cmp thead th{position:sticky;top:0;z-index:5;background:#fff;padding:16px;font-family:var(--disp);font-size:14px;font-weight:800;text-align:center;border-bottom:1px solid var(--line)}
+table.cmp thead th.feat{text-align:left;color:var(--ink)}
+table.cmp thead th .sub{display:block;font-family:var(--sans);font-size:12px;font-weight:600;color:var(--ink-3);margin-top:2px}
+table.cmp thead th.col-c{color:var(--brand-d)}
+table.cmp thead th.col-c .sub{color:var(--brand)}
+tr.cmp-cat{cursor:pointer;background:rgba(91,83,255,.055)}
+tr.cmp-cat:hover{background:rgba(91,83,255,.09)}
+tr.cmp-cat td{padding:11px 16px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-d)}
+tr.cmp-cat .caret{display:inline-block;margin-right:8px;transition:transform .2s;color:var(--brand)}
+tr.cmp-cat.closed .caret{transform:rotate(-90deg)}
+tr.cmp-feat td{padding:13px 16px;font-size:14.5px;border-top:1px solid var(--line);color:var(--ink-2)}
+tr.cmp-feat td.cell{text-align:center;width:120px}
+tr.cmp-feat td.col-c{background:rgba(91,83,255,.03)}
+tr.cmp-feat .yes{color:var(--mint)}
+tr.cmp-feat .no{color:var(--ink-4)}
+tr.cmp-collapsed{display:none}
+table.cmp.hide-common tr.cmp-common{display:none}
+
+/* CTA band + footer */
+.band{border-radius:24px;padding:56px 40px;text-align:center;background:linear-gradient(120deg,var(--brand),#6d5cf0 55%,var(--cyan));color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg)}
+.band::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.25),transparent 60%)}
+.band h2{position:relative;font-size:clamp(28px,4vw,44px);font-weight:800}
+.band p{position:relative;margin-top:12px;font-size:18px;opacity:.92}
+.band .btn-white{position:relative;margin-top:26px;background:#fff;color:var(--brand-d);box-shadow:0 14px 34px -12px rgba(0,0,0,.4)}
+.band .btn-white:hover{transform:translateY(-2px)}
+footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-soft)}
+.foot{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;align-items:center}
+.foot-links{display:flex;gap:22px;font-size:14px;color:var(--ink-2);flex-wrap:wrap}
+.foot-links a:hover{color:var(--brand)}
+.foot-copy{font-size:12.5px;color:var(--ink-4);margin-top:26px}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body id="top">
+<div class="progress" id="progress"></div>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="container nav-in">
+    <a class="brand" href="/app/landing-3.html"><span class="logo"></span>VidyaSetu</a>
+    <div class="nav-links">
+      <a class="lk" href="/app/landing-3.html#features">Features</a>
+      <a class="lk" href="/app/landing-3.html#pricing">Plans</a>
+      <a class="lk" href="/app/landing-demo-3.html">Live demo</a>
+      <a class="btn btn-primary btn-sm" href="/app/landing-3.html#contact">Contact us <span class="ar">→</span></a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="phero">
+  <div class="mesh"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
+  <div class="container phero-in">
+    <span class="offer-pill">🏷️ Limited-time launch offer, introductory pricing</span>
+    <h1>Pricing and <span class="grad">feature comparison</span></h1>
+    <p class="sub">Two simple plans, one flat monthly price that already includes your first 15 students. Core covers the everyday essentials; Complete adds the full online-learning suite.</p>
+  </div>
+</header>
+
+<!-- PLANS -->
+<section class="sec" style="padding-top:24px">
+  <div class="container">
+    <div class="plans">
+      <div class="plan reveal">
+        <div class="phead"><h3>Core</h3><span class="ppill">The essentials</span></div>
+        <p class="blurb">Best for tuition teachers and small academies who want attendance, fees and parent updates on autopilot.</p>
+        <div class="price"><span class="amt">₹1,000</span><span class="was">₹1,500</span><span class="per">/mo</span></div>
+        <div class="after">+ ₹50 / student after the first 15</div>
+        <span class="inc">First 15 students included</span>
+        <ul>
+          <li><span class="ck">✓</span> Students, attendance &amp; timetable</li>
+          <li><span class="ck">✓</span> Fees, UPI &amp; QR collection</li>
+          <li><span class="ck">✓</span> Messaging &amp; notifications</li>
+          <li><span class="ck">✓</span> Reports &amp; parent portal</li>
+          <li class="off"><span class="ck">•</span> Online video lessons</li>
+          <li class="off"><span class="ck">•</span> Quizzes &amp; certificates</li>
+          <li class="off"><span class="ck">•</span> Assignments &amp; question papers</li>
+        </ul>
+        <a class="cta ghost" href="/app/landing-3.html#contact">Start with Core</a>
+      </div>
+      <div class="plan feature reveal">
+        <span class="tag">Recommended</span>
+        <div class="phead"><h3>Complete</h3></div>
+        <p class="blurb">Best for academies running online lessons, quizzes, certificates or serious growth, with every module connected.</p>
+        <div class="price"><span class="amt">₹2,000</span><span class="was">₹2,999</span><span class="per">/mo</span></div>
+        <div class="after">+ ₹90 / student after the first 15</div>
+        <span class="inc">First 15 students included</span>
+        <ul>
+          <li><span class="ck">✓</span> Students, attendance &amp; timetable</li>
+          <li><span class="ck">✓</span> Fees, UPI &amp; QR collection</li>
+          <li><span class="ck">✓</span> Messaging &amp; notifications</li>
+          <li><span class="ck">✓</span> Reports &amp; parent portal</li>
+          <li><span class="ck">✓</span> Online video lessons</li>
+          <li><span class="ck">✓</span> Quizzes &amp; certificates</li>
+          <li><span class="ck">✓</span> Assignments &amp; question papers</li>
+        </ul>
+        <a class="cta solid" href="/app/landing-3.html#contact">Start with Complete</a>
+      </div>
+    </div>
+    <p class="price-note">Indicative pricing. We will confirm a quote for your exact student count when you reach out.</p>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="sec soft">
+  <div class="container">
+    <div class="head reveal" style="max-width:none">
+      <span class="eyebrow">Every feature</span>
+      <div class="cmp-head">
+        <div>
+          <h2 style="font-size:clamp(26px,3.6vw,40px)">Compare Core and Complete</h2>
+          <p style="margin-top:8px">Everything in Core, plus the online-learning suite and detailed reports in Complete. Tap a category to collapse it.</p>
+        </div>
+        <button type="button" id="cmp-toggle-common" class="cmp-toggle">Hide shared features</button>
+      </div>
+    </div>
+    <div class="cmp-wrap reveal">
+      <div class="cmp-scroll">
+        <table class="cmp" id="cmp-table">
+          <thead>
+            <tr>
+              <th class="feat">Feature</th>
+              <th>Core<span class="sub">₹1,000/mo</span></th>
+              <th class="col-c">Complete<span class="sub">₹2,000/mo</span></th>
+            </tr>
+          </thead>
+          <tbody id="cmp-body"><!-- rendered from FEATURES --></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:32px">
+      <a class="btn btn-primary" href="/app/landing-3.html#contact">Contact us to get started <span class="ar">→</span></a>
+      <p class="price-note" style="margin-top:12px">We will share a quote for your exact student count. <a href="/app/landing-3.html" style="color:var(--brand-d);font-weight:600">Back to home</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<section class="sec" style="padding-top:20px">
+  <div class="container reveal">
+    <div class="band">
+      <h2>Ready for one calm place?</h2>
+      <p>Add your academy and be live the same afternoon.</p>
+      <a class="btn btn-white" href="/app/landing-3.html#contact">Get in touch <span class="ar">→</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="foot">
+      <a class="brand" href="/app/landing-3.html"><span class="logo"></span>VidyaSetu</a>
+      <div class="foot-links">
+        <a href="/app/landing-3.html#features">Features</a>
+        <a href="/app/landing-3.html#pricing">Plans</a>
+        <a href="/app/landing-demo-3.html">Live demo</a>
+        <a href="/app/landing-3.html#contact">Contact</a>
+        <a href="/app/login">Sign in</a>
+        <a href="tel:+919360390883">+91 93603 90883</a>
+      </div>
+    </div>
+    <p class="foot-copy">© VidyaSetu · Bridging teachers and learners</p>
+  </div>
+</footer>
+
+<script>
+// Feature matrix — shared data, [feature, inCore, inComplete].
+var FEATURES = [
+  ["Students & Attendance", [
+    ["Student profiles & full history",1,1],["Parent contacts (kept private)",1,1],
+    ["Student photos",1,1],["Groups & batches",1,1],["Bulk CSV import",1,1],
+    ["One-tap daily attendance",1,1],["Auto-built class rosters",1,1]]],
+  ["Fees & Payments", [
+    ["Fee tracking & dues",1,1],["Per-student fee plans",1,1],
+    ["Additional charges & discounts",1,1],["Automatic monthly reminders",1,1],
+    ["Monthly statements per student",1,1],["UPI & pay-by-QR collection",1,1]]],
+  ["Classes & Scheduling", [
+    ["Weekly timetable grid",1,1],["Online, in-person & group classes",1,1],
+    ["One-tap join links for online classes",1,1],["Reschedule or cancel a single date",1,1]]],
+  ["Camps & Workshops", [
+    ["Short-term camps & intensives",1,1],["Own dates, roster & attendance",1,1]]],
+  ["Communication & Notifications", [
+    ["WhatsApp & in-app messaging",1,1],["Bulk “Send all” messages",1,1],
+    ["Editable message templates",1,1],["Absence alerts & fee reminders",1,1],
+    ["In-app notification bell",1,1],["Web-push to the lock screen",1,1],
+    ["Automatic morning class digest",1,1]]],
+  ["Parent Portal", [
+    ["Secure per-family login",1,1],["Attendance & fees at a glance",1,1],
+    ["Profile self-service",1,1],["“For you” activity feed",1,1],
+    ["Lessons & assignments view",0,1]]],
+  ["Lessons & Courses", [
+    ["Build video courses",0,1],["Distraction-free lesson player",0,1],
+    ["Notes & resources per lesson",0,1],["Per-student progress tracking",0,1],
+    ["One-click course enrolment",0,1]]],
+  ["Quizzes & Certificates", [
+    ["Add quizzes to lessons",0,1],["Standalone quizzes with JSON import",0,1],
+    ["Gate course completion on quizzes",0,1],["Analytics, leaderboard & answer breakdown",0,1],
+    ["Auto-issued completion certificates",0,1]]],
+  ["Assignments", [
+    ["Assign work to students or batches",0,1],["Families see what is due",0,1],
+    ["Notifications on new assignments",0,1]]],
+  ["Question Papers", [
+    ["Share practice papers to the portal",0,1],["Students prepare any time",0,1]]],
+  ["Reports", [
+    ["Attendance & fee summaries",1,1],["Detailed reports & trends",0,1],
+    ["Lesson activity reports",0,1],["Quiz outcomes report",0,1],
+    ["One-click PDF report export",1,1]]],
+  ["Mobile & PWA", [
+    ["Installable mobile app (PWA)",1,1],["Add to home screen on Android & iPhone",1,1],
+    ["Dark mode & brand themes",1,1]]],
+  ["Multi-academy & Data", [
+    ["Run multiple branches from one login",1,1],["Isolated, private data per academy",1,1],
+    ["Data export & backup",1,1]]],
+  ["Support", [
+    ["Guided setup & walkthrough",1,1],["Real human support",1,1]]]
+];
+
+(function renderMatrix(){
+  var body = document.getElementById('cmp-body');
+  if (!body) return;
+  var mark = function(on){ return on
+    ? '<span class="yes" aria-label="Included">✓</span>'
+    : '<span class="no" aria-label="Not included">–</span>'; };
+  var html = '';
+  FEATURES.forEach(function(cat, ci){
+    html += '<tr class="cmp-cat" data-cat="'+ci+'"><td colspan="3"><span class="caret">▾</span>'+cat[0]+'</td></tr>';
+    cat[1].forEach(function(f){
+      var common = (f[1] && f[2]) ? ' cmp-common' : '';
+      html += '<tr class="cmp-feat'+common+'" data-cat="'+ci+'">'
+        + '<td>'+f[0]+'</td>'
+        + '<td class="cell">'+mark(f[1])+'</td>'
+        + '<td class="cell col-c">'+mark(f[2])+'</td></tr>';
+    });
+  });
+  body.innerHTML = html;
+
+  var table = document.getElementById('cmp-table');
+  // Collapse / expand a category.
+  table.querySelectorAll('tr.cmp-cat').forEach(function(cat){
+    cat.addEventListener('click', function(){
+      var ci = cat.getAttribute('data-cat');
+      var closed = cat.classList.toggle('closed');
+      table.querySelectorAll('tr.cmp-feat[data-cat="'+ci+'"]').forEach(function(r){
+        r.classList.toggle('cmp-collapsed', closed);
+      });
+    });
+  });
+  // Hide / show shared features.
+  var hc = document.getElementById('cmp-toggle-common');
+  if (hc) hc.addEventListener('click', function(){
+    var on = table.classList.toggle('hide-common');
+    hc.textContent = on ? 'Show all features' : 'Hide shared features';
+  });
+})();
+
+// Nav shrink + scroll progress.
+(function(){
+  var nav = document.getElementById('nav'), prog = document.getElementById('progress');
+  function onScroll(){
+    var y = window.scrollY || 0;
+    if (nav) nav.classList.toggle('scrolled', y > 12);
+    if (prog){
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      prog.style.width = (h > 0 ? (y / h * 100) : 0) + '%';
+    }
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+
+// Reveal on scroll.
+(function(){
+  var els = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)){ els.forEach(function(e){e.classList.add('in');}); return; }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if (en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, {threshold:.12});
+  els.forEach(function(e){ io.observe(e); });
+})();
+</script>
+</body>
+</html>

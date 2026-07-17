@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VidyaSetu pricing, Core vs Complete feature comparison</title>
+<meta name="description" content="Compare VidyaSetu Core and Complete plans feature by feature: students, attendance, fees, classes, communication, parent portal, lessons, quizzes, assignments, question papers, reports, PWA and multi-academy. From ₹1,000/month.">
+<link rel="icon" href="/app/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --brand:#4f46e5; --brand-600:#4f46e5; --brand-500:#6366f1; --brand-50:#eef2ff;
+  --gold:#d97706; --gold-soft:#f59e0b;
+  --ink:#0f172a; --ink-2:#334155; --ink-3:#64748b; --ink-4:#94a3b8;
+  --bg:#ffffff; --bg-alt:#f8fafc; --border:#e2e8f0; --border-hi:#cbd5e1;
+  --mint:#10b981;
+  --font:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+.scroll-progress{position:fixed;top:0;left:0;height:3px;width:0;z-index:120;background:linear-gradient(90deg,var(--brand-600),var(--brand-500),var(--gold-soft));box-shadow:0 0 12px rgba(79,70,229,.5);transition:width .1s linear}
+
+/* Nav */
+.topnav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;background:rgba(255,255,255,0);border-bottom:1px solid transparent;transition:.3s}
+.topnav.scrolled{background:rgba(255,255,255,.85);backdrop-filter:blur(14px);border-bottom-color:var(--border)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.brand-dot{width:9px;height:9px;border-radius:50%;background:var(--brand-600);box-shadow:0 0 10px rgba(79,70,229,.6);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.25)}}
+.brand b{color:var(--brand-600)}
+.nav-links{display:flex;align-items:center;gap:24px;font-size:14px;color:var(--ink-3);font-weight:500}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{padding:9px 18px;border-radius:10px;background:var(--brand-600);color:#fff !important;font-weight:600;box-shadow:0 6px 18px rgba(79,70,229,.28)}
+.nav-cta:hover{background:var(--brand-500)}
+@media(max-width:900px){.topnav{padding:14px 18px}.nav-links a:not(.nav-cta){display:none}}
+
+.wrap{max-width:1080px;margin:0 auto;padding:0 32px}
+@media(max-width:640px){.wrap{padding:0 18px}}
+section{position:relative;scroll-margin-top:80px}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-600)}
+.eyebrow::before{content:'';width:22px;height:2px;background:var(--brand-600);border-radius:2px}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:14px 26px;border-radius:12px;font-weight:600;font-size:15px;cursor:pointer;transition:.2s;border:1px solid transparent}
+.btn-primary{background:var(--brand-600);color:#fff;box-shadow:0 10px 28px rgba(79,70,229,.3)}
+.btn-primary:hover{background:var(--brand-500);transform:translateY(-2px)}
+
+/* Hero */
+.phero{padding:150px 0 30px;text-align:center;position:relative}
+.phero::before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(79,70,229,.10),transparent 70%)}
+.phero h1{font-size:clamp(34px,5.4vw,58px);font-weight:900;line-height:1.05;letter-spacing:-.03em;margin-top:16px}
+.phero h1 .grad{background:linear-gradient(120deg,var(--brand-600),var(--gold-soft));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.phero p.lead{font-size:clamp(16px,2vw,20px);color:var(--ink-2);max-width:60ch;margin:18px auto 0}
+
+.sec{padding-block:80px}
+.sec.alt{background:var(--bg-alt);border-block:1px solid var(--border)}
+.sec-head{max-width:42ch}
+.sec-head.center{margin:0 auto;text-align:center}
+.sec-head h2{font-size:clamp(26px,3.6vw,40px);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin-top:12px}
+.sec-head p{color:var(--ink-2);font-size:16px;margin-top:12px}
+
+/* Plans */
+.offer-pill{display:inline-flex;align-items:center;gap:8px;background:rgba(245,158,11,.14);color:var(--gold);font-weight:700;font-size:13px;border-radius:100px;padding:6px 14px;margin-bottom:14px}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:820px;margin:44px auto 0;align-items:stretch}
+@media(max-width:720px){.plans{grid-template-columns:1fr}}
+.plan{background:#fff;border:1px solid var(--border);border-radius:20px;padding:30px;display:flex;flex-direction:column;transition:.25s}
+.plan:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(15,23,42,.08)}
+.plan.feature{border:2px solid var(--brand-600);box-shadow:0 20px 50px rgba(79,70,229,.15);position:relative}
+.plan .tag{position:absolute;top:-11px;right:24px;background:var(--gold-soft);color:#fff;font-size:11px;font-weight:800;padding:4px 12px;border-radius:100px}
+.plan .head{display:flex;align-items:center;justify-content:space-between}
+.plan h3{font-size:20px;font-weight:800}
+.plan .pill{font-size:11px;font-weight:600;color:var(--ink-3);background:var(--bg-alt);border:1px solid var(--border);padding:3px 10px;border-radius:100px}
+.plan .blurb{color:var(--ink-3);font-size:13px;margin-top:8px;min-height:40px}
+.plan .price{margin-top:16px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.plan .amt{font-size:40px;font-weight:900;letter-spacing:-.02em}
+.plan .was{color:var(--ink-4);font-size:14px;font-weight:600}
+.plan .per{color:var(--ink-3);font-size:14px}
+.plan .after{font-size:13px;color:var(--ink-3);margin-top:4px}
+.plan .inc{margin-top:12px;align-self:flex-start;font-size:12px;font-weight:600;color:var(--gold);background:rgba(245,158,11,.12);border-radius:100px;padding:4px 12px}
+.plan ul{list-style:none;margin:20px 0;display:flex;flex-direction:column;gap:11px;flex:1}
+.plan li{display:flex;gap:9px;font-size:14px;color:var(--ink-2)}
+.plan li .ck{color:var(--mint);font-weight:800;flex-shrink:0}
+.plan li.off{color:var(--ink-4)}
+.plan li.off .ck{color:var(--ink-4)}
+.plan .cta{margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border-radius:12px;font-weight:700;transition:.2s}
+.plan .cta.ghost{border:1px solid var(--border-hi);color:var(--ink)}
+.plan .cta.ghost:hover{background:var(--bg-alt)}
+.plan .cta.solid{background:var(--brand-600);color:#fff;box-shadow:0 10px 26px rgba(79,70,229,.28)}
+.plan .cta.solid:hover{background:var(--brand-500)}
+.price-note{text-align:center;color:var(--ink-4);font-size:13px;margin-top:14px;max-width:60ch;margin-inline:auto}
+
+/* Comparison table */
+.cmp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+.cmp-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink-2);background:#fff;border:1px solid var(--border-hi);border-radius:10px;padding:8px 15px;cursor:pointer;transition:.2s}
+.cmp-toggle:hover{border-color:var(--brand-500);color:var(--brand-600)}
+.cmp-wrap{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 12px 32px rgba(15,23,42,.06)}
+.cmp-scroll{overflow-x:auto}
+table.cmp{width:100%;border-collapse:collapse;min-width:520px}
+table.cmp thead th{position:sticky;top:0;z-index:5;background:#fff;padding:16px;font-size:14px;font-weight:800;text-align:center;border-bottom:1px solid var(--border)}
+table.cmp thead th.feat{text-align:left}
+table.cmp thead th .sub{display:block;font-size:12px;font-weight:600;color:var(--ink-3);margin-top:2px}
+table.cmp thead th.col-c{color:var(--brand-600)}
+table.cmp thead th.col-c .sub{color:var(--brand-500)}
+tr.cmp-cat{cursor:pointer;background:var(--brand-50)}
+tr.cmp-cat:hover{background:#e4e9ff}
+tr.cmp-cat td{padding:11px 16px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-600)}
+tr.cmp-cat .caret{display:inline-block;margin-right:8px;transition:transform .2s}
+tr.cmp-cat.closed .caret{transform:rotate(-90deg)}
+tr.cmp-feat td{padding:13px 16px;font-size:14px;border-top:1px solid var(--border);color:var(--ink-2)}
+tr.cmp-feat td.cell{text-align:center;width:120px}
+tr.cmp-feat td.col-c{background:rgba(79,70,229,.035)}
+tr.cmp-feat .yes{color:var(--mint);font-weight:700}
+tr.cmp-feat .no{color:var(--ink-4)}
+tr.cmp-collapsed{display:none}
+table.cmp.hide-common tr.cmp-common{display:none}
+
+/* CTA banner + footer */
+.cta-banner{text-align:center;background:linear-gradient(135deg,var(--brand-600),#6d28d9);color:#fff;border-radius:24px;padding:56px 32px;margin:20px 0 0}
+.cta-banner h2{font-size:clamp(26px,4vw,40px);font-weight:800;letter-spacing:-.02em}
+.cta-banner p{opacity:.9;margin-top:12px;font-size:17px}
+.cta-banner .btn-primary{background:#fff;color:var(--brand-600);margin-top:26px}
+.cta-banner .btn-primary:hover{background:#f1f5f9;transform:translateY(-2px)}
+footer{border-top:1px solid var(--border);padding:40px 0;margin-top:80px}
+.foot{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
+.foot-links{display:flex;gap:20px;font-size:14px;color:var(--ink-3);flex-wrap:wrap}
+.foot-links a:hover{color:var(--ink)}
+.foot-copy{color:var(--ink-4);font-size:13px;margin-top:20px}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s cubic-bezier(.22,1,.36,1)}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body id="top">
+<div class="scroll-progress" id="progress"></div>
+
+<!-- NAV -->
+<nav class="topnav" id="nav">
+  <a class="brand" href="/app/landing-4.html"><span class="brand-dot"></span><span>Vidya<b>Setu</b></span></a>
+  <div class="nav-links">
+    <a href="/app/landing-4.html#modules">Features</a>
+    <a href="/app/landing-4.html#pricing">Plans</a>
+    <a href="/app/landing-demo-4.html">Live demo</a>
+    <a class="nav-cta" href="/app/landing-4.html#contact">Contact us</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="phero">
+  <div class="wrap">
+    <span class="offer-pill"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg> Limited-time launch offer, introductory pricing</span>
+    <h1>Pricing and <span class="grad">feature comparison</span></h1>
+    <p class="lead">Two simple plans, one flat monthly price that already includes your first 15 students. Core covers the everyday essentials; Complete adds the full online-learning suite.</p>
+  </div>
+</header>
+
+<!-- PLANS -->
+<section class="sec wrap" style="padding-block:24px 60px">
+  <div class="plans">
+    <div class="plan reveal">
+      <div class="head"><h3>Core</h3><span class="pill">The essentials</span></div>
+      <p class="blurb">Best for tuition teachers and small academies who want attendance, fees and parent updates on autopilot.</p>
+      <div class="price"><span class="amt">₹1,000</span><span class="was">was ₹1,500</span><span class="per">/mo</span></div>
+      <div class="after">+ ₹50 / student after the first 15</div>
+      <span class="inc">First 15 students included</span>
+      <ul>
+        <li><span class="ck">✓</span> Students, attendance &amp; timetable</li>
+        <li><span class="ck">✓</span> Fees, UPI &amp; QR collection</li>
+        <li><span class="ck">✓</span> Messaging &amp; notifications</li>
+        <li><span class="ck">✓</span> Reports &amp; parent portal</li>
+        <li class="off"><span class="ck">•</span> Online video lessons</li>
+        <li class="off"><span class="ck">•</span> Quizzes &amp; certificates</li>
+        <li class="off"><span class="ck">•</span> Assignments &amp; question papers</li>
+      </ul>
+      <a class="cta ghost" href="/app/landing-4.html#contact">Start with Core</a>
+    </div>
+    <div class="plan feature reveal">
+      <span class="tag">Recommended</span>
+      <div class="head"><h3>Complete</h3></div>
+      <p class="blurb">Best for academies running online lessons, quizzes, certificates or serious growth, with every module connected.</p>
+      <div class="price"><span class="amt">₹2,000</span><span class="was">was ₹2,999</span><span class="per">/mo</span></div>
+      <div class="after">+ ₹90 / student after the first 15</div>
+      <span class="inc">First 15 students included</span>
+      <ul>
+        <li><span class="ck">✓</span> Students, attendance &amp; timetable</li>
+        <li><span class="ck">✓</span> Fees, UPI &amp; QR collection</li>
+        <li><span class="ck">✓</span> Messaging &amp; notifications</li>
+        <li><span class="ck">✓</span> Reports &amp; parent portal</li>
+        <li><span class="ck">✓</span> Online video lessons</li>
+        <li><span class="ck">✓</span> Quizzes &amp; certificates</li>
+        <li><span class="ck">✓</span> Assignments &amp; question papers</li>
+      </ul>
+      <a class="cta solid" href="/app/landing-4.html#contact">Start with Complete</a>
+    </div>
+  </div>
+  <p class="price-note">Indicative pricing. We will confirm a quote for your exact student count when you reach out.</p>
+</section>
+
+<!-- COMPARISON -->
+<section class="sec alt">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">Every feature</span>
+      <div class="cmp-head">
+        <div>
+          <h2 style="font-size:clamp(24px,3.4vw,36px);font-weight:800;letter-spacing:-.02em;margin-top:12px">Compare Core and Complete</h2>
+          <p style="color:var(--ink-2);font-size:16px;margin-top:8px">Everything in Core, plus the online-learning suite and detailed reports in Complete. Tap a category to collapse it.</p>
+        </div>
+        <button type="button" id="cmp-toggle-common" class="cmp-toggle">Hide shared features</button>
+      </div>
+    </div>
+    <div class="cmp-wrap reveal">
+      <div class="cmp-scroll">
+        <table class="cmp" id="cmp-table">
+          <thead>
+            <tr>
+              <th class="feat">Feature</th>
+              <th>Core<span class="sub">₹1,000/mo</span></th>
+              <th class="col-c">Complete<span class="sub">₹2,000/mo</span></th>
+            </tr>
+          </thead>
+          <tbody id="cmp-body"><!-- rendered from FEATURES --></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:32px">
+      <a class="btn btn-primary" href="/app/landing-4.html#contact">Contact us to get started</a>
+      <p class="price-note" style="margin-top:12px">We will share a quote for your exact student count. <a href="/app/landing-4.html" style="color:var(--brand-600);font-weight:700">Back to home</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BANNER -->
+<section class="wrap reveal">
+  <div class="cta-banner">
+    <h2>Run your whole academy from one calm place.</h2>
+    <p>New here? Accounts are set up by us. Share a few details and we will reach out the same day.</p>
+    <a class="btn btn-primary" href="/app/landing-4.html#contact">Get in touch</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="wrap">
+  <div class="foot">
+    <a class="brand" href="/app/landing-4.html"><span class="brand-dot"></span><span>Vidya<b>Setu</b></span></a>
+    <div class="foot-links">
+      <a href="/app/landing-4.html#modules">Features</a>
+      <a href="/app/landing-4.html#pricing">Plans</a>
+      <a href="/app/landing-demo-4.html">Live demo</a>
+      <a href="/app/login">Sign in</a>
+      <a href="/app/landing-4.html">Back to site</a>
+    </div>
+  </div>
+  <p class="foot-copy">© VidyaSetu. Bridging teachers and learners.</p>
+</footer>
+
+<script>
+var FEATURES = [
+  ["Students & Attendance", [
+    ["Student profiles & full history",1,1],["Parent contacts (kept private)",1,1],
+    ["Student photos",1,1],["Groups & batches",1,1],["Bulk CSV import",1,1],
+    ["One-tap daily attendance",1,1],["Auto-built class rosters",1,1]]],
+  ["Fees & Payments", [
+    ["Fee tracking & dues",1,1],["Per-student fee plans",1,1],
+    ["Additional charges & discounts",1,1],["Automatic monthly reminders",1,1],
+    ["Monthly statements per student",1,1],["UPI & pay-by-QR collection",1,1]]],
+  ["Classes & Scheduling", [
+    ["Weekly timetable grid",1,1],["Online, in-person & group classes",1,1],
+    ["One-tap join links for online classes",1,1],["Reschedule or cancel a single date",1,1]]],
+  ["Camps & Workshops", [
+    ["Short-term camps & intensives",1,1],["Own dates, roster & attendance",1,1]]],
+  ["Communication & Notifications", [
+    ["WhatsApp & in-app messaging",1,1],["Bulk “Send all” messages",1,1],
+    ["Editable message templates",1,1],["Absence alerts & fee reminders",1,1],
+    ["In-app notification bell",1,1],["Web-push to the lock screen",1,1],
+    ["Automatic morning class digest",1,1]]],
+  ["Parent Portal", [
+    ["Secure per-family login",1,1],["Attendance & fees at a glance",1,1],
+    ["Profile self-service",1,1],["“For you” activity feed",1,1],
+    ["Lessons & assignments view",0,1]]],
+  ["Lessons & Courses", [
+    ["Build video courses",0,1],["Distraction-free lesson player",0,1],
+    ["Notes & resources per lesson",0,1],["Per-student progress tracking",0,1],
+    ["One-click course enrolment",0,1]]],
+  ["Quizzes & Certificates", [
+    ["Add quizzes to lessons",0,1],["Standalone quizzes with JSON import",0,1],
+    ["Gate course completion on quizzes",0,1],["Analytics, leaderboard & answer breakdown",0,1],
+    ["Auto-issued completion certificates",0,1]]],
+  ["Assignments", [
+    ["Assign work to students or batches",0,1],["Families see what is due",0,1],
+    ["Notifications on new assignments",0,1]]],
+  ["Question Papers", [
+    ["Share practice papers to the portal",0,1],["Students prepare any time",0,1]]],
+  ["Reports", [
+    ["Attendance & fee summaries",1,1],["Detailed reports & trends",0,1],
+    ["Lesson activity reports",0,1],["Quiz outcomes report",0,1],
+    ["One-click PDF report export",1,1]]],
+  ["Mobile & PWA", [
+    ["Installable mobile app (PWA)",1,1],["Add to home screen on Android & iPhone",1,1],
+    ["Dark mode & brand themes",1,1]]],
+  ["Multi-academy & Data", [
+    ["Run multiple branches from one login",1,1],["Isolated, private data per academy",1,1],
+    ["Data export & backup",1,1]]],
+  ["Support", [
+    ["Guided setup & walkthrough",1,1],["Real human support",1,1]]]
+];
+
+(function renderMatrix(){
+  var body = document.getElementById('cmp-body');
+  if (!body) return;
+  var mark = function(on){ return on
+    ? '<span class="yes" aria-label="Included">✓</span>'
+    : '<span class="no" aria-label="Not included">–</span>'; };
+  var html = '';
+  FEATURES.forEach(function(cat, ci){
+    html += '<tr class="cmp-cat" data-cat="'+ci+'"><td colspan="3"><span class="caret">▾</span>'+cat[0]+'</td></tr>';
+    cat[1].forEach(function(f){
+      var common = (f[1] && f[2]) ? ' cmp-common' : '';
+      html += '<tr class="cmp-feat'+common+'" data-cat="'+ci+'">'
+        + '<td>'+f[0]+'</td>'
+        + '<td class="cell">'+mark(f[1])+'</td>'
+        + '<td class="cell col-c">'+mark(f[2])+'</td></tr>';
+    });
+  });
+  body.innerHTML = html;
+
+  var table = document.getElementById('cmp-table');
+  table.querySelectorAll('tr.cmp-cat').forEach(function(cat){
+    cat.addEventListener('click', function(){
+      var ci = cat.getAttribute('data-cat');
+      var closed = cat.classList.toggle('closed');
+      table.querySelectorAll('tr.cmp-feat[data-cat="'+ci+'"]').forEach(function(r){
+        r.classList.toggle('cmp-collapsed', closed);
+      });
+    });
+  });
+  var hc = document.getElementById('cmp-toggle-common');
+  if (hc) hc.addEventListener('click', function(){
+    var on = table.classList.toggle('hide-common');
+    hc.textContent = on ? 'Show all features' : 'Hide shared features';
+  });
+})();
+
+(function(){
+  var nav = document.getElementById('nav'), prog = document.getElementById('progress');
+  function onScroll(){
+    var y = window.scrollY || 0;
+    if (nav) nav.classList.toggle('scrolled', y > 12);
+    if (prog){
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      prog.style.width = (h > 0 ? (y / h * 100) : 0) + '%';
+    }
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+
+(function(){
+  var els = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)){ els.forEach(function(e){e.classList.add('in');}); return; }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if (en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, {threshold:.12});
+  els.forEach(function(e){ io.observe(e); });
+})();
+</script>
+</body>
+</html>

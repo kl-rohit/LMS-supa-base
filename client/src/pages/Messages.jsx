@@ -25,6 +25,8 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
 import TargetPicker from '../components/TargetPicker';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 // Templates editor lives at /settings → Templates tab. We just READ
 // templates here for the compose dropdown + quick-template chips, and use
 // the same DEFAULT_TEMPLATES from the shared component as the fallback.
@@ -81,6 +83,8 @@ export default function Messages() {
   const [composeTarget, setComposeTarget] = useState({ target_type: 'all', target_id: '', target_ids: [] });
   const [groups, setGroups] = useState([]);
   const [sending, setSending] = useState(false);
+  // Per-field inline validation errors for the compose form.
+  const [errors, setErrors] = useState({});
 
   // Resolve a template by type + substitute {name}/{parent}. Other placeholders
   // ({amount}, {month}, {year}, {count}) stay literal in the manual-compose
@@ -245,10 +249,26 @@ export default function Messages() {
 
   const handleCompose = async (e) => {
     e.preventDefault();
-    if (!composeForm.message_text.trim()) {
-      toast.error('Please write a message before sending.');
+    const t = composeTarget;
+    // Per-field validation: message body + at least one recipient. "Everyone"
+    // always has an audience; a group needs a group picked, and the specific
+    // students option needs at least one student selected.
+    const errs = validate(
+      { message_text: composeForm.message_text },
+      { message_text: V.text('Message', { required: true, max: 2000 }) }
+    );
+    if (t.target_type === 'group' && !t.target_id) {
+      errs.recipients = 'Pick at least one recipient';
+    } else if (t.target_type === 'students' && (!t.target_ids || t.target_ids.length === 0)) {
+      errs.recipients = 'Pick at least one recipient';
+    }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
       return;
     }
+    setErrors({});
     // Don't let unfilled {placeholder} tokens leak into a created message.
     // {name}/{parent}/{school}/{signature} are already substituted on template
     // load; anything left ({count}, {amount}, {month}, {year}, …) is data the
@@ -259,13 +279,10 @@ export default function Messages() {
       return;
     }
     // Build the audience (Everyone / a group / specific students).
-    const t = composeTarget;
     const body = { message: composeForm.message_text, message_type: composeForm.message_type };
     if (t.target_type === 'group') {
-      if (!t.target_id) { toast.error('Pick a group'); return; }
       body.target_type = 'group'; body.target_id = t.target_id;
     } else if (t.target_type === 'students') {
-      if (!t.target_ids || t.target_ids.length === 0) { toast.error('Pick at least one student'); return; }
       body.student_ids = t.target_ids;
     } else {
       body.target_type = 'all';
@@ -278,6 +295,7 @@ export default function Messages() {
       setComposeOpen(false);
       setComposeForm({ message_type: 'custom', message_text: '' });
       setComposeTarget({ target_type: 'all', target_id: '', target_ids: [] });
+      setErrors({});
       fetchData();
     } catch (err) {
       toast.error(err.message);
@@ -464,7 +482,7 @@ export default function Messages() {
             Fee Reminders
           </button>
           <button
-            onClick={() => setComposeOpen(!composeOpen)}
+            onClick={() => { setComposeOpen((v) => !v); setErrors({}); }}
             data-tour="messages-compose"
             className="btn-primary btn-sm"
           >
@@ -487,6 +505,7 @@ export default function Messages() {
               onCreateStudent={fetchData}
               onCreateGroup={fetchData}
             />
+            <FieldError msg={errors.recipients} />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
               <select
@@ -503,13 +522,15 @@ export default function Messages() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>
               <textarea
+                data-field="message_text"
                 value={composeForm.message_text}
-                onChange={(e) => setComposeForm({ ...composeForm, message_text: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setComposeForm({ ...composeForm, message_text: e.target.value }); setErrors((x) => clearError(x, 'message_text')); }}
+                className={fieldCls('input-field', errors.message_text)}
                 rows={6}
                 placeholder="Type your message or select a template below..."
                 required
               />
+              <FieldError msg={errors.message_text} />
               {/* Quick template chips */}
               <div className="flex flex-wrap gap-2 mt-2">
                 {quickTemplates.map((t) => (
@@ -529,7 +550,7 @@ export default function Messages() {
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setComposeOpen(false)} className="btn-secondary btn-sm">
+              <button type="button" onClick={() => { setComposeOpen(false); setErrors({}); }} className="btn-secondary btn-sm">
                 Cancel
               </button>
               <button type="submit" className="btn-primary btn-sm" disabled={sending}>

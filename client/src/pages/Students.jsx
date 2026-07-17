@@ -38,6 +38,8 @@ import ImageCropper from '../components/ImageCropper';
 import SeatLimitNotice from '../components/SeatLimitNotice';
 import Pagination, { usePagination } from '../components/Pagination';
 import { readPhotoCache, writePhotoCache, invalidatePhotoCache } from '../utils/photoCache';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 // Toggleable columns on the Students table. Name + Status are always
 // visible (they're how you identify a row); Actions column auto-hides
@@ -121,6 +123,7 @@ export default function Students() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   // Pending photo (data URL) selected via the modal file picker — not yet
   // uploaded to Stratus. handleSubmit POSTs it on save.
@@ -250,35 +253,26 @@ export default function Students() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast.error('Student name is required');
+    // Per-field validation: highlight the offending inputs and show a specific
+    // message under each, rather than a single toast.
+    const errs = validate(form, {
+      name: V.name('Student name'),
+      parent_name: V.name('Parent name'),
+      mobile_number: V.phone10({ required: true }),
+      email: V.email(),
+      monthly_fee: V.nonNegative('Monthly fee'),
+      fee_online: V.nonNegative('Online fee'),
+      fee_offline: V.nonNegative('Offline fee'),
+      fee_offline_group: V.nonNegative('Group fee'),
+      min_classes_per_month: V.nonNegative('Minimum classes per month'),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
       return;
     }
-    if (!form.parent_name.trim()) {
-      toast.error('Parent name is required');
-      return;
-    }
-    const mobileDigits = String(form.mobile_number || '').replace(/\D/g, '');
-    if (mobileDigits.length < 10) {
-      toast.error('Please add a 10-digit mobile number');
-      return;
-    }
-    const feeFields = [
-      ['fee_online', 'Online fee'],
-      ['fee_offline', 'Offline fee'],
-      ['fee_offline_group', 'Group fee'],
-      ['monthly_fee', 'Monthly fee'],
-      ['min_classes_per_month', 'Minimum classes per month'],
-    ];
-    for (const [field, label] of feeFields) {
-      const raw = form[field];
-      if (raw === '' || raw === null || raw === undefined) continue;
-      const n = Number(raw);
-      if (!Number.isFinite(n) || n < 0) {
-        toast.error(`${label} should be 0 or more`);
-        return;
-      }
-    }
+    setErrors({});
     try {
       setSaving(true);
       const payload = {
@@ -377,6 +371,7 @@ export default function Students() {
     });
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
+    setErrors({});
     // Close the right-side detail panel first — otherwise it sits at the same
     // stacking level as the modal and overlaps its right edge (and the submit
     // button) on narrower screens.
@@ -391,6 +386,7 @@ export default function Students() {
     setForm({ ...emptyForm, ...billingDefaults });
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
+    setErrors({});
     // Close the detail panel so the two overlays don't compete (see openEdit).
     setDetailStudent(null);
     setModalOpen(true);
@@ -952,7 +948,7 @@ export default function Students() {
       {/* Add/Edit Modal */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); }}
+        onClose={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); setErrors({}); }}
         title={editingStudent ? 'Edit Student' : 'Add Student'}
         onSave={handleSubmit}
         saving={saving}
@@ -965,22 +961,26 @@ export default function Students() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
               <input
                 type="text"
+                data-field="name"
                 value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setForm({ ...form, name: e.target.value }); setErrors((x) => clearError(x, 'name')); }}
+                className={fieldCls('input-field', errors.name)}
                 placeholder="Student name"
                 required
               />
+              <FieldError msg={errors.name} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Parent Name</label>
               <input
                 type="text"
+                data-field="parent_name"
                 value={form.parent_name}
-                onChange={(e) => setForm({ ...form, parent_name: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setForm({ ...form, parent_name: e.target.value }); setErrors((x) => clearError(x, 'parent_name')); }}
+                className={fieldCls('input-field', errors.parent_name)}
                 placeholder="Parent name"
               />
+              <FieldError msg={errors.parent_name} />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -992,8 +992,9 @@ export default function Students() {
               </span>
               <input
                 type="tel"
+                data-field="mobile_number"
                 value={form.mobile_number}
-                onChange={(e) => setForm({ ...form, mobile_number: e.target.value })}
+                onChange={(e) => { setForm({ ...form, mobile_number: e.target.value }); setErrors((x) => clearError(x, 'mobile_number')); }}
                 onBlur={(e) => {
                   // Normalize to digits-only on blur; if user enters 10 digits,
                   // store the bare 10-digit number (we'll add +91 at WhatsApp time).
@@ -1004,12 +1005,13 @@ export default function Students() {
                     setForm({ ...form, mobile_number: cleaned });
                   }
                 }}
-                className="input-field rounded-l-none"
+                className={fieldCls('input-field rounded-l-none', errors.mobile_number)}
                 placeholder="98765 43210"
                 maxLength={12}
                 inputMode="numeric"
               />
             </div>
+            <FieldError msg={errors.mobile_number} />
             <p className="text-xs text-gray-400 mt-1">10-digit Indian mobile. +91 added automatically when sending.</p>
           </div>
           <div>
@@ -1031,13 +1033,15 @@ export default function Students() {
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
                 <input
                   type="number"
+                  data-field="monthly_fee"
                   value={form.monthly_fee}
-                  onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })}
-                  className="input-field pl-7"
+                  onChange={(e) => { setForm({ ...form, monthly_fee: e.target.value }); setErrors((x) => clearError(x, 'monthly_fee')); }}
+                  className={fieldCls('input-field pl-7', errors.monthly_fee)}
                   placeholder="0"
                   min="0"
                 />
               </div>
+              <FieldError msg={errors.monthly_fee} />
               <p className="text-xs text-gray-400 mt-1">Flat amount charged each month for this student.</p>
             </div>
           ) : (
@@ -1049,13 +1053,15 @@ export default function Students() {
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
                     <input
                       type="number"
+                      data-field="fee_online"
                       value={form.fee_online}
-                      onChange={(e) => setForm({ ...form, fee_online: e.target.value })}
-                      className="input-field pl-7"
+                      onChange={(e) => { setForm({ ...form, fee_online: e.target.value }); setErrors((x) => clearError(x, 'fee_online')); }}
+                      className={fieldCls('input-field pl-7', errors.fee_online)}
                       placeholder="0"
                       min="0"
                     />
                   </div>
+                  <FieldError msg={errors.fee_online} />
                 </div>
               )}
               {classModes.includes('offline') && (
@@ -1065,13 +1071,15 @@ export default function Students() {
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
                     <input
                       type="number"
+                      data-field="fee_offline"
                       value={form.fee_offline}
-                      onChange={(e) => setForm({ ...form, fee_offline: e.target.value })}
-                      className="input-field pl-7"
+                      onChange={(e) => { setForm({ ...form, fee_offline: e.target.value }); setErrors((x) => clearError(x, 'fee_offline')); }}
+                      className={fieldCls('input-field pl-7', errors.fee_offline)}
                       placeholder="0"
                       min="0"
                     />
                   </div>
+                  <FieldError msg={errors.fee_offline} />
                 </div>
               )}
               {classModes.includes('group') && (
@@ -1081,13 +1089,15 @@ export default function Students() {
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{'\u20B9'}</span>
                     <input
                       type="number"
+                      data-field="fee_offline_group"
                       value={form.fee_offline_group}
-                      onChange={(e) => setForm({ ...form, fee_offline_group: e.target.value })}
-                      className="input-field pl-7"
+                      onChange={(e) => { setForm({ ...form, fee_offline_group: e.target.value }); setErrors((x) => clearError(x, 'fee_offline_group')); }}
+                      className={fieldCls('input-field pl-7', errors.fee_offline_group)}
                       placeholder="0"
                       min="0"
                     />
                   </div>
+                  <FieldError msg={errors.fee_offline_group} />
                 </div>
               )}
             </div>
@@ -1097,13 +1107,15 @@ export default function Students() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Minimum classes per month</label>
               <input
                 type="number"
+                data-field="min_classes_per_month"
                 value={form.min_classes_per_month}
-                onChange={(e) => setForm({ ...form, min_classes_per_month: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setForm({ ...form, min_classes_per_month: e.target.value }); setErrors((x) => clearError(x, 'min_classes_per_month')); }}
+                className={fieldCls('input-field', errors.min_classes_per_month)}
                 placeholder="0 = no minimum"
                 min="0"
                 max="31"
               />
+              <FieldError msg={errors.min_classes_per_month} />
               <p className="text-xs text-gray-400 mt-1">
                 Fees page will flag students who attend fewer than this each month. Leave blank or 0 for no minimum.
               </p>
@@ -1168,11 +1180,13 @@ export default function Students() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
+                  data-field="email"
                   value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="input-field"
+                  onChange={(e) => { setForm({ ...form, email: e.target.value }); setErrors((x) => clearError(x, 'email')); }}
+                  className={fieldCls('input-field', errors.email)}
                   placeholder="parent@example.com"
                 />
+                <FieldError msg={errors.email} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Father's name</label>
@@ -1215,7 +1229,7 @@ export default function Students() {
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); }} className="btn-secondary">
+            <button type="button" onClick={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); setErrors({}); }} className="btn-secondary">
               Cancel
             </button>
           </div>

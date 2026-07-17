@@ -26,6 +26,8 @@ import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import ChangePassword from '../../components/ChangePassword';
+import FieldError from '../../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../../utils/validation';
 
 const EMPTY = {
   name: '',
@@ -45,6 +47,7 @@ export default function PortalProfile() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [errors, setErrors] = useState({});
   const [photoPreview, setPhotoPreview] = useState('');   // data URL shown after picking
   const fileInputRef = useRef(null);
 
@@ -108,6 +111,19 @@ export default function PortalProfile() {
   const handleSave = async (e) => {
     e?.preventDefault?.();
     if (saving || uploading) return;
+    // Per-field validation on the editable identity fields. Email is sourced
+    // from the login and rendered read-only, so it isn't validated here.
+    const errs = validate(form, {
+      name: V.name('Name'),
+      mobile_number: V.phone10(),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setErrors({});
     try {
       setSaving(true);
       // 1. Upload photo first (if any). Save the returned URL into form so
@@ -221,12 +237,14 @@ export default function PortalProfile() {
             <Field label="Full name" icon={User}>
               <input
                 type="text"
+                data-field="name"
                 value={form.name}
-                onChange={change('name')}
-                className="input-field"
+                onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); setErrors((x) => clearError(x, 'name')); }}
+                className={fieldCls('input-field', errors.name)}
                 placeholder="As it should appear on certificates"
                 required
               />
+              <FieldError msg={errors.name} />
             </Field>
             <Field label="Date of birth" icon={Cake}>
               <input
@@ -239,11 +257,13 @@ export default function PortalProfile() {
             <Field label="Mobile number" icon={Phone}>
               <input
                 type="tel"
+                data-field="mobile_number"
                 value={form.mobile_number}
-                onChange={change('mobile_number')}
-                className="input-field"
+                onChange={(e) => { setForm((f) => ({ ...f, mobile_number: e.target.value })); setErrors((x) => clearError(x, 'mobile_number')); }}
+                className={fieldCls('input-field', errors.mobile_number)}
                 placeholder="10-digit number"
               />
+              <FieldError msg={errors.mobile_number} />
             </Field>
             <Field label="Email" icon={Mail}>
               <input

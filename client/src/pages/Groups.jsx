@@ -20,6 +20,8 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import QuickCreateModal from '../components/QuickCreateModal';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 export default function Groups() {
   const navigate = useNavigate();
@@ -29,6 +31,7 @@ export default function Groups() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const [form, setForm] = useState({ name: '', description: '' });
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, group: null });
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -75,10 +78,16 @@ export default function Groups() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast.error('Please give the group a name.');
+    const errs = validate(form, {
+      name: V.text('Group name', { required: true, max: 80 }),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
       return;
     }
+    setErrors({});
     try {
       setSaving(true);
       if (editingGroup) {
@@ -93,7 +102,17 @@ export default function Groups() {
       setForm({ name: '', description: '' });
       fetchData();
     } catch (err) {
-      toast.error(err.message);
+      // The backend enforces a unique group name per academy and answers a
+      // duplicate with a 409 (field: 'name'). The api client surfaces that as
+      // err.message (the friendly "already exists" copy). Show it under the
+      // name field so the fix is obvious, rather than only a passing toast.
+      const msg = err?.message || '';
+      if (err?.field === 'name' || /already exists/i.test(msg)) {
+        setErrors({ name: msg || 'A group with this name already exists' });
+        focusField('name');
+        return;
+      }
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -103,12 +122,14 @@ export default function Groups() {
     e.stopPropagation();
     setEditingGroup(group);
     setForm({ name: group.name || '', description: group.description || '' });
+    setErrors({});
     setModalOpen(true);
   };
 
   const openAdd = () => {
     setEditingGroup(null);
     setForm({ name: '', description: '' });
+    setErrors({});
     setModalOpen(true);
   };
 
@@ -393,7 +414,7 @@ export default function Groups() {
       {/* Add/Edit Group Modal */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setEditingGroup(null); setForm({ name: '', description: '' }); }}
+        onClose={() => { setModalOpen(false); setEditingGroup(null); setForm({ name: '', description: '' }); setErrors({}); }}
         title={editingGroup ? 'Edit Group' : 'New Group'}
         size="sm"
         onSave={handleSubmit}
@@ -405,12 +426,14 @@ export default function Groups() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Group Name *</label>
             <input
               type="text"
+              data-field="name"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="input-field"
+              onChange={(e) => { setForm({ ...form, name: e.target.value }); setErrors((x) => clearError(x, 'name')); }}
+              className={fieldCls('input-field', errors.name)}
               placeholder="e.g., Beginners Batch"
               required
             />
+            <FieldError msg={errors.name} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>

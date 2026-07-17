@@ -30,6 +30,8 @@ import Timetable from '../components/Timetable';
 import ShareMeetingLinkDialog from '../components/ShareMeetingLinkDialog';
 import QuickCreateModal from '../components/QuickCreateModal';
 import { useModuleFlags } from '../hooks/useModuleFlags';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -60,6 +62,7 @@ export default function Classes() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, cls: null });
   const [shareDialog, setShareDialog] = useState({ open: false, cls: null });
@@ -98,6 +101,7 @@ export default function Classes() {
     perDay: [], // [{ day_date, start_time, end_time, class_type }]
     notes: '',
   });
+  const [campErrors, setCampErrors] = useState({});
   const [savingCamp, setSavingCamp] = useState(false);
 
   useEffect(() => {
@@ -233,14 +237,27 @@ export default function Classes() {
       perDay: [],
       notes: '',
     });
+    setCampErrors({});
     setCampFormOpen(true);
   }
   async function saveCamp() {
     const { name, group_id, start_date, total_days } = campForm;
-    if (!name.trim()) { toast.error('Name is required'); return; }
-    if (!group_id) { toast.error('Pick a group'); return; }
-    if (!start_date) { toast.error('Start date is required'); return; }
-    if (!total_days || total_days < 1) { toast.error('Total days must be at least 1'); return; }
+    // Per-field validation: highlight the offending inputs and show a specific
+    // message under each, rather than a single toast.
+    const errs = validate(campForm, {
+      name: V.text('Camp name', { required: true, max: 120 }),
+      start_date: V.date('Start date', { required: true }),
+      total_days: V.intInRange('Total days', 1, 60, { required: true }),
+      daily_fee: V.nonNegative('Daily fee'),
+    });
+    if (!group_id) errs.group_id = 'Please pick a group';
+    if (Object.keys(errs).length) {
+      setCampErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setCampErrors({});
     try {
       setSavingCamp(true);
       const schedule = buildScheduleFromForm();
@@ -424,6 +441,7 @@ export default function Classes() {
       return;
     }
     setForm((prev) => ({ ...prev, student_ids: [...prev.student_ids, id] }));
+    setErrors((x) => clearError(x, 'student_ids'));
   };
 
   // Remove a student from this class's roster (the extras / individual list).
@@ -460,6 +478,7 @@ export default function Classes() {
       else if (dup) toast(`${dup} already associated`, { icon: 'ℹ️' });
       return { ...prev, student_ids: merged };
     });
+    setErrors((x) => clearError(x, 'student_ids'));
   };
 
   const filteredStudentsList = students.filter((s) =>
@@ -482,23 +501,32 @@ export default function Classes() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const isGroup = isGroupType(form.class_type);
+    const online = isOnlineType(form.class_type);
 
-    if (isGroup && !form.group_id) {
-      toast.error('Please select a batch');
-      return;
+    // Per-field validation: highlight the offending inputs and show a specific
+    // message under each, rather than a single toast. Class name is optional
+    // (auto-named from the roster when blank), so it's length-capped only.
+    const rules = { name: V.text('Class name', { max: 120 }) };
+    if (online) rules.meeting_link = V.url();
+    const errs = validate(form, rules);
+    // Preserve the prior meeting-link length cap (V.url checks shape, not length).
+    if (online && !errs.meeting_link && (form.meeting_link || '').trim().length > 500) {
+      errs.meeting_link = 'That link is too long. Please use a shorter one.';
     }
-    if (!isGroup && form.student_ids.length === 0) {
-      toast.error('Please select at least one student');
-      return;
-    }
+    // Roster / batch requirements (cross-field, no single V.* fit).
+    if (isGroup && !form.group_id) errs.group_id = 'Please select a batch';
+    if (!isGroup && form.student_ids.length === 0) errs.student_ids = 'Please select at least one student';
+    // End must be after start (the V.* set has no time comparator, so guard here).
     if (form.start_time && form.end_time && form.start_time >= form.end_time) {
-      toast.error('End time should be after the start time.');
+      errs.end_time = 'End time should be after the start time';
+    }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
       return;
     }
-    if (isOnlineType(form.class_type) && (form.meeting_link || '').trim().length > 500) {
-      toast.error('That link is too long. Please use a shorter one.');
-      return;
-    }
+    setErrors({});
 
     const finalName = form.name.trim() || deriveName(isGroup);
 
@@ -560,6 +588,7 @@ export default function Classes() {
       meeting_link: cls.meeting_link || '',
     });
     setStudentSearch('');
+    setErrors({});
     setModalOpen(true);
   };
 
@@ -567,6 +596,7 @@ export default function Classes() {
     setEditingClass(null);
     setForm({ ...emptyForm, day_of_week: dayOfWeek ?? 0 });
     setStudentSearch('');
+    setErrors({});
     setModalOpen(true);
   };
 
@@ -579,6 +609,7 @@ export default function Classes() {
     const endTime = `${String(endH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
     setForm({ ...emptyForm, day_of_week: dayOfWeek ?? 0, start_time: startTime || '17:00', end_time: endTime });
     setStudentSearch('');
+    setErrors({});
     setModalOpen(true);
   };
 
@@ -910,7 +941,7 @@ export default function Classes() {
       {/* Camp create modal */}
       <Modal
         isOpen={campFormOpen}
-        onClose={() => setCampFormOpen(false)}
+        onClose={() => { setCampFormOpen(false); setCampErrors({}); }}
         title="New Camp"
         size="lg"
         onSave={saveCamp}
@@ -923,19 +954,22 @@ export default function Classes() {
               <label className="block text-xs font-medium text-gray-600 mb-1">Camp name *</label>
               <input
                 type="text"
+                data-field="name"
                 value={campForm.name}
-                onChange={(e) => setCampForm({ ...campForm, name: e.target.value })}
-                className="input-field text-sm"
+                onChange={(e) => { setCampForm({ ...campForm, name: e.target.value }); setCampErrors((x) => clearError(x, 'name')); }}
+                className={fieldCls('input-field text-sm', campErrors.name)}
                 placeholder="e.g. Summer Camp 2026"
               />
+              <FieldError msg={campErrors.name} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Group *</label>
               <div className="flex items-center gap-2">
                 <select
+                  data-field="group_id"
                   value={campForm.group_id}
-                  onChange={(e) => setCampForm({ ...campForm, group_id: e.target.value })}
-                  className="select-field text-sm flex-1"
+                  onChange={(e) => { setCampForm({ ...campForm, group_id: e.target.value }); setCampErrors((x) => clearError(x, 'group_id')); }}
+                  className={fieldCls('select-field text-sm flex-1', campErrors.group_id)}
                 >
                   <option value="">Select group...</option>
                   {groups.map((g) => (
@@ -946,37 +980,44 @@ export default function Classes() {
                   <Plus className="w-3.5 h-3.5" /> New
                 </button>
               </div>
+              <FieldError msg={campErrors.group_id} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Start date *</label>
               <input
                 type="date"
+                data-field="start_date"
                 value={campForm.start_date}
-                onChange={(e) => setCampForm({ ...campForm, start_date: e.target.value })}
-                className="input-field text-sm"
+                onChange={(e) => { setCampForm({ ...campForm, start_date: e.target.value }); setCampErrors((x) => clearError(x, 'start_date')); }}
+                className={fieldCls('input-field text-sm', campErrors.start_date)}
               />
+              <FieldError msg={campErrors.start_date} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Total days *</label>
               <input
                 type="number"
+                data-field="total_days"
                 min={1}
                 max={60}
                 value={campForm.total_days}
-                onChange={(e) => setCampForm({ ...campForm, total_days: Number(e.target.value) })}
-                className="input-field text-sm"
+                onChange={(e) => { setCampForm({ ...campForm, total_days: Number(e.target.value) }); setCampErrors((x) => clearError(x, 'total_days')); }}
+                className={fieldCls('input-field text-sm', campErrors.total_days)}
               />
+              <FieldError msg={campErrors.total_days} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs font-medium text-gray-600 mb-1">Daily fee (per student, optional)</label>
               <input
                 type="number"
+                data-field="daily_fee"
                 min={0}
                 value={campForm.daily_fee}
-                onChange={(e) => setCampForm({ ...campForm, daily_fee: Number(e.target.value) })}
-                className="input-field text-sm"
+                onChange={(e) => { setCampForm({ ...campForm, daily_fee: Number(e.target.value) }); setCampErrors((x) => clearError(x, 'daily_fee')); }}
+                className={fieldCls('input-field text-sm', campErrors.daily_fee)}
                 placeholder="0 = use student's group rate"
               />
+              <FieldError msg={campErrors.daily_fee} />
             </div>
           </div>
 
@@ -1256,7 +1297,7 @@ export default function Classes() {
       {/* Add/Edit Modal */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setEditingClass(null); setForm(emptyForm); setStudentSearch(''); }}
+        onClose={() => { setModalOpen(false); setEditingClass(null); setForm(emptyForm); setStudentSearch(''); setErrors({}); }}
         title={editingClass ? 'Edit Class' : 'Add Class'}
         size="md"
         onSave={handleSubmit}
@@ -1270,11 +1311,13 @@ export default function Classes() {
             </label>
             <input
               type="text"
+              data-field="name"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="input-field"
+              onChange={(e) => { setForm({ ...form, name: e.target.value }); setErrors((x) => clearError(x, 'name')); }}
+              className={fieldCls('input-field', errors.name)}
               placeholder="Auto-named from the student / batch"
             />
+            <FieldError msg={errors.name} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -1311,7 +1354,7 @@ export default function Classes() {
               <input
                 type="time"
                 value={form.start_time}
-                onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                onChange={(e) => { setForm({ ...form, start_time: e.target.value }); setErrors((x) => clearError(x, 'end_time')); }}
                 className="input-field"
               />
             </div>
@@ -1319,10 +1362,12 @@ export default function Classes() {
               <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
               <input
                 type="time"
+                data-field="end_time"
                 value={form.end_time}
-                onChange={(e) => setForm({ ...form, end_time: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setForm({ ...form, end_time: e.target.value }); setErrors((x) => clearError(x, 'end_time')); }}
+                className={fieldCls('input-field', errors.end_time)}
               />
+              <FieldError msg={errors.end_time} />
             </div>
           </div>
 
@@ -1337,11 +1382,13 @@ export default function Classes() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Meeting link</label>
               <input
                 type="url"
+                data-field="meeting_link"
                 value={form.meeting_link}
-                onChange={(e) => setForm({ ...form, meeting_link: e.target.value })}
+                onChange={(e) => { setForm({ ...form, meeting_link: e.target.value }); setErrors((x) => clearError(x, 'meeting_link')); }}
                 placeholder="https://meet.google.com/... or Zoom / Zoho Meet link"
-                className="input-field"
+                className={fieldCls('input-field', errors.meeting_link)}
               />
+              <FieldError msg={errors.meeting_link} />
               <p className="text-xs text-gray-400 mt-1">
                 Parents see a Join button on this class. Leave it blank to use the academy default link from Settings.
               </p>
@@ -1353,9 +1400,10 @@ export default function Classes() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Batch *</label>
               <div className="flex items-center gap-2">
                 <select
+                  data-field="group_id"
                   value={form.group_id}
-                  onChange={(e) => setForm({ ...form, group_id: e.target.value })}
-                  className="select-field flex-1"
+                  onChange={(e) => { setForm({ ...form, group_id: e.target.value }); setErrors((x) => clearError(x, 'group_id')); }}
+                  className={fieldCls('select-field flex-1', errors.group_id)}
                 >
                   <option value="">Select a batch...</option>
                   {groups.map((g) => (
@@ -1366,6 +1414,7 @@ export default function Classes() {
                   <Plus className="w-3.5 h-3.5" /> New
                 </button>
               </div>
+              <FieldError msg={errors.group_id} />
               <p className="text-xs text-gray-400 mt-1">Every batch member is included automatically.</p>
             </div>
           )}
@@ -1380,6 +1429,7 @@ export default function Classes() {
                     : `(${form.student_ids.length} selected)`}
                 </span>
               </label>
+              <FieldError msg={errors.student_ids} />
 
               {/* Selected student chips — batch members are shown locked (no X,
                   managed via the group); directly-added students get a remove X. */}
@@ -1429,6 +1479,7 @@ export default function Classes() {
               <div className="flex items-center gap-2 mb-1.5">
                 <input
                   type="text"
+                  data-field="student_ids"
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
                   className="input-field flex-1"
@@ -1437,7 +1488,7 @@ export default function Classes() {
                 <button type="button" onClick={() => openQuickCreate('student', 'class-student')} className="btn-secondary btn-sm flex-shrink-0 whitespace-nowrap">
                   <Plus className="w-3.5 h-3.5" /> New
                 </button>
-                <button type="button" onClick={() => setForm((prev) => ({ ...prev, student_ids: students.map((s) => s.id) }))} className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
+                <button type="button" onClick={() => { setForm((prev) => ({ ...prev, student_ids: students.map((s) => s.id) })); setErrors((x) => clearError(x, 'student_ids')); }} className="text-xs text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
                   Select All
                 </button>
                 <button type="button" onClick={() => setForm((prev) => ({ ...prev, student_ids: [] }))} className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap">

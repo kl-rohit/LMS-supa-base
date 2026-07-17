@@ -12,6 +12,8 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
 import TargetPicker from '../components/TargetPicker';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 const BLANK = { title: '', description: '', link: '', category: '', target_type: 'all', target_id: '', target_ids: [] };
 
@@ -23,6 +25,7 @@ export default function QuestionPapers() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(BLANK);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, paper: null });
 
@@ -46,8 +49,7 @@ export default function QuestionPapers() {
     }
   };
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const openAdd = () => { setEditing(null); setForm(BLANK); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm(BLANK); setErrors({}); setModalOpen(true); };
   const openEdit = (p) => {
     setEditing(p);
     setForm({
@@ -55,18 +57,24 @@ export default function QuestionPapers() {
       target_type: p.target_type || 'all', target_id: p.target_id || '',
       target_ids: Array.isArray(p.target_ids) ? p.target_ids : [],
     });
+    setErrors({});
     setModalOpen(true);
   };
 
-  const looksLikeLink = (link) => /^https?:\/\//i.test(link) || link.includes('.');
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title.trim()) { toast.error('Title is required'); return; }
-    if (!form.link.trim()) { toast.error('A link to the paper is required'); return; }
-    if (!looksLikeLink(form.link.trim())) {
-      toast('Links usually start with https://. Please check yours.');
+    const errs = validate(form, {
+      title: V.text('Title', { required: true, max: 120 }),
+      link: V.url({ required: true }),
+      description: V.maxLen('Description', 1000),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
     }
+    setErrors({});
     try {
       setSaving(true);
       if (editing) {
@@ -169,7 +177,7 @@ export default function QuestionPapers() {
 
       <Modal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }}
+        onClose={() => { setModalOpen(false); setEditing(null); setForm(BLANK); setErrors({}); }}
         title={editing ? 'Edit Question Paper' : 'Add Question Paper'}
         size="sm"
         onSave={handleSubmit}
@@ -179,19 +187,22 @@ export default function QuestionPapers() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-            <input type="text" value={form.title} onChange={set('title')} className="input-field" placeholder="e.g., Grade 5 Theory — 2024 Paper" required />
+            <input type="text" data-field="title" value={form.title} onChange={(e) => { setForm((f) => ({ ...f, title: e.target.value })); setErrors((x) => clearError(x, 'title')); }} className={fieldCls('input-field', errors.title)} placeholder="e.g., Grade 5 Theory — 2024 Paper" required />
+            <FieldError msg={errors.title} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <input type="text" value={form.category} onChange={set('category')} className="input-field" placeholder="e.g., Grade 5, Practice, Mock exam (optional)" />
+            <input type="text" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} className="input-field" placeholder="e.g., Grade 5, Practice, Mock exam (optional)" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Link *</label>
-            <input type="url" value={form.link} onChange={set('link')} className="input-field" placeholder="https://drive.google.com/… or PDF URL" required />
+            <input type="url" data-field="link" value={form.link} onChange={(e) => { setForm((f) => ({ ...f, link: e.target.value })); setErrors((x) => clearError(x, 'link')); }} className={fieldCls('input-field', errors.link)} placeholder="https://drive.google.com/… or PDF URL" required />
+            <FieldError msg={errors.link} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea value={form.description} onChange={set('description')} className="input-field" rows={3} placeholder="Optional notes for students…" />
+            <textarea data-field="description" value={form.description} onChange={(e) => { setForm((f) => ({ ...f, description: e.target.value })); setErrors((x) => clearError(x, 'description')); }} className={fieldCls('input-field', errors.description)} rows={3} placeholder="Optional notes for students…" />
+            <FieldError msg={errors.description} />
           </div>
           <TargetPicker
             value={{ target_type: form.target_type, target_id: form.target_id, target_ids: form.target_ids }}

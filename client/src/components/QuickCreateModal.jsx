@@ -15,6 +15,8 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import Modal from './Modal';
 import api from '../utils/api';
+import FieldError from './FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 const BLANK = {
   name: '',
@@ -25,23 +27,37 @@ const BLANK = {
 
 export default function QuickCreateModal({ type, isOpen, onClose, onCreated }) {
   const [form, setForm] = useState(BLANK);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
   // Reset the form each time the modal is opened so a previous entry never
   // bleeds into the next quick-create.
   useEffect(() => {
-    if (isOpen) setForm(BLANK);
+    if (isOpen) { setForm(BLANK); setErrors({}); }
   }, [isOpen, type]);
 
   const isStudent = type === 'student';
   const title = isStudent ? 'Add a student' : 'Add a group';
 
-  const valid = isStudent
-    ? form.name.trim() && form.parent_name.trim() && String(form.mobile_number).replace(/\D/g, '').length >= 7
-    : form.name.trim();
-
   const save = async () => {
-    if (!valid || saving) return;
+    if (saving) return;
+    // Per-field validation: highlight the offending inputs rather than a single toast.
+    const errs = isStudent
+      ? validate(form, {
+          name: V.name('Student name'),
+          parent_name: V.name('Parent name'),
+          mobile_number: V.phone10({ required: true }),
+        })
+      : validate(form, {
+          name: V.text('Group name', { required: true, max: 80 }),
+        });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setErrors({});
     setSaving(true);
     try {
       if (isStudent) {
@@ -75,7 +91,6 @@ export default function QuickCreateModal({ type, isOpen, onClose, onCreated }) {
       size="sm"
       onSave={save}
       saving={saving}
-      saveDisabled={!valid}
       saveLabel="Add"
     >
       <div className="space-y-3">
@@ -86,12 +101,14 @@ export default function QuickCreateModal({ type, isOpen, onClose, onCreated }) {
           <input
             type="text"
             autoFocus
+            data-field="name"
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="input-field"
+            onChange={(e) => { setForm({ ...form, name: e.target.value }); setErrors((x) => clearError(x, 'name')); }}
+            className={fieldCls('input-field', errors.name)}
             placeholder={isStudent ? 'Full name' : 'e.g. Batch A'}
             onKeyDown={(e) => { if (e.key === 'Enter' && !isStudent) save(); }}
           />
+          <FieldError msg={errors.name} />
         </div>
 
         {isStudent ? (
@@ -100,22 +117,26 @@ export default function QuickCreateModal({ type, isOpen, onClose, onCreated }) {
               <label className="block text-sm font-medium text-gray-700 mb-1">Parent name</label>
               <input
                 type="text"
+                data-field="parent_name"
                 value={form.parent_name}
-                onChange={(e) => setForm({ ...form, parent_name: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setForm({ ...form, parent_name: e.target.value }); setErrors((x) => clearError(x, 'parent_name')); }}
+                className={fieldCls('input-field', errors.parent_name)}
                 placeholder="Parent or guardian"
               />
+              <FieldError msg={errors.parent_name} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mobile number</label>
               <input
                 type="tel"
+                data-field="mobile_number"
                 value={form.mobile_number}
-                onChange={(e) => setForm({ ...form, mobile_number: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setForm({ ...form, mobile_number: e.target.value }); setErrors((x) => clearError(x, 'mobile_number')); }}
+                className={fieldCls('input-field', errors.mobile_number)}
                 placeholder="10-digit mobile"
                 onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
               />
+              <FieldError msg={errors.mobile_number} />
             </div>
             <p className="text-xs text-gray-400">
               You can fill in the rest of the details later from the Students page.

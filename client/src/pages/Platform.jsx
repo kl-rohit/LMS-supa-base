@@ -57,6 +57,8 @@ import EmptyState from '../components/EmptyState';
 import Tooltip from '../components/Tooltip';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 // Sign-in message shared with a new academy owner (no email — WhatsApp/in person).
 const PLATFORM_LOGIN_URL = `${window.location.origin}${(process.env.PUBLIC_URL || '/').replace(/\/$/, '')}/login`;
@@ -140,7 +142,11 @@ export default function Platform() {
   const [creating, setCreating] = useState(false);
   const emptyForm = { academy_name: '', first_name: '', last_name: '', owner_email: '' };
   const [createForm, setCreateForm] = useState(emptyForm);
-  const setCF = (k) => (e) => setCreateForm((f) => ({ ...f, [k]: e.target.value }));
+  const [createErrors, setCreateErrors] = useState({});
+  const setCF = (k) => (e) => {
+    setCreateForm((f) => ({ ...f, [k]: e.target.value }));
+    setCreateErrors((x) => clearError(x, k));
+  };
   // Sign-in details to share after creating/resetting an owner (shown once).
   const [credModal, setCredModal] = useState(null); // { email, password, academyName } | null
 
@@ -444,11 +450,18 @@ export default function Platform() {
   const createAcademy = async (e) => {
     e.preventDefault();
     const f = createForm;
-    if (!f.academy_name.trim()) return toast.error('Academy name is required.');
-    if (!f.first_name.trim()) return toast.error("Owner's first name is required.");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.owner_email)) {
-      return toast.error('A valid owner email is required.');
+    const errs = validate(f, {
+      academy_name: V.text('Academy name', { required: true, max: 120 }),
+      first_name: V.name('Owner first name'),
+      owner_email: V.email({ required: true }),
+    });
+    if (Object.keys(errs).length) {
+      setCreateErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
     }
+    setCreateErrors({});
     try {
       setCreating(true);
       const data = await api.post('/auth/signup', {
@@ -899,8 +912,9 @@ export default function Platform() {
                 search={search}
                 setSearch={setSearch}
                 showCreate={showCreate}
-                setShowCreate={setShowCreate}
+                setShowCreate={(v) => { setShowCreate(v); setCreateErrors({}); }}
                 createForm={createForm}
+                createErrors={createErrors}
                 setCF={setCF}
                 creating={creating}
                 createAcademy={createAcademy}
@@ -1526,7 +1540,7 @@ function OverviewSection({ orgs, stats, revenue, funnel, engagement, trialWatch,
 // Academies section — create form, search, orgs table.
 // ----------------------------------------------------------------------------
 function AcademiesSection({
-  orgs, filteredOrgs, search, setSearch, showCreate, setShowCreate, createForm, setCF,
+  orgs, filteredOrgs, search, setSearch, showCreate, setShowCreate, createForm, createErrors, setCF,
   creating, createAcademy, impersonating, openDetail, startImpersonate, replayOnboarding,
   setOrgStatus, setOrgPlan, setOrgStudentLimit,
 }) {
@@ -1556,13 +1570,15 @@ function AcademiesSection({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Academy name</label>
-              <input type="text" value={createForm.academy_name} onChange={setCF('academy_name')}
-                className="input-field" placeholder="e.g. Sangeet Sadhana" autoFocus required />
+              <input type="text" data-field="academy_name" value={createForm.academy_name} onChange={setCF('academy_name')}
+                className={fieldCls('input-field', createErrors.academy_name)} placeholder="e.g. Sangeet Sadhana" autoFocus required />
+              <FieldError msg={createErrors.academy_name} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Owner first name</label>
-              <input type="text" value={createForm.first_name} onChange={setCF('first_name')}
-                className="input-field" placeholder="First name" required />
+              <input type="text" data-field="first_name" value={createForm.first_name} onChange={setCF('first_name')}
+                className={fieldCls('input-field', createErrors.first_name)} placeholder="First name" required />
+              <FieldError msg={createErrors.first_name} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Owner last name</label>
@@ -1571,8 +1587,9 @@ function AcademiesSection({
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Owner email</label>
-              <input type="email" value={createForm.owner_email} onChange={setCF('owner_email')}
-                className="input-field" placeholder="owner@example.com" required />
+              <input type="email" data-field="owner_email" value={createForm.owner_email} onChange={setCF('owner_email')}
+                className={fieldCls('input-field', createErrors.owner_email)} placeholder="owner@example.com" required />
+              <FieldError msg={createErrors.owner_email} />
             </div>
           </div>
           <div className="flex justify-end">

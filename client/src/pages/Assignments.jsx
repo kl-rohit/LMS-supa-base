@@ -20,6 +20,8 @@ import Loader from '../components/Loader';
 import EmptyState from '../components/EmptyState';
 import Pagination, { usePagination } from '../components/Pagination';
 import TargetPicker from '../components/TargetPicker';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 const BLANK = {
   title: '', kind: 'task', instructions: '', link: '', due_date: '',
@@ -34,6 +36,7 @@ export default function Assignments() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(BLANK);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, assignment: null });
 
@@ -58,9 +61,7 @@ export default function Assignments() {
     }
   };
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const openAdd = () => { setEditing(null); setForm(BLANK); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm(BLANK); setErrors({}); setModalOpen(true); };
   const openEdit = (a) => {
     setEditing(a);
     setForm({
@@ -73,16 +74,27 @@ export default function Assignments() {
       target_id: a.target_id || '',
       target_ids: Array.isArray(a.target_ids) ? a.target_ids : [],
     });
+    setErrors({});
     setModalOpen(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title.trim()) { toast.error('Title is required'); return; }
-    if (form.target_type === 'group' && !form.target_id) { toast.error('Choose a group'); return; }
-    if (form.target_type === 'students' && (form.target_ids || []).length === 0) {
-      toast.error('Pick at least one student'); return;
+    const errs = validate(form, {
+      title: V.text('Title', { required: true, max: 120 }),
+      instructions: V.maxLen('Instructions', 1000),
+      link: V.url(),
+      due_date: V.date('Due date'),
+      target_id: (v, all) => (all.target_type === 'group' && !v) ? 'Please choose a group' : null,
+      target_ids: (v, all) => (all.target_type === 'students' && (!Array.isArray(v) || v.length === 0)) ? 'Please pick at least one student' : null,
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
     }
+    setErrors({});
     const payload = {
       title: form.title.trim(),
       kind: 'task',
@@ -234,7 +246,7 @@ export default function Assignments() {
       {/* Create / Edit modal */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setEditing(null); setForm(BLANK); }}
+        onClose={() => { setModalOpen(false); setEditing(null); setForm(BLANK); setErrors({}); }}
         title={editing ? 'Edit Assignment' : 'New Assignment'}
         size="md"
         onSave={handleSubmit}
@@ -244,33 +256,40 @@ export default function Assignments() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-            <input type="text" value={form.title} onChange={set('title')} className="input-field" placeholder="e.g., Practice Raga Yaman, 10 bars" required />
+            <input type="text" data-field="title" value={form.title} onChange={(e) => { setForm((f) => ({ ...f, title: e.target.value })); setErrors((x) => clearError(x, 'title')); }} className={fieldCls('input-field', errors.title)} placeholder="e.g., Practice Raga Yaman, 10 bars" required />
+            <FieldError msg={errors.title} />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Instructions</label>
-            <textarea value={form.instructions} onChange={set('instructions')} className="input-field" rows={3} placeholder="What should the student do?" />
+            <textarea data-field="instructions" value={form.instructions} onChange={(e) => { setForm((f) => ({ ...f, instructions: e.target.value })); setErrors((x) => clearError(x, 'instructions')); }} className={fieldCls('input-field', errors.instructions)} rows={3} placeholder="What should the student do?" />
+            <FieldError msg={errors.instructions} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Attachment link</label>
-            <input type="url" value={form.link} onChange={set('link')} className="input-field" placeholder="https://drive.google.com/… (optional)" />
+            <input type="url" data-field="link" value={form.link} onChange={(e) => { setForm((f) => ({ ...f, link: e.target.value })); setErrors((x) => clearError(x, 'link')); }} className={fieldCls('input-field', errors.link)} placeholder="https://drive.google.com/… (optional)" />
+            <FieldError msg={errors.link} />
             <p className="text-xs text-gray-400 mt-1">Paste a Google Drive / PDF link if there's a worksheet.</p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Due date</label>
-            <input type="date" value={form.due_date} onChange={set('due_date')} className="input-field" />
+            <input type="date" data-field="due_date" value={form.due_date} onChange={(e) => { setForm((f) => ({ ...f, due_date: e.target.value })); setErrors((x) => clearError(x, 'due_date')); }} className={fieldCls('input-field', errors.due_date)} />
+            <FieldError msg={errors.due_date} />
           </div>
 
           {/* Targeting — shared picker (Everyone / group / specific students) */}
-          <TargetPicker
-            value={{ target_type: form.target_type, target_id: form.target_id, target_ids: form.target_ids }}
-            groups={groups}
-            students={students}
-            onChange={(v) => setForm((f) => ({ ...f, ...v }))}
-            onCreateStudent={fetchData}
-            onCreateGroup={fetchData}
-          />
+          <div>
+            <TargetPicker
+              value={{ target_type: form.target_type, target_id: form.target_id, target_ids: form.target_ids }}
+              groups={groups}
+              students={students}
+              onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+              onCreateStudent={fetchData}
+              onCreateGroup={fetchData}
+            />
+            <FieldError msg={errors.target_id || errors.target_ids} />
+          </div>
         </form>
       </Modal>
 

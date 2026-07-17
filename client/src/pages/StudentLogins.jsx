@@ -32,6 +32,8 @@ import { normalizeMobileForWhatsApp } from '../utils/phone';
 import { maskEmail } from '../utils/mask';
 import { useRevealTimer } from '../hooks/useRevealTimer';
 import { useOrgBranding } from '../hooks/useOrgBranding';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 const BASE = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
 const LOGIN_URL = `${window.location.origin}${BASE}/login`;
@@ -80,6 +82,7 @@ export default function StudentLogins() {
   const [search, setSearch] = useState('');
   const [createFor, setCreateFor] = useState(null); // student object
   const [createEmail, setCreateEmail] = useState('');
+  const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [created, setCreated] = useState(null); // { student, email, password, reused }
@@ -137,13 +140,21 @@ export default function StudentLogins() {
   const openCreate = (student) => {
     setCreateFor(student);
     setCreateEmail('');
+    setErrors({});
   };
 
   const handleCreate = async () => {
-    if (!createFor || !createEmail.trim()) {
-      toast.error('Email is required');
+    if (!createFor) return;
+    const errs = validate({ email: createEmail }, {
+      email: V.email({ required: true }),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
       return;
     }
+    setErrors({});
     setSubmitting(true);
     try {
       const resp = await api.post('/student-logins', {
@@ -512,7 +523,7 @@ export default function StudentLogins() {
       {/* Create login modal */}
       <Modal
         isOpen={!!createFor}
-        onClose={() => setCreateFor(null)}
+        onClose={() => { setCreateFor(null); setErrors({}); }}
         title={`Create login for ${createFor?.name || ''}`}
         size="md"
         onSave={handleCreate}
@@ -530,12 +541,14 @@ export default function StudentLogins() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Parent email *</label>
               <input
                 type="email"
+                data-field="email"
                 value={createEmail}
-                onChange={(e) => setCreateEmail(e.target.value)}
+                onChange={(e) => { setCreateEmail(e.target.value); setErrors((x) => clearError(x, 'email')); }}
                 placeholder="parent@example.com"
-                className="input-field"
+                className={fieldCls('input-field', errors.email)}
                 autoFocus
               />
+              <FieldError msg={errors.email} />
               <p className="text-xs text-gray-500 mt-1">
                 We'll create the login and show you a password to share with the parent (a "Send on WhatsApp" button makes it one tap).
               </p>

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Video, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
+import FieldError from './FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 // Paste a meeting link (any platform) and push it to a class's students. Saves
 // the link on the class (so the portal Join button updates) and sends an in-app
@@ -16,7 +18,11 @@ import api from '../utils/api';
 export default function ShareMeetingLinkDialog({ open, onClose, classObj, students }) {
   const [link, setLink] = useState(classObj?.meeting_link || '');
   const [selected, setSelected] = useState(() => new Set((students || []).map((s) => String(s.id))));
+  const [errors, setErrors] = useState({});
   const [sending, setSending] = useState(false);
+
+  // Clear any stale field errors as the dialog is opened or closed.
+  useEffect(() => { setErrors({}); }, [open]);
 
   if (!open || !classObj) return null;
 
@@ -31,7 +37,14 @@ export default function ShareMeetingLinkDialog({ open, onClose, classObj, studen
 
   const send = async () => {
     const url = link.trim();
-    if (!url) { toast.error('Paste a meeting link first'); return; }
+    const errs = validate({ meeting_link: url }, { meeting_link: V.url({ required: true }) });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setErrors({});
     if (students && students.length && selected.size === 0) { toast.error('Select at least one student'); return; }
     setSending(true);
     try {
@@ -63,11 +76,13 @@ export default function ShareMeetingLinkDialog({ open, onClose, classObj, studen
 
         <input
           type="url"
+          data-field="meeting_link"
           value={link}
-          onChange={(e) => setLink(e.target.value)}
+          onChange={(e) => { setLink(e.target.value); setErrors((x) => clearError(x, 'meeting_link')); }}
           placeholder="https://..."
-          className="mt-3 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-900"
+          className={fieldCls('mt-3 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm text-gray-900', errors.meeting_link)}
         />
+        <FieldError msg={errors.meeting_link} />
 
         {students && students.length > 0 && (
           <div className="mt-3">

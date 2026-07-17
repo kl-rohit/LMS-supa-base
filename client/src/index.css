@@ -59,6 +59,8 @@
 .dark .text-red-600,
 .dark .text-red-700,
 .dark .text-red-800 { color: #fca5a5; }
+/* .field-error bakes text-red-600 in via @apply, so it needs its own dark remap. */
+.dark .field-error { color: #fca5a5; }
 .dark .border-red-100,
 .dark .border-red-200,
 .dark .border-red-300 { border-color: rgba(248, 113, 113, 0.30); }
@@ -232,6 +234,19 @@
 
   .select-field {
     @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all duration-200 bg-white;
+  }
+
+  /* Invalid field: red border + red focus ring, overriding the indigo default.
+     Added by the validation helpers (fieldCls) when a field fails. */
+  .input-field.input-error,
+  .select-field.input-error,
+  .input-error {
+    @apply border-red-400 focus:border-red-500 focus:ring-red-400;
+  }
+
+  /* Inline per-field error message under an input. */
+  .field-error {
+    @apply flex items-start gap-1.5 mt-1 text-xs font-medium text-red-600;
   }
 
   .card {

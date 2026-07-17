@@ -32,6 +32,8 @@ import Modal from '../components/Modal';
 import Tooltip from '../components/Tooltip';
 import QuizEditor from '../components/QuizEditor';
 import TargetPicker from '../components/TargetPicker';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { extractYouTubeId, ytThumbnail, formatDuration, parseTimeString, parseChapters, extractDriveId } from '../utils/youtube';
 import {
@@ -193,10 +195,14 @@ export default function Lessons() {
   const [courseModalOpen, setCourseModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState(null);
   const [courseForm, setCourseForm] = useState(blankCourse);
+  // Per-field validation errors. Course and Lesson forms share the field name
+  // 'description', so keep two separate maps rather than one keyed object.
+  const [courseErrors, setCourseErrors] = useState({});
 
   const [lessonModalOpen, setLessonModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState(null);
   const [lessonForm, setLessonForm] = useState(blankLesson);
+  const [lessonErrors, setLessonErrors] = useState({});
 
   // Quiz authoring modal — holds the quiz lesson whose questions are edited.
   const [quizLesson, setQuizLesson] = useState(null);
@@ -299,6 +305,7 @@ export default function Lessons() {
   const openCreateCourse = () => {
     setEditingCourse(null);
     setCourseForm(blankCourse);
+    setCourseErrors({});
     setCourseModalOpen(true);
   };
   const openEditCourse = (c) => {
@@ -308,10 +315,21 @@ export default function Lessons() {
       description: c.description || '',
       thumbnail_url: c.thumbnail_url || '',
     });
+    setCourseErrors({});
     setCourseModalOpen(true);
   };
   const saveCourse = async () => {
-    if (!courseForm.name.trim()) { toast.error('Name is required'); return; }
+    const errs = validate(courseForm, {
+      name: V.text('Name', { required: true, max: 120 }),
+      description: V.maxLen('Description', 2000),
+    });
+    if (Object.keys(errs).length) {
+      setCourseErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setCourseErrors({});
     try {
       if (editingCourse) {
         await api.put(`/courses/${editingCourse.id}`, courseForm);
@@ -348,10 +366,12 @@ export default function Lessons() {
   const openCreateLesson = () => {
     setEditingLesson(null);
     setLessonForm(blankLesson);
+    setLessonErrors({});
     setLessonModalOpen(true);
   };
   const openEditLesson = (l) => {
     setEditingLesson(l);
+    setLessonErrors({});
     setLessonForm({
       title: l.title || '',
       description: l.description || '',
@@ -368,36 +388,39 @@ export default function Lessons() {
     setLessonModalOpen(true);
   };
   const saveLesson = async () => {
-    if (!lessonForm.title.trim()) {
-      toast.error('Title is required');
-      return;
-    }
     const isDoc = lessonForm.content_type === 'document';
     const isQuiz = lessonForm.content_type === 'quiz';
 
-    // Quiz lessons carry no URL — questions are authored separately.
-    if (!isQuiz) {
-      const url = isDoc ? lessonForm.content_url.trim() : lessonForm.video_url.trim();
-      if (!url) {
-        toast.error(isDoc ? 'Drive URL is required' : 'YouTube URL is required');
-        return;
-      }
-      if (isDoc) {
-        if (!extractDriveId(url)) {
-          toast.error("Doesn't look like a valid Google Drive URL");
-          return;
-        }
-      } else if (!extractYouTubeId(url)) {
-        toast.error("Doesn't look like a valid YouTube URL");
-        return;
-      }
+    // Per-field validation. The URL rule is required only when the lesson
+    // actually needs one: document lessons need a Drive link, video lessons a
+    // YouTube link. Quiz lessons carry no URL (questions are authored separately).
+    const rules = {
+      title: V.text('Title', { required: true, max: 120 }),
+      description: V.maxLen('Description', 2000),
+    };
+    if (isDoc) rules.content_url = V.url({ required: true });
+    else if (!isQuiz) rules.video_url = V.url({ required: true });
+    const errs = validate(lessonForm, rules);
+    // Beyond a well-formed link, the link must point at the right service. Only
+    // check this once the basic URL rule has passed, and surface it inline.
+    if (isDoc && !errs.content_url && !extractDriveId(lessonForm.content_url.trim())) {
+      errs.content_url = 'That does not look like a Google Drive link. Please check it and try again.';
+    } else if (!isDoc && !isQuiz && !errs.video_url && !extractYouTubeId(lessonForm.video_url.trim())) {
+      errs.video_url = 'That does not look like a YouTube link. Please check it and try again.';
     }
+    if (Object.keys(errs).length) {
+      setLessonErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setLessonErrors({});
 
     const url = isQuiz ? '' : (isDoc ? lessonForm.content_url.trim() : lessonForm.video_url.trim());
     const start = (isDoc || isQuiz) ? 0 : parseTimeString(lessonForm.start_seconds_str);
     const end   = (isDoc || isQuiz) ? 0 : parseTimeString(lessonForm.end_seconds_str);
     if (end > 0 && start >= end) {
-      toast.error('End time must be after start time');
+      toast.error('End time should be after the start time');
       return;
     }
     const payload = {
@@ -751,7 +774,7 @@ export default function Lessons() {
         {/* Lesson modal */}
         <Modal
           isOpen={lessonModalOpen}
-          onClose={() => setLessonModalOpen(false)}
+          onClose={() => { setLessonModalOpen(false); setLessonErrors({}); }}
           title={editingLesson ? 'Edit lesson' : 'Add lesson'}
           size="md"
           onSave={saveLesson}
@@ -809,23 +832,27 @@ export default function Lessons() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
               <input
                 type="text"
+                data-field="title"
                 value={lessonForm.title}
-                onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
-                className="input-field"
+                onChange={(e) => { setLessonForm({ ...lessonForm, title: e.target.value }); setLessonErrors((x) => clearError(x, 'title')); }}
+                className={fieldCls('input-field', lessonErrors.title)}
                 placeholder={lessonForm.content_type === 'document' ? 'e.g. Raag Yaman — Notation PDF' : 'e.g. Lesson 3 — Raag Yaman'}
                 autoFocus
               />
+              <FieldError msg={lessonErrors.title} />
             </div>
             {lessonForm.content_type === 'document' ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Google Drive URL *</label>
                 <input
                   type="url"
+                  data-field="content_url"
                   value={lessonForm.content_url}
-                  onChange={(e) => setLessonForm({ ...lessonForm, content_url: e.target.value })}
-                  className="input-field"
+                  onChange={(e) => { setLessonForm({ ...lessonForm, content_url: e.target.value }); setLessonErrors((x) => clearError(x, 'content_url')); }}
+                  className={fieldCls('input-field', lessonErrors.content_url)}
                   placeholder="https://drive.google.com/file/d/..."
                 />
+                <FieldError msg={lessonErrors.content_url} />
                 <p className="text-xs text-gray-400 mt-1">
                   In Drive: share the file as "Anyone with the link can view".
                   For best privacy, disable download/print/copy in Drive's sharing settings.
@@ -877,11 +904,13 @@ export default function Lessons() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">YouTube URL *</label>
                 <input
                   type="url"
+                  data-field="video_url"
                   value={lessonForm.video_url}
-                  onChange={(e) => setLessonForm({ ...lessonForm, video_url: e.target.value })}
-                  className="input-field"
+                  onChange={(e) => { setLessonForm({ ...lessonForm, video_url: e.target.value }); setLessonErrors((x) => clearError(x, 'video_url')); }}
+                  className={fieldCls('input-field', lessonErrors.video_url)}
                   placeholder="https://youtu.be/..."
                 />
+                <FieldError msg={lessonErrors.video_url} />
                 <p className="text-xs text-gray-400 mt-1">Paste an unlisted YouTube link. Public links work too.</p>
               </div>
             )}
@@ -948,9 +977,10 @@ export default function Lessons() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
               <textarea
+                data-field="description"
                 value={lessonForm.description}
-                onChange={(e) => setLessonForm({ ...lessonForm, description: e.target.value })}
-                className="input-field resize-none font-mono text-sm"
+                onChange={(e) => { setLessonForm({ ...lessonForm, description: e.target.value }); setLessonErrors((x) => clearError(x, 'description')); }}
+                className={fieldCls('input-field resize-none font-mono text-sm', lessonErrors.description)}
                 rows={6}
                 placeholder={lessonForm.content_type === 'video'
                   ? 'Add lines like:\n0:00 Introduction\n2:30 Vocal warm-up\n5:45 Raag Yaman alaap'
@@ -958,6 +988,7 @@ export default function Lessons() {
                   ? 'Optional intro shown above the quiz (e.g. "10 questions, 70% to pass").'
                   : 'Optional notes shown with this document.'}
               />
+              <FieldError msg={lessonErrors.description} />
               {lessonForm.content_type === 'video' && (
                 <p className="text-xs text-gray-400 mt-1">
                   Lines that start with a timestamp (e.g. <span className="font-mono">0:00 Introduction</span>) become clickable chapter markers in the parent's player.
@@ -999,11 +1030,13 @@ export default function Lessons() {
 
         <CourseModal
           isOpen={courseModalOpen}
-          onClose={() => setCourseModalOpen(false)}
+          onClose={() => { setCourseModalOpen(false); setCourseErrors({}); }}
           form={courseForm}
           setForm={setCourseForm}
           onSave={saveCourse}
           isEdit={!!editingCourse}
+          errors={courseErrors}
+          setErrors={setCourseErrors}
         />
 
         {/* Quiz authoring */}
@@ -1157,17 +1190,20 @@ export default function Lessons() {
 
       <CourseModal
         isOpen={courseModalOpen}
-        onClose={() => setCourseModalOpen(false)}
+        onClose={() => { setCourseModalOpen(false); setCourseErrors({}); }}
         form={courseForm}
         setForm={setCourseForm}
         onSave={saveCourse}
         isEdit={!!editingCourse}
+        errors={courseErrors}
+        setErrors={setCourseErrors}
       />
     </div>
   );
 }
 
-function CourseModal({ isOpen, onClose, form, setForm, onSave, isEdit }) {
+function CourseModal({ isOpen, onClose, form, setForm, onSave, isEdit, errors = {}, setErrors }) {
+  const clear = (field) => setErrors && setErrors((x) => clearError(x, field));
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? 'Edit course' : 'New course'} size="md" onSave={onSave} saveLabel={isEdit ? 'Save' : 'Create course'}>
       <div className="space-y-4">
@@ -1175,21 +1211,25 @@ function CourseModal({ isOpen, onClose, form, setForm, onSave, isEdit }) {
           <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
           <input
             type="text"
+            data-field="name"
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="input-field"
+            onChange={(e) => { setForm({ ...form, name: e.target.value }); clear('name'); }}
+            className={fieldCls('input-field', errors.name)}
             placeholder="e.g. Beginner Carnatic Vocals"
             autoFocus
           />
+          <FieldError msg={errors.name} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
           <textarea
+            data-field="description"
             value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            className="input-field resize-none"
+            onChange={(e) => { setForm({ ...form, description: e.target.value }); clear('description'); }}
+            className={fieldCls('input-field resize-none', errors.description)}
             rows={3}
           />
+          <FieldError msg={errors.description} />
         </div>
       </div>
     </Modal>

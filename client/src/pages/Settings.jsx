@@ -54,6 +54,23 @@ import { PRESETS, presetSwatch, applyTheme, saveTheme, loadTheme } from '../util
 import { DAY_NAMES, parseWorkingHours, serializeWorkingHours } from '../utils/workingHours';
 import { SUPPORT_PHONE_TEL, BRAND_NAME } from '../config';
 import { useNavigate, useLocation } from 'react-router-dom';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
+
+// Which tab each validated field lives on, so a save can jump to the tab that
+// holds the first error before focusing it.
+const FIELD_TAB = {
+  'school.contact_phone':        'school',
+  'school.contact_email':        'school',
+  'online.default_link':         'schedule',
+  'billing.default_monthly_fee': 'billing',
+  'billing.default_online_fee':  'billing',
+  'billing.default_offline_fee': 'billing',
+  'billing.default_group_fee':   'billing',
+  'billing.default_min_classes': 'billing',
+  'billing.fee_reminder_day':    'billing',
+  'fees.upi_id':                 'billing',
+};
 
 // Shape of the settings object we round-trip with the backend. Keys must
 // match the whitelist in functions/api/routes/settings.js.
@@ -147,6 +164,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_SETTINGS);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [errors, setErrors] = useState({});
   const [activeTab, setActiveTab] = useState('school');
   const [plan, setPlan] = useState('complete');         // grandfather default
   const [entitlements, setEntitlements] = useState({}); // { lessons: bool, ... }
@@ -205,9 +223,48 @@ export default function Settings() {
   const set = (key) => (e) => {
     const v = e?.target?.value ?? e;
     setForm((f) => ({ ...f, [key]: v }));
+    setErrors((x) => clearError(x, key));
   };
 
   const handleSave = async () => {
+    // Per-field validation across the tabs that share this Save bar. Only rules
+    // for fields that are actually in play (given the fee mode / class modes /
+    // reminder trigger) are checked, so a hidden field can't block the save.
+    const feeMode = form['billing.fee_mode'] || 'per_class';
+    const modes = String(form['billing.class_modes'] || '')
+      .split(',').map((m) => m.trim()).filter(Boolean);
+    const rules = {
+      'school.contact_phone': V.phone10(),
+      'school.contact_email': V.email(),
+      'online.default_link':  V.url(),
+    };
+    if (feeMode === 'per_month') {
+      rules['billing.default_monthly_fee'] = V.nonNegative('Monthly fee');
+    } else {
+      if (modes.includes('online'))  rules['billing.default_online_fee']  = V.nonNegative('Online fee');
+      if (modes.includes('offline')) rules['billing.default_offline_fee'] = V.nonNegative('Offline fee');
+      if (modes.includes('group'))   rules['billing.default_group_fee']   = V.nonNegative('Group fee');
+      rules['billing.default_min_classes'] = V.intInRange('Minimum classes', 0, 31);
+    }
+    if (form['billing.fee_reminder_trigger'] === 'fixed_day') {
+      rules['billing.fee_reminder_day'] = V.intInRange('Reminder day', 1, 28);
+    }
+    const errs = validate(form, rules);
+    // UPI id has no shared validator: a soft pattern check, only when non-empty.
+    const upi = String(form['fees.upi_id'] || '').trim();
+    if (upi && !/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upi)) {
+      errs['fees.upi_id'] = "That UPI ID doesn't look right";
+    }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      const first = firstErrorField(errs);
+      const tab = FIELD_TAB[first];
+      if (tab && tab !== activeTab) setActiveTab(tab);
+      focusField(first);
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setErrors({});
     try {
       setSaving(true);
       // Only send the keys that belong to the active concern, but easier
@@ -321,10 +378,10 @@ export default function Settings() {
         <div className="flex-1 min-w-0 flex flex-col">
           <div ref={bodyRef} className="flex-1 overflow-y-auto">
             <div className="p-4 lg:p-6 space-y-4">
-              {activeTab === 'school'       && <SchoolTab form={form} set={set} />}
-              {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} />}
+              {activeTab === 'school'       && <SchoolTab form={form} set={set} errors={errors} />}
+              {activeTab === 'schedule'     && <ScheduleTab form={form} setForm={setForm} set={set} errors={errors} />}
               {activeTab === 'appearance'   && <AppearanceTab form={form} setForm={setForm} />}
-              {activeTab === 'billing'      && <BillingTab form={form} set={set} setForm={setForm} />}
+              {activeTab === 'billing'      && <BillingTab form={form} set={set} setForm={setForm} errors={errors} />}
               {activeTab === 'modules'      && <ModulesTab form={form} set={set} plan={plan} entitlements={entitlements} />}
               {activeTab === 'certificate'  && <CertificateTab form={form} set={set} setForm={setForm} />}
               {activeTab === 'templates'    && <TemplatesTab />}
@@ -360,7 +417,7 @@ export default function Settings() {
 
 // ----- Tabs ------------------------------------------------------------------
 
-function SchoolTab({ form, set }) {
+function SchoolTab({ form, set, errors = {} }) {
   return (
     <div className="card space-y-4">
       <div>
@@ -398,20 +455,24 @@ function SchoolTab({ form, set }) {
         <Field label="Contact phone" icon={Phone}>
           <input
             type="tel"
+            data-field="school.contact_phone"
             value={form['school.contact_phone']}
             onChange={set('school.contact_phone')}
-            className="input-field"
+            className={fieldCls('input-field', errors['school.contact_phone'])}
             placeholder="+91 98765 43210"
           />
+          <FieldError msg={errors['school.contact_phone']} />
         </Field>
         <Field label="Contact email" icon={Mail}>
           <input
             type="email"
+            data-field="school.contact_email"
             value={form['school.contact_email']}
             onChange={set('school.contact_email')}
-            className="input-field"
+            className={fieldCls('input-field', errors['school.contact_email'])}
             placeholder="info@academy.com"
           />
+          <FieldError msg={errors['school.contact_email']} />
         </Field>
       </div>
       <Field label="Address" icon={MapPin} hint="Used in future receipts + certificates.">
@@ -427,7 +488,7 @@ function SchoolTab({ form, set }) {
   );
 }
 
-function ScheduleTab({ form, setForm }) {
+function ScheduleTab({ form, setForm, set, errors = {} }) {
   // The 7-day array is derived from the JSON string in `form`. Every edit
   // writes the serialized JSON straight back so the shared bottom Save bar
   // persists it with the rest of the settings.
@@ -542,11 +603,13 @@ function ScheduleTab({ form, setForm }) {
         <label className="block text-sm font-medium text-gray-700 mb-1">Default meeting link</label>
         <input
           type="url"
+          data-field="online.default_link"
           value={form['online.default_link'] || ''}
-          onChange={setOnline('online.default_link')}
+          onChange={set('online.default_link')}
           placeholder="https://meet.google.com/abc-defg-hij"
-          className="input-field"
+          className={fieldCls('input-field', errors['online.default_link'])}
         />
+        <FieldError msg={errors['online.default_link']} />
         <p className="text-xs text-gray-400 mt-1">
           Used for any online class that has no link of its own. A per-class
           link set on the class always takes priority. Tip: Google Meet makes a
@@ -560,7 +623,7 @@ function ScheduleTab({ form, setForm }) {
   );
 }
 
-function BillingTab({ form, set, setForm }) {
+function BillingTab({ form, set, setForm, errors = {} }) {
   const { featureOn } = useModuleFlags();
   const feeMode = form['billing.fee_mode'] || 'per_class';
   const perMonth = feeMode === 'per_month';
@@ -699,11 +762,13 @@ function BillingTab({ form, set, setForm }) {
               <input
                 type="number"
                 min="0"
+                data-field="billing.default_monthly_fee"
                 value={form['billing.default_monthly_fee']}
                 onChange={set('billing.default_monthly_fee')}
-                className="input-field"
+                className={fieldCls('input-field', errors['billing.default_monthly_fee'])}
                 placeholder="2000"
               />
+              <FieldError msg={errors['billing.default_monthly_fee']} />
             </Field>
           </div>
         ) : (
@@ -713,11 +778,13 @@ function BillingTab({ form, set, setForm }) {
                 <input
                   type="number"
                   min="0"
+                  data-field="billing.default_online_fee"
                   value={form['billing.default_online_fee']}
                   onChange={set('billing.default_online_fee')}
-                  className="input-field"
+                  className={fieldCls('input-field', errors['billing.default_online_fee'])}
                   placeholder="500"
                 />
+                <FieldError msg={errors['billing.default_online_fee']} />
               </Field>
             )}
             {hasMode('offline') && (
@@ -725,11 +792,13 @@ function BillingTab({ form, set, setForm }) {
                 <input
                   type="number"
                   min="0"
+                  data-field="billing.default_offline_fee"
                   value={form['billing.default_offline_fee']}
                   onChange={set('billing.default_offline_fee')}
-                  className="input-field"
+                  className={fieldCls('input-field', errors['billing.default_offline_fee'])}
                   placeholder="700"
                 />
+                <FieldError msg={errors['billing.default_offline_fee']} />
               </Field>
             )}
             {hasMode('group') && (
@@ -737,11 +806,13 @@ function BillingTab({ form, set, setForm }) {
                 <input
                   type="number"
                   min="0"
+                  data-field="billing.default_group_fee"
                   value={form['billing.default_group_fee']}
                   onChange={set('billing.default_group_fee')}
-                  className="input-field"
+                  className={fieldCls('input-field', errors['billing.default_group_fee'])}
                   placeholder="350"
                 />
+                <FieldError msg={errors['billing.default_group_fee']} />
               </Field>
             )}
             <Field label="Min classes / month" icon={IndianRupee} hint="Fees page flags students below this.">
@@ -749,11 +820,13 @@ function BillingTab({ form, set, setForm }) {
                 type="number"
                 min="0"
                 max="31"
+                data-field="billing.default_min_classes"
                 value={form['billing.default_min_classes']}
                 onChange={set('billing.default_min_classes')}
-                className="input-field"
+                className={fieldCls('input-field', errors['billing.default_min_classes'])}
                 placeholder="0 = no minimum"
               />
+              <FieldError msg={errors['billing.default_min_classes']} />
             </Field>
           </div>
         )}
@@ -775,11 +848,13 @@ function BillingTab({ form, set, setForm }) {
         <Field label="UPI id" icon={IndianRupee} hint="e.g. academy@okhdfcbank. The portal builds a QR that opens any UPI app with the amount due prefilled.">
           <input
             type="text"
-            className="input-field"
+            data-field="fees.upi_id"
+            className={fieldCls('input-field', errors['fees.upi_id'])}
             value={form['fees.upi_id'] || ''}
             onChange={set('fees.upi_id')}
             placeholder="academy@okhdfcbank"
           />
+          <FieldError msg={errors['fees.upi_id']} />
         </Field>
 
         <Field label="Payee name" icon={PenLine} hint="The name shown in the parent's UPI app when they scan.">
@@ -863,11 +938,13 @@ function BillingTab({ form, set, setForm }) {
               type="number"
               min="1"
               max="28"
+              data-field="billing.fee_reminder_day"
               value={form['billing.fee_reminder_day']}
               onChange={set('billing.fee_reminder_day')}
-              className="input-field"
+              className={fieldCls('input-field', errors['billing.fee_reminder_day'])}
               placeholder="1"
             />
+            <FieldError msg={errors['billing.fee_reminder_day']} />
           </Field>
         )}
       </div>

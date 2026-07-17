@@ -30,6 +30,8 @@ import Pagination, { usePagination } from '../components/Pagination';
 import QuickCreateModal from '../components/QuickCreateModal';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useRevealTimer } from '../hooks/useRevealTimer';
+import FieldError from '../components/FieldError';
+import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../utils/validation';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -100,6 +102,7 @@ export default function Fees() {
   });
   const [savingFee, setSavingFee] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+  const [errors, setErrors] = useState({});
 
   // Column visibility — user picks which columns to see. Persisted in localStorage.
   const DEFAULT_COLS = {
@@ -193,18 +196,26 @@ export default function Fees() {
 
   const handleAddFee = async (e) => {
     e.preventDefault();
-    if (feeForm.student_ids.length === 0 || !feeForm.description || !feeForm.amount) {
-      toast.error('Select at least one student and fill all fields');
+    if (feeForm.student_ids.length === 0) {
+      toast.error('Select at least one student');
       return;
     }
+    const errs = validate(feeForm, {
+      description: V.maxLen('Description', 500, { required: true }),
+      amount: V.nonNegative('Amount', { required: true }),
+      date: V.date('Date', { required: true }),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+    setErrors({});
     // Amount is always entered as a positive figure here; the fee/discount
     // toggle decides the sign before it's sent, so the entered value itself
     // must be a finite, non-negative number.
     const parsedAmount = Number(feeForm.amount);
-    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
-      toast.error('Please enter a valid amount.');
-      return;
-    }
     try {
       setSavingFee(true);
       // Discount stored as a negative AdditionalFees amount.
@@ -434,19 +445,27 @@ export default function Fees() {
   const openEditFee = (af) => {
     const amt = Number(af.amount) || 0;
     setEditFeeId(af.id);
+    setErrors({});
     setEditFeeForm({
       description: af.description || '',
       amount: String(Math.abs(amt)),
       is_discount: amt < 0,
     });
   };
-  const closeEditFee = () => { setEditFeeId(null); };
+  const closeEditFee = () => { setEditFeeId(null); setErrors({}); };
   const saveEditFee = async () => {
-    const parsedAmount = Number(editFeeForm.amount);
-    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
-      toast.error('Please enter a valid amount.');
+    const errs = validate(editFeeForm, {
+      description: V.maxLen('Description', 500, { required: true }),
+      amount: V.nonNegative('Amount', { required: true }),
+    });
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      focusField(firstErrorField(errs));
+      toast.error('Please fix the highlighted fields');
       return;
     }
+    setErrors({});
+    const parsedAmount = Number(editFeeForm.amount);
     try {
       const signed = editFeeForm.is_discount ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
       await api.put(`/fees/additional/${editFeeId}`, {
@@ -572,13 +591,13 @@ export default function Fees() {
             )}
           </div>
           <button
-            onClick={() => { setFeeForm({ ...feeForm, adjustment_type: 'discount' }); setAddFeeModalOpen(true); }}
+            onClick={() => { setFeeForm({ ...feeForm, adjustment_type: 'discount' }); setErrors({}); setAddFeeModalOpen(true); }}
             className="btn-secondary btn-sm border-green-300 text-green-700 hover:bg-green-50"
           >
             <Minus className="w-4 h-4" /> Apply Discount
           </button>
           <button
-            onClick={() => { setFeeForm({ ...feeForm, adjustment_type: 'fee' }); setAddFeeModalOpen(true); }}
+            onClick={() => { setFeeForm({ ...feeForm, adjustment_type: 'fee' }); setErrors({}); setAddFeeModalOpen(true); }}
             data-tour="fees-add"
             className="btn-primary btn-sm"
           >
@@ -1089,7 +1108,7 @@ export default function Fees() {
       {/* Add Additional Fee Modal */}
       <Modal
         isOpen={addFeeModalOpen}
-        onClose={() => { setAddFeeModalOpen(false); setFeeForm({ student_ids: [], description: '', amount: '', date: formatDateLocal(new Date()), adjustment_type: 'fee' }); setStudentSearch(''); }}
+        onClose={() => { setAddFeeModalOpen(false); setFeeForm({ student_ids: [], description: '', amount: '', date: formatDateLocal(new Date()), adjustment_type: 'fee' }); setStudentSearch(''); setErrors({}); }}
         title={feeForm.adjustment_type === 'discount' ? 'Apply Discount' : 'Add Additional Fee'}
         size="md"
         onSave={handleAddFee}
@@ -1210,9 +1229,10 @@ export default function Fees() {
             </label>
             <input
               type="text"
+              data-field="description"
               value={feeForm.description}
-              onChange={(e) => setFeeForm({ ...feeForm, description: e.target.value })}
-              className="input-field"
+              onChange={(e) => { setFeeForm({ ...feeForm, description: e.target.value }); setErrors((x) => clearError(x, 'description')); }}
+              className={fieldCls('input-field', errors.description)}
               placeholder={
                 feeForm.adjustment_type === 'discount'
                   ? 'e.g., Sibling discount, Loyalty discount'
@@ -1220,6 +1240,7 @@ export default function Fees() {
               }
               required
             />
+            <FieldError msg={errors.description} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1233,14 +1254,16 @@ export default function Fees() {
               </span>
               <input
                 type="number"
+                data-field="amount"
                 value={feeForm.amount}
-                onChange={(e) => setFeeForm({ ...feeForm, amount: e.target.value })}
-                className={`input-field ${feeForm.adjustment_type === 'discount' ? 'pl-10' : 'pl-7'}`}
+                onChange={(e) => { setFeeForm({ ...feeForm, amount: e.target.value }); setErrors((x) => clearError(x, 'amount')); }}
+                className={fieldCls(`input-field ${feeForm.adjustment_type === 'discount' ? 'pl-10' : 'pl-7'}`, errors.amount)}
                 placeholder="0"
                 min="0"
                 required
               />
             </div>
+            <FieldError msg={errors.amount} />
             {feeForm.adjustment_type === 'discount' && (
               <p className="text-xs text-green-700 mt-1">
                 Enter the positive amount, it will be applied as a deduction from the monthly total.
@@ -1251,13 +1274,15 @@ export default function Fees() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
             <input
               type="date"
+              data-field="date"
               value={feeForm.date}
-              onChange={(e) => setFeeForm({ ...feeForm, date: e.target.value })}
-              className="input-field"
+              onChange={(e) => { setFeeForm({ ...feeForm, date: e.target.value }); setErrors((x) => clearError(x, 'date')); }}
+              className={fieldCls('input-field', errors.date)}
             />
+            <FieldError msg={errors.date} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setAddFeeModalOpen(false)} className="btn-secondary">
+            <button type="button" onClick={() => { setAddFeeModalOpen(false); setErrors({}); }} className="btn-secondary">
               Cancel
             </button>
           </div>
@@ -1286,11 +1311,13 @@ export default function Fees() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
             <input
               type="text"
+              data-field="description"
               value={editFeeForm.description}
-              onChange={(e) => setEditFeeForm({ ...editFeeForm, description: e.target.value })}
-              className="input-field"
+              onChange={(e) => { setEditFeeForm({ ...editFeeForm, description: e.target.value }); setErrors((x) => clearError(x, 'description')); }}
+              className={fieldCls('input-field', errors.description)}
               autoFocus
             />
+            <FieldError msg={errors.description} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1299,10 +1326,12 @@ export default function Fees() {
             <input
               type="number"
               min="0"
+              data-field="amount"
               value={editFeeForm.amount}
-              onChange={(e) => setEditFeeForm({ ...editFeeForm, amount: e.target.value })}
-              className="input-field"
+              onChange={(e) => { setEditFeeForm({ ...editFeeForm, amount: e.target.value }); setErrors((x) => clearError(x, 'amount')); }}
+              className={fieldCls('input-field', errors.amount)}
             />
+            <FieldError msg={errors.amount} />
             <p className="text-xs text-gray-400 mt-1">
               {editFeeForm.is_discount ? 'Stored as a negative amount (subtracted from total).' : 'Stored as a positive amount (added to total).'}
             </p>

@@ -117,15 +117,32 @@ export function AuthProvider({ children }) {
     window.location.href = `${base}/`;
   }, []);
 
-  // Logout: end the Supabase session, drop the active-academy pin and the
-  // offline portal read-cache, then send the browser to /login.
+  // Logout: end the Supabase session on THIS device, drop the active-academy
+  // pin and the offline portal read-cache, then send the browser to /login.
+  //
+  // Uses scope:'local' (no server round-trip). The default 'global' sign-out
+  // hits the server to revoke the token; if that call throws (flaky network,
+  // already-expired token) supabase-js can leave the session in localStorage,
+  // and the reload below would rehydrate it and sign you straight back in.
+  // A local sign-out can't fail that way. We also remove the persisted session
+  // key by hand as a belt-and-suspenders guard so a reload can never rehydrate
+  // a stale session. (To end sessions on other devices, use signOutOthers.)
   const signOut = useCallback(async () => {
     try { localStorage.removeItem(ACTIVE_ORG_KEY); } catch { /* ignore */ }
     try { api.clearCache(); } catch { /* ignore */ }
-    try { await supabase.auth.signOut(); } catch { /* ignore */ }
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
+    try { localStorage.removeItem('veena_auth'); } catch { /* ignore */ }
     setUser(null);
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     window.location.href = `${base}/login`;
+  }, []);
+
+  // Sign out every OTHER device/session but keep THIS one signed in. Revokes
+  // the refresh tokens for all the user's other sessions server-side; the
+  // current session stays valid. Throws on failure so the caller can surface it.
+  const signOutOthers = useCallback(async () => {
+    const { error } = await supabase.auth.signOut({ scope: 'others' });
+    if (error) throw new Error(error.message);
   }, []);
 
   return (
@@ -136,6 +153,7 @@ export function AuthProvider({ children }) {
         offline,
         refresh,
         signOut,
+        signOutOthers,
         switchOrg,
         needsPasswordSet,
         completePasswordSet,

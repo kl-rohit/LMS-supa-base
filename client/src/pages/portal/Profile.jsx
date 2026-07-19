@@ -21,11 +21,14 @@ import {
   Loader2,
   Image as ImageIcon,
   CheckCircle2,
+  LogOut,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import ChangePassword from '../../components/ChangePassword';
+import { useAuth } from '../../contexts/AuthContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import FieldError from '../../components/FieldError';
 import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '../../utils/validation';
 
@@ -43,9 +46,12 @@ const EMPTY = {
 };
 
 export default function PortalProfile() {
+  const { signOutOthers } = useAuth();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [signingOutOthers, setSigningOutOthers] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [photoPreview, setPhotoPreview] = useState('');   // data URL shown after picking
@@ -338,6 +344,46 @@ export default function PortalProfile() {
 
       {/* Sign-in security — self-service password change */}
       <ChangePassword />
+
+      {/* Sign out other devices — keeps this device signed in. */}
+      <div className="card">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <LogOut className="w-4 h-4 text-gray-500" /> Signed in elsewhere?
+            </h3>
+            <p className="text-xs text-gray-500 mt-1 max-w-md">
+              Sign out of every other device and browser (for example a shared computer
+              or an old phone). You will stay signed in here.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={signingOutOthers}
+            onClick={async () => {
+              const ok = await confirm({
+                title: 'Sign out other devices?',
+                message: 'Every other signed-in device and browser will be logged out. This device stays signed in.',
+                confirmText: 'Sign out others',
+              });
+              if (!ok) return;
+              setSigningOutOthers(true);
+              try {
+                await signOutOthers();
+                toast.success('Signed out of all other devices');
+              } catch (err) {
+                toast.error(err.message || 'Could not sign out other devices');
+              } finally {
+                setSigningOutOthers(false);
+              }
+            }}
+          >
+            {signingOutOthers ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+            {signingOutOthers ? 'Signing out…' : 'Sign out other devices'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

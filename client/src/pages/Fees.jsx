@@ -17,12 +17,14 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import Loader from '../components/Loader';
+import Tooltip from '../components/Tooltip';
 import EmptyState from '../components/EmptyState';
 import Select from '../components/Select';
 import CountUpAmount from '../components/CountUpAmount';
@@ -537,7 +539,10 @@ export default function Fees() {
     return `${displayHour}:${m} ${ampm}`;
   };
 
-  if (loading) return <Loader text="Loading fees..." />;
+  // Full-page loader only on the very first load. On a month switch we keep the
+  // page mounted and show a lighter "Updating…" cue (below), so the whole screen
+  // doesn't blank out every time you change month.
+  if (loading && feesData.length === 0) return <Loader text="Loading fees..." />;
 
   return (
     <div className="space-y-4">
@@ -626,6 +631,11 @@ export default function Fees() {
                 options={[2024, 2025, 2026, 2027].map((y) => ({ value: y, label: String(y) }))}
               />
             </div>
+            {loading && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+              </span>
+            )}
           </div>
           <button onClick={() => changeMonth(1)} className="p-2 rounded-lg hover:bg-gray-100">
             <ChevronRight className="w-4 h-4 text-gray-600" />
@@ -736,29 +746,34 @@ export default function Fees() {
                         <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
                           {student.min_classes > 0 ? (
                             student.present_count >= student.min_classes ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium" title={`Minimum ${student.min_classes} class(es) per month required`}>
-                                <Check className="w-3 h-3" />
-                                {student.present_count}/{student.min_classes}
-                              </span>
-                            ) : (
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium" title={`Below minimum: needs ${student.min_classes - student.present_count} more`}>
-                                  <X className="w-3 h-3" />
+                              <Tooltip label={`Attended ${student.present_count} of the ${student.min_classes}-class monthly minimum — met`}>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                                  <Check className="w-3 h-3" />
                                   {student.present_count}/{student.min_classes}
                                 </span>
+                              </Tooltip>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1">
+                                <Tooltip label={`Attended ${student.present_count} of the ${student.min_classes}-class monthly minimum — ${student.min_classes - student.present_count} short`}>
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+                                    <X className="w-3 h-3" />
+                                    {student.present_count}/{student.min_classes}
+                                  </span>
+                                </Tooltip>
                                 {!student.paid && student.shortfall_amount > 0 && (
-                                  <button
-                                    onClick={() => applyShortfall(student)}
-                                    className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
-                                    title={`Adds a one-time fee of ₹${student.shortfall_amount} for the ${student.shortfall_classes} missed class(es)`}
-                                  >
-                                    Charge +₹{student.shortfall_amount.toLocaleString('en-IN')}
-                                  </button>
+                                  <Tooltip label={`Short-fall fee: adds ₹${student.shortfall_amount.toLocaleString('en-IN')} for ${student.shortfall_classes} class${student.shortfall_classes === 1 ? '' : 'es'} below the ${student.min_classes}-class minimum`}>
+                                    <button
+                                      onClick={() => applyShortfall(student)}
+                                      className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                                    >
+                                      Charge +₹{student.shortfall_amount.toLocaleString('en-IN')}
+                                    </button>
+                                  </Tooltip>
                                 )}
                               </div>
                             )
                           ) : (
-                            <span className="text-xs text-gray-300" title="No minimum configured for this student">-</span>
+                            <span className="text-xs text-gray-300" title="No minimum set for this student">-</span>
                           )}
                         </td>
                       )}

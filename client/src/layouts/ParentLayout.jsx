@@ -64,9 +64,6 @@ export default function ParentLayout() {
   const branding = useOrgBranding();
   const displayName = branding.name || BRAND_NAME;
   const [studentName, setStudentName] = useState('');
-  // One-time parental-consent gate (DPDP). Shown until the parent agrees.
-  const [consentPending, setConsentPending] = useState(false);
-  const [consentSaving, setConsentSaving] = useState(false);
   // Reflect the academy name in the browser tab title.
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -88,11 +85,7 @@ export default function ParentLayout() {
     if (isAdmin) return;
     let cancelled = false;
     api.get('/portal/me')
-      .then((d) => {
-        if (cancelled) return;
-        setStudentName(d?.student?.name || '');
-        setConsentPending(!!d?.consent_pending);
-      })
+      .then((d) => { if (!cancelled) setStudentName(d?.student?.name || ''); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [isAdmin]);
@@ -102,44 +95,8 @@ export default function ParentLayout() {
 
   const currentLabel = navItems.find((i) => location.pathname.startsWith(i.to))?.label || 'Overview';
 
-  const agreeConsent = async () => {
-    setConsentSaving(true);
-    try {
-      await api.post('/portal/consent');
-      setConsentPending(false);
-    } catch {
-      // Keep the gate up on failure so consent is never silently skipped.
-    } finally {
-      setConsentSaving(false);
-    }
-  };
-
   return (
     <div className="h-screen overflow-hidden bg-gray-50 flex">
-      {/* One-time parental-consent gate (DPDP). Blocks the portal until agreed. */}
-      {consentPending && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
-            <h2 className="text-lg font-bold text-gray-900">Before you continue</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              {displayName} uses this app to manage your child's classes, attendance and fees.
-              By continuing, you agree to your child's details being stored for this purpose, as
-              described in our{' '}
-              <a href={`${(process.env.PUBLIC_URL || '/').replace(/\/$/, '')}/privacy.html`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-medium hover:underline">Privacy Policy</a>.
-            </p>
-            <button
-              onClick={agreeConsent}
-              disabled={consentSaving}
-              className="mt-5 w-full btn-primary justify-center disabled:opacity-50"
-            >
-              {consentSaving ? 'Saving…' : 'I agree, continue'}
-            </button>
-            <p className="mt-2 text-center text-xs text-gray-400">
-              Questions? Contact your academy.
-            </p>
-          </div>
-        </div>
-      )}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-30 lg:hidden"

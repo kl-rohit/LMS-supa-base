@@ -93,6 +93,9 @@ const emptyForm = {
   father_name: '',
   mother_name: '',
   photo_url: '',
+  // Admin attestation that the parent/guardian consented to storing this
+  // student's data (DPDP). Backend stamps it once and never clears it.
+  parent_consent: false,
 };
 
 export default function Students() {
@@ -368,6 +371,7 @@ export default function Students() {
       father_name: student.father_name || '',
       mother_name: student.mother_name || '',
       photo_url: student.photo_url || '',
+      parent_consent: !!student.consent_at,
     });
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
@@ -1227,6 +1231,30 @@ export default function Students() {
               rows={3}
               placeholder="Any additional notes..."
             />
+          </div>
+          {/* Parental-consent attestation (DPDP). Once recorded it can't be
+              cleared here, so show a read-only note in that case. */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            {editingStudent?.consent_at ? (
+              <p className="text-sm text-gray-600">
+                <span className="text-emerald-600 font-semibold">✓</span> Parent/guardian consent recorded
+                {editingStudent.consent_source === 'parent_portal' ? ' by the parent' : ''} on{' '}
+                {new Date(editingStudent.consent_at).toLocaleDateString('en-IN')}.
+              </p>
+            ) : (
+              <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.parent_consent}
+                  onChange={(e) => setForm({ ...form, parent_consent: e.target.checked })}
+                  className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-gray-300 shrink-0"
+                />
+                <span>
+                  The parent/guardian has agreed to store this student's details.
+                  <span className="text-gray-400"> You can also let the parent confirm this themselves when they first sign in to the portal.</span>
+                </span>
+              </label>
+            )}
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => { setModalOpen(false); setEditingStudent(null); setForm(emptyForm); setErrors({}); }} className="btn-secondary">

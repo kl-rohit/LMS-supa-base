@@ -9,6 +9,10 @@ const { loadAssetDataUrl } = require('../lib/orgAsset');
 const { codeFor } = require('../lib/certVerify');
 const { loadLessonQuiz, gradeAttempt, PASS_THRESHOLD } = require('./quizzes');
 
+// Consent policy version stamped when a parent consents via the portal gate
+// (kept in sync with CONSENT_VERSION in routes/students.js).
+const PORTAL_CONSENT_VERSION = '2026-07';
+
 // A quiz's own pass mark (1-100) if set on the lesson, else the global default.
 function effectivePassMark(lesson) {
   const n = Number(lesson?.quiz_pass_mark);
@@ -170,6 +174,9 @@ router.get('/me', async (req, res) => {
         user_id: req.studentLogin?.user_id,
       },
       onboarding_pending,
+      // No parental-consent recorded yet → the portal shows a one-time consent
+      // gate (see POST /consent).
+      consent_pending: !student.consent_at,
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch student', detail: e.message });
@@ -184,6 +191,25 @@ router.post('/onboarding-seen', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update onboarding state', detail: e.message });
+  }
+});
+
+// POST /api/portal/consent — the parent/guardian gave consent (DPDP) via the
+// one-time gate. Stamps the linked student once; a repeat call is a no-op.
+router.post('/consent', async (req, res) => {
+  try {
+    const student = await getById(req, 'Students', req.studentId);
+    if (!student) return res.status(404).json({ error: 'Linked student not found' });
+    if (!student.consent_at) {
+      await update(req, 'Students', req.studentId, {
+        consent_at: new Date().toISOString(),
+        consent_source: 'parent_portal',
+        consent_version: PORTAL_CONSENT_VERSION,
+      });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to record consent', detail: e.message });
   }
 });
 

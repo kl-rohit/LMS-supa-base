@@ -6,6 +6,10 @@ const { uploadStudentPhoto, signStoredPhoto } = require('../lib/photoUpload');
 const { planMaxStudents, normalizePlan } = require('../lib/plans');
 const { studentCapBlock } = require('../lib/studentLimit');
 
+// Version stamped on a consent record, so a future policy change can be
+// detected (kept in sync with the portal consent gate in portal.js).
+const CONSENT_VERSION = '2026-07';
+
 // IMPORTANT: declare specific paths (debug/tables, inactive) BEFORE the /:id
 // catch-all so Express routes them correctly.
 
@@ -321,6 +325,8 @@ router.post('/', async (req, res) => {
       // Self-service / Grade exam fields. Admin can set these too — they're
       // mirrored from what the parent edits in the portal.
       email, address, father_name, mother_name, photo_url,
+      // Admin attestation that the parent/guardian has consented (DPDP).
+      parent_consent,
     } = req.body;
     if (!name || !parent_name || !mobile_number) {
       return res.status(400).json({ error: 'name, parent_name, and mobile_number are required' });
@@ -351,6 +357,12 @@ router.post('/', async (req, res) => {
     };
     // Only set date_of_birth if provided — Catalyst rejects empty strings on Date columns
     if (date_of_birth) payload.date_of_birth = date_of_birth;
+    // Admin attestation: stamp consent when the admin confirms the parent agreed.
+    if (parent_consent) {
+      payload.consent_at = new Date().toISOString();
+      payload.consent_source = 'admin_attested';
+      payload.consent_version = CONSENT_VERSION;
+    }
     const student = await insert(req, 'Students', payload);
     res.status(201).json({ student: normalize(student) });
   } catch (e) {
@@ -373,6 +385,7 @@ router.put('/:id', async (req, res) => {
       monthly_fee,
       status, notes, date_of_birth,
       email, address, father_name, mother_name, photo_url,
+      parent_consent,
     } = req.body;
     // Reactivating an inactive student counts against the plan cap. (A no-op
     // re-save of an already-active student doesn't add to the count.)
@@ -397,6 +410,13 @@ router.put('/:id', async (req, res) => {
     if (father_name !== undefined)           patch.father_name           = father_name || '';
     if (mother_name !== undefined)           patch.mother_name           = mother_name || '';
     if (photo_url !== undefined)             patch.photo_url             = photo_url || '';
+    // Admin attestation: stamp consent once, only if not already recorded.
+    // We never clear an existing consent from this form.
+    if (parent_consent && !existing.consent_at) {
+      patch.consent_at = new Date().toISOString();
+      patch.consent_source = 'admin_attested';
+      patch.consent_version = CONSENT_VERSION;
+    }
     const updated = await update(req, 'Students', req.params.id, patch);
     res.json({ student: normalize(updated) });
   } catch (e) {

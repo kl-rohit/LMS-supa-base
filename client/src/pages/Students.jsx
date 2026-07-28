@@ -34,6 +34,7 @@ import Loader from '../components/Loader';
 import { ListPageSkeleton } from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import StudentDetailPanel from '../components/StudentDetailPanel';
+import Tooltip from '../components/Tooltip';
 import ImageCropper from '../components/ImageCropper';
 import SeatLimitNotice from '../components/SeatLimitNotice';
 import Pagination, { usePagination } from '../components/Pagination';
@@ -128,6 +129,10 @@ export default function Students() {
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // "Grade exam details" (photo/email/father/mother/address) is collapsed by
+  // default so the common quick-add form stays short. Opens automatically when
+  // editing a student that already has any of those fields populated.
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
   // Pending photo (data URL) selected via the modal file picker — not yet
   // uploaded to Stratus. handleSubmit POSTs it on save.
   const [photoPending, setPhotoPending] = useState('');
@@ -373,6 +378,9 @@ export default function Students() {
       photo_url: student.photo_url || '',
       parent_consent: !!student.consent_at,
     });
+    // Open the "More details" block if any of its fields already have data,
+    // so existing values are visible without an extra click.
+    setShowMoreDetails(!!(student.email || student.address || student.father_name || student.mother_name || student.photo_url));
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
     setErrors({});
@@ -388,6 +396,7 @@ export default function Students() {
     // Seed billing-related fields from Settings defaults — teacher can
     // override per student. Identity fields stay blank.
     setForm({ ...emptyForm, ...billingDefaults });
+    setShowMoreDetails(false);
     setPhotoPending('');
     if (photoFileRef.current) photoFileRef.current.value = '';
     setErrors({});
@@ -861,8 +870,20 @@ export default function Students() {
                           {student.status}
                         </span>
                       </td>
-                      <td className="table-cell text-right text-gray-300">
-                        <ChevronRight className="w-4 h-4 inline-block" />
+                      <td className="table-cell text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Tooltip label="Edit student">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openEdit(student); }}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              aria-label="Edit student"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
+                          <ChevronRight className="w-4 h-4 inline-block text-gray-300" />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -931,6 +952,16 @@ export default function Students() {
                     </div>
                     {sub && <div className="text-xs text-gray-500 truncate font-mono">{sub}</div>}
                   </div>
+                  <Tooltip label="Edit student">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openEdit(student); }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors flex-shrink-0"
+                      aria-label="Edit student"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
                   <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
                 </div>
               );
@@ -1128,6 +1159,18 @@ export default function Students() {
           {/* Parent-managed Grade-exam details. The parent edits these via the
               portal; admin can view + override here. */}
           <div className="border-t border-gray-200 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowMoreDetails((v) => !v)}
+              className="flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-indigo-600"
+              aria-expanded={showMoreDetails}
+            >
+              {showMoreDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              More details
+              <span className="text-xs font-normal text-gray-400">(photo, email, parents, address)</span>
+            </button>
+            {showMoreDetails && (
+            <div className="mt-4">
             <div className="flex items-start gap-3 mb-4">
               {(photoPending || form.photo_url) ? (
                 <img
@@ -1221,6 +1264,8 @@ export default function Students() {
                 />
               </div>
             </div>
+            </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>

@@ -40,6 +40,8 @@ export default function Groups() {
   const [memberSearch, setMemberSearch] = useState('');
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [quickStudentOpen, setQuickStudentOpen] = useState(false);
+  // Ids of non-members checked in the Add Members modal (multi-select).
+  const [selectedIds, setSelectedIds] = useState([]);
   // Status filter for the groups list (mirrors the Students page pattern).
   const [statusFilter, setStatusFilter] = useState('active'); // active | inactive | all
 
@@ -185,6 +187,29 @@ export default function Groups() {
     }
   };
 
+  // Add several students in one go. Reuses the single-student endpoint in a
+  // loop (there is no batch endpoint), refreshes the roster + data ONCE at the
+  // end, and shows a single summary toast.
+  const addMembersBulk = async (ids) => {
+    if (!selectedGroup || !ids.length) return;
+    const results = await Promise.allSettled(
+      ids.map((id) => api.post(`/groups/${selectedGroup.id}/students`, { student_id: id }))
+    );
+    const added = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - added;
+    await fetchGroupMembers(selectedGroup);
+    fetchData();
+    if (added) {
+      toast.success(`Added ${added} student${added !== 1 ? 's' : ''} to ${selectedGroup.name}`);
+    }
+    if (failed) {
+      toast.error(`${failed} student${failed !== 1 ? 's' : ''} could not be added`);
+    }
+    setSelectedIds([]);
+    setMembersModalOpen(false);
+    setMemberSearch('');
+  };
+
   // A student created inline from the Add Members modal should land straight
   // into the group the admin is building, and refresh the roster so it shows.
   const handleQuickStudent = async (student) => {
@@ -216,6 +241,28 @@ export default function Groups() {
   const filteredNonMembers = memberSearch
     ? nonMembers.filter((s) => s.name.toLowerCase().includes(memberSearch.toLowerCase()))
     : nonMembers;
+
+  const toggleSelected = (id) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const allFilteredSelected =
+    filteredNonMembers.length > 0 && filteredNonMembers.every((s) => selectedIds.includes(s.id));
+
+  const selectAllFiltered = () =>
+    setSelectedIds((prev) => Array.from(new Set([...prev, ...filteredNonMembers.map((s) => s.id)])));
+
+  const clearSelection = () => setSelectedIds([]);
+
+  // Enter on the search box selects the top match into the multi-select, then
+  // clears the search so the admin can type the next name.
+  const handleSearchKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const top = filteredNonMembers[0];
+    if (!top) return;
+    toggleSelected(top.id);
+    setMemberSearch('');
+  };
 
   if (loading) return <Loader text="Loading groups..." />;
 
@@ -455,7 +502,7 @@ export default function Groups() {
       {/* Add Members Modal */}
       <Modal
         isOpen={membersModalOpen}
-        onClose={() => { setMembersModalOpen(false); setMemberSearch(''); }}
+        onClose={() => { setMembersModalOpen(false); setMemberSearch(''); setSelectedIds([]); }}
         title="Add Members"
         size="sm"
       >
@@ -466,6 +513,7 @@ export default function Groups() {
               placeholder="Search students..."
               value={memberSearch}
               onChange={(e) => setMemberSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               className="input-field flex-1"
             />
             <button
@@ -493,22 +541,59 @@ export default function Groups() {
               </p>
             )
           ) : (
-            <div className="max-h-64 overflow-y-auto space-y-2 scrollbar-thin">
-              {filteredNonMembers.map((student) => (
-                <div
-                  key={student.id}
-                  className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50"
-                >
-                  <span className="text-sm text-gray-700">{student.name}</span>
+            <>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">
+                  {selectedIds.length} selected
+                </span>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => addMember(student.id)}
-                    className="btn-primary btn-sm py-1"
+                    type="button"
+                    onClick={selectAllFiltered}
+                    disabled={allFilteredSelected}
+                    className="font-medium text-indigo-600 hover:text-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <UserPlus className="w-3.5 h-3.5" /> Add
+                    Select all
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    disabled={selectedIds.length === 0}
+                    className="font-medium text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Clear
                   </button>
                 </div>
-              ))}
-            </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2 scrollbar-thin">
+                {filteredNonMembers.map((student) => (
+                  <label
+                    key={student.id}
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(student.id)}
+                      onChange={() => toggleSelected(student.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm text-gray-700">{student.name}</span>
+                  </label>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => addMembersBulk(selectedIds)}
+                disabled={selectedIds.length === 0}
+                className="btn-primary btn-sm w-full justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                {selectedIds.length > 0
+                  ? `Add ${selectedIds.length} member${selectedIds.length !== 1 ? 's' : ''}`
+                  : 'Add members'}
+              </button>
+            </>
           )}
         </div>
       </Modal>

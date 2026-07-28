@@ -68,6 +68,10 @@ export default function Classes() {
   const [shareDialog, setShareDialog] = useState({ open: false, cls: null });
   const [typeFilter, setTypeFilter] = useState('all');
   const [studentSearch, setStudentSearch] = useState('');
+  // CREATE-only multi-day selection. On create the admin can pick several
+  // weekdays and one submit spins up one class per day; on edit we edit a
+  // single class instance and this is ignored (the single-day control shows).
+  const [createDays, setCreateDays] = useState([0]);
   // Inline quick-create. `target` decides where the created record lands:
   // 'class-student' | 'class-group' (batch on the class form) | 'camp-group'.
   const [quickCreate, setQuickCreate] = useState({ open: false, type: 'student', target: null });
@@ -499,6 +503,16 @@ export default function Classes() {
     return form.student_ids.length > 1 ? `${first} +${form.student_ids.length - 1}` : first;
   };
 
+  // Toggle a weekday in the create-only multi-day picker.
+  const toggleCreateDay = (idx) => {
+    setCreateDays((prev) =>
+      prev.includes(idx)
+        ? prev.filter((d) => d !== idx)
+        : [...prev, idx].sort((a, b) => a - b)
+    );
+    setErrors((x) => clearError(x, 'day_of_week'));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const isGroup = isGroupType(form.class_type);
@@ -521,6 +535,10 @@ export default function Classes() {
     if (form.start_time && form.end_time && form.start_time >= form.end_time) {
       errs.end_time = 'End time should be after the start time';
     }
+    // On create the day comes from the multi-day picker; require at least one.
+    if (!editingClass && createDays.length === 0) {
+      errs.day_of_week = 'Please pick at least one day';
+    }
     if (Object.keys(errs).length) {
       setErrors(errs);
       focusField(firstErrorField(errs));
@@ -540,10 +558,10 @@ export default function Classes() {
 
       // student_ids carries the roster for individual classes, and the EXTRA
       // students for group classes (tuition mode: batch + a few extras).
-      const payload = {
+      // day_of_week is set per-request below (create loops over the selected days).
+      const basePayload = {
         name: finalName,
         class_type: form.class_type,
-        day_of_week: Number(form.day_of_week),
         start_time: form.start_time,
         end_time: form.end_time,
         group_id: isGroup ? String(form.group_id) : null,
@@ -553,11 +571,17 @@ export default function Classes() {
       };
 
       if (editingClass) {
-        await api.put(`/classes/${editingClass.id}`, payload);
+        // Edit path stays single-day: we're editing one class instance.
+        await api.put(`/classes/${editingClass.id}`, { ...basePayload, day_of_week: Number(form.day_of_week) });
         toast.success('Class updated');
       } else {
-        await api.post('/classes', payload);
-        toast.success('Class created');
+        // Create path: one class per selected weekday, same payload otherwise.
+        // A Mon/Wed/Fri class is created in one submit instead of three.
+        const days = createDays.length ? createDays : [Number(form.day_of_week)];
+        for (const d of days) {
+          await api.post('/classes', { ...basePayload, day_of_week: Number(d) });
+        }
+        toast.success(days.length > 1 ? `Created ${days.length} classes` : 'Class created');
       }
       setModalOpen(false);
       setEditingClass(null);
@@ -596,6 +620,7 @@ export default function Classes() {
   const openAdd = (dayOfWeek) => {
     setEditingClass(null);
     setForm({ ...emptyForm, day_of_week: dayOfWeek ?? 0 });
+    setCreateDays([dayOfWeek ?? 0]);
     setStudentSearch('');
     setErrors({});
     setModalOpen(true);
@@ -609,6 +634,7 @@ export default function Classes() {
     const endH = Math.min(23, (h || 17) + 1);
     const endTime = `${String(endH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
     setForm({ ...emptyForm, day_of_week: dayOfWeek ?? 0, start_time: startTime || '17:00', end_time: endTime });
+    setCreateDays([dayOfWeek ?? 0]);
     setStudentSearch('');
     setErrors({});
     setModalOpen(true);
@@ -1336,16 +1362,42 @@ export default function Classes() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
-              <select
-                value={form.day_of_week}
-                onChange={(e) => setForm({ ...form, day_of_week: e.target.value })}
-                className="select-field"
-              >
-                {DAYS.map((day, idx) => (
-                  <option key={idx} value={idx}>{day}</option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {editingClass ? 'Day of Week' : 'Repeat on days'}
+              </label>
+              {editingClass ? (
+                <select
+                  value={form.day_of_week}
+                  onChange={(e) => setForm({ ...form, day_of_week: e.target.value })}
+                  className="select-field"
+                >
+                  {DAYS.map((day, idx) => (
+                    <option key={idx} value={idx}>{day}</option>
+                  ))}
+                </select>
+              ) : (
+                <div data-field="day_of_week" className="flex flex-wrap gap-1">
+                  {DAY_SHORT.map((label, idx) => {
+                    const on = createDays.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => toggleCreateDay(idx)}
+                        aria-pressed={on}
+                        className={`px-2 py-1 rounded-md text-xs font-medium border transition-colors ${
+                          on
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <FieldError msg={errors.day_of_week} />
             </div>
           </div>
 
@@ -1483,6 +1535,17 @@ export default function Classes() {
                   data-field="student_ids"
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Enter adds the first filtered student (mirrors a row tap),
+                    // then clears the search. Guard against no matches.
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const top = filteredStudentsList[0];
+                      if (!top) return;
+                      selectStudent(top.id);
+                      setStudentSearch('');
+                    }
+                  }}
                   className="input-field flex-1"
                   placeholder="Search students..."
                 />

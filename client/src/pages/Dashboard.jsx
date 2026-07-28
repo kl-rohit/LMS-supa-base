@@ -294,7 +294,16 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <button
-                  onClick={() => navigate('/messages')}
+                  onClick={async () => {
+                    try {
+                      const res = await api.post('/messages/generate-absence-alert', alert.student_id ? { student_id: alert.student_id } : {});
+                      const n = res?.created || 0;
+                      toast.success(n ? `Drafted ${n} alert${n === 1 ? '' : 's'} in Messages` : 'Alert already drafted in Messages');
+                    } catch (e) {
+                      toast.error('Could not draft alert: ' + e.message);
+                    }
+                    navigate('/messages');
+                  }}
                   className="text-sm text-red-600 hover:text-red-700 font-medium"
                 >
                   Send Alert

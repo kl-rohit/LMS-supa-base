@@ -97,6 +97,9 @@ export default function Attendance() {
   const [dateAttendance, setDateAttendance] = useState([]);
   // Post-record view: filter the "Marked attendance" list by status to cut clutter.
   const [recordStatusFilter, setRecordStatusFilter] = useState('all'); // all | present | absent
+  // "Same topic for whole class" bulk-fill input. Typing here writes the value
+  // into every present record's per-student topic field (they stay editable).
+  const [classTopic, setClassTopic] = useState('');
 
   // Cancel / move a single class occurrence for the selected date (writes to
   // Classes.exceptions, same endpoint the timetable uses). moveClass holds the
@@ -299,6 +302,7 @@ export default function Attendance() {
 
   const handleClassSelect = async (cls) => {
     setSelectedClass(cls);
+    setClassTopic('');
     try {
       // Camp day branch: fetch any existing attendance via camp_id and use
       // the camp's group members as the student list.
@@ -522,6 +526,20 @@ export default function Attendance() {
       }
       return updated;
     });
+  };
+
+  // Bulk-fill the same topic into every present record (per-student topics stay
+  // editable afterwards). Written through updateRecord so fee logic is untouched.
+  const applyTopicToAll = (value) => {
+    setClassTopic(value);
+    attendanceRecords.forEach((r, idx) => {
+      if (r.status === 'present') updateRecord(idx, 'topic', value);
+    });
+  };
+
+  // Mark every roster record present or absent in one click.
+  const markAll = (status) => {
+    attendanceRecords.forEach((_, idx) => updateRecord(idx, 'status', status));
   };
 
   const handleSubmit = async () => {
@@ -1041,6 +1059,16 @@ export default function Attendance() {
                   type="text"
                   value={adhocStudentSearch}
                   onChange={(e) => setAdhocStudentSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    // Enter adds the top filtered student (mirrors a row click),
+                    // then clears the search so the next name can be typed.
+                    const first = adhocVisibleStudents[0];
+                    if (!first) return;
+                    if (!adhocStudentIds.includes(first.id)) toggleAdhocStudent(first.id);
+                    setAdhocStudentSearch('');
+                  }}
                   className="input-field text-sm flex-1 min-w-[150px]"
                   placeholder="Search students..."
                 />
@@ -1248,6 +1276,30 @@ export default function Attendance() {
             />
           ) : (
             <>
+              {/* Whole-class shortcuts: one topic for everyone + mark all present/absent */}
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Topic for this class
+                  </label>
+                  <input
+                    type="text"
+                    value={classTopic}
+                    onChange={(e) => applyTopicToAll(e.target.value)}
+                    className="input-field text-sm"
+                    placeholder="e.g. Scales practice, applied to all present"
+                  />
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button type="button" onClick={() => markAll('present')} className="btn-secondary btn-sm">
+                    <Check className="w-4 h-4" /> Mark all present
+                  </button>
+                  <button type="button" onClick={() => markAll('absent')} className="btn-secondary btn-sm">
+                    <X className="w-4 h-4" /> Mark all absent
+                  </button>
+                </div>
+              </div>
+
               <div className="overflow-x-auto hidden md:block">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">

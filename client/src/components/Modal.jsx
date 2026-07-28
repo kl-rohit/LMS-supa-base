@@ -37,10 +37,29 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', o
     xl: 'max-w-4xl',
   };
 
+  // Enter-to-submit: pressing Enter in a single-line input triggers the primary
+  // Save action (the footer button lives outside the form, so browsers can't do
+  // this natively here). Never fires from a textarea, select, or button, and
+  // respects the saving / disabled state.
+  const handleKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    // A child already handled this Enter (e.g. a typeahead "add top match"
+    // search box calls preventDefault) — don't also submit the form.
+    if (e.defaultPrevented) return;
+    if (!onSave || saving || saveDisabled) return;
+    const el = e.target;
+    if (!el || el.tagName !== 'INPUT') return;
+    if (el.type === 'button' || el.type === 'submit') return;
+    if (el.isContentEditable) return;
+    e.preventDefault();
+    onSave(e);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50 animate-fade" onClick={onClose} />
       <div
+        onKeyDown={handleKeyDown}
         className={`relative bg-white rounded-xl shadow-xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col animate-in`}
       >
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200">

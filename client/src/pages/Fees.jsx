@@ -1199,6 +1199,14 @@ export default function Fees() {
                 type="text"
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (filteredStudentsList.length === 0) return;
+                    toggleStudentSelection(filteredStudentsList[0].id);
+                    setStudentSearch('');
+                  }
+                }}
                 className="input-field flex-1"
                 placeholder="Search students..."
               />

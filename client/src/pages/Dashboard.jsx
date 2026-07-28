@@ -325,7 +325,9 @@ export default function Dashboard() {
               {classesToday.map((cls) => (
                 <div
                   key={cls.id}
-                  className={`border-l-4 rounded-lg p-3 ${classTypeColors[cls.class_type] || 'bg-gray-50 border-l-gray-300'}`}
+                  onClick={() => navigate(`/attendance?class=${cls.id}`)}
+                  title="Open this class in Attendance"
+                  className={`border-l-4 rounded-lg p-3 cursor-pointer transition-shadow hover:shadow-md ${classTypeColors[cls.class_type] || 'bg-gray-50 border-l-gray-300'}`}
                 >
                   <div className="flex items-center justify-between">
                     <div>

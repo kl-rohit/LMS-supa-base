@@ -47,7 +47,7 @@ const master = {
     // prices as the standard rate with no offer framing.
     offerName: 'Limited-time launch offer · introductory pricing',
     core: {
-      base: 1000, baseRegular: 1500,        // ₹/month, includes `included` students
+      base: 1250, baseRegular: 1500,        // ₹/month, includes `included` students
       included: 15,
       perStudent: 50, perStudentRegular: 75, // ₹/student/month beyond `included`
     },

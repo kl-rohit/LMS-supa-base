@@ -25,7 +25,7 @@ export const CURRENCY_SYMBOL      = '₹';
 // Live (offer) per-student / month prices. The struck-through "regular" anchors
 // used on the marketing landing page live in config.master.js too.
 export const PLAN_PRICES = {
-  core:     1000,
+  core:     1250,
   complete: 2000,
 };
 
@@ -34,7 +34,7 @@ export const PLAN_PRICES = {
 export const PLAN_PRICING = {
   currency: '₹',
   offerName: 'Limited-time launch offer · introductory pricing',
-  core:     { base: 1000, baseRegular: 1500, included: 15, perStudent: 50, perStudentRegular: 75 },
+  core:     { base: 1250, baseRegular: 1500, included: 15, perStudent: 50, perStudentRegular: 75 },
   complete: { base: 2000, baseRegular: 2999, included: 15, perStudent: 90, perStudentRegular: 130 },
 };
 

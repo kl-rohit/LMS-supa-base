@@ -52,7 +52,7 @@ const master = {
       perStudent: 50, perStudentRegular: 75, // ₹/student/month beyond `included`
     },
     complete: {
-      base: 2000, baseRegular: 2999,
+      base: 2100, baseRegular: 2999,
       included: 15,
       perStudent: 90, perStudentRegular: 130,
     },

@@ -180,8 +180,8 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
       <div class="plan reveal">
         <div class="phead"><h3>Core</h3><span class="ppill">The essentials</span></div>
         <p class="blurb">Best for tuition teachers and small academies who want attendance, fees and parent updates on autopilot.</p>
-        <div class="price"><span class="amt">₹1,250</span><span class="was">₹1,500</span><span class="per">/mo</span></div>
-        <div class="after">+ ₹50 / student after the first 15</div>
+        <div class="price"><span class="amt" data-price="core:base">₹1,250</span><span class="was" data-price="core:baseRegular">₹1,500</span><span class="per">/mo</span></div>
+        <div class="after">+ <span data-price="core:perStudent">₹50</span> / student after the first <span data-price="core:included">15</span></div>
         <span class="inc">First 15 students included</span>
         <ul>
           <li><span class="ck">✓</span> Students, attendance &amp; timetable</li>
@@ -198,8 +198,8 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
         <span class="tag">Recommended</span>
         <div class="phead"><h3>Complete</h3></div>
         <p class="blurb">Best for academies running online lessons, quizzes, certificates or serious growth, with every module connected.</p>
-        <div class="price"><span class="amt">₹2,100</span><span class="was">₹2,999</span><span class="per">/mo</span></div>
-        <div class="after">+ ₹90 / student after the first 15</div>
+        <div class="price"><span class="amt" data-price="complete:base">₹2,100</span><span class="was" data-price="complete:baseRegular">₹2,999</span><span class="per">/mo</span></div>
+        <div class="after">+ <span data-price="complete:perStudent">₹90</span> / student after the first <span data-price="complete:included">15</span></div>
         <span class="inc">First 15 students included</span>
         <ul>
           <li><span class="ck">✓</span> Students, attendance &amp; timetable</li>
@@ -236,8 +236,8 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg-
           <thead>
             <tr>
               <th class="feat">Feature</th>
-              <th>Core<span class="sub">₹1,250/mo</span></th>
-              <th class="col-c">Complete<span class="sub">₹2,100/mo</span></th>
+              <th>Core<span class="sub"><span data-price="core:base">₹1,250</span>/mo</span></th>
+              <th class="col-c">Complete<span class="sub"><span data-price="complete:base">₹2,100</span>/mo</span></th>
             </tr>
           </thead>
           <tbody id="cmp-body"><!-- rendered from FEATURES --></tbody>
@@ -395,5 +395,6 @@ var FEATURES = [
   els.forEach(function(e){ io.observe(e); });
 })();
 </script>
+  <script src="/app/pricing-live.js" defer></script>
 </body>
 </html>

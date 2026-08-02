@@ -87,6 +87,12 @@ app.use('/api/leads', require('./routes/leads'));
 // under /api/platform/branding. Mounted before requireAuth on purpose.
 app.use('/api/branding', require('./routes/branding'));
 
+// /api/pricing — PUBLIC live plan prices for the marketing pages. Returns the
+// owner's saved overrides from Platform Admin -> Plans so the landing/pricing
+// pages read prices from config instead of hardcoded HTML. Read-only; writes
+// stay under /api/platform/pricing. Mounted before requireAuth on purpose.
+app.use('/api/pricing', require('./routes/pricing'));
+
 // /api/internal/* — unattended jobs (Catalyst cron). Protected by a shared
 // secret header (X-Cron-Secret), NOT by the user-session middleware below.
 // Must be mounted before requireAuth so the cron can reach it without a login.

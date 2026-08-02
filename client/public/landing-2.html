@@ -429,7 +429,7 @@
         <div class="text-sm text-slate-500 mt-1">Teacher <em>and</em> parent, mobile &amp; web, with one simple login each.</div>
       </div>
       <div>
-        <div class="text-2xl font-extrabold text-slate-900">From ₹1,250/mo</div>
+        <div class="text-2xl font-extrabold text-slate-900">From <span data-price="core:base">₹1,250</span>/mo</div>
         <div class="text-sm text-slate-500 mt-1">One flat monthly price, first 15 students included. Honest, all-inclusive pricing you can plan around.</div>
       </div>
       <div>
@@ -1272,7 +1272,7 @@
       </details>
       <details class="group rounded-2xl bg-white ring-1 ring-slate-200 p-5 [&_summary]:cursor-pointer">
         <summary class="flex items-center justify-between font-semibold text-slate-900">What's the difference between Core and Complete?<i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition group-open:rotate-180"></i></summary>
-        <p class="mt-2 text-sm text-slate-600">Core (from ₹1,250/mo, includes 15 students) is best for tuition teachers and small academies: students, attendance, timetable, fees, messaging and the parent portal, all connected. Complete (from ₹2,100/mo) is best for academies ready to grow, adding online video lessons, quizzes &amp; certificates, assignments, question papers and detailed reports.</p>
+        <p class="mt-2 text-sm text-slate-600">Core (from <span data-price="core:base">₹1,250</span>/mo, includes <span data-price="core:included">15</span> students) is best for tuition teachers and small academies: students, attendance, timetable, fees, messaging and the parent portal, all connected. Complete (from <span data-price="complete:base">₹2,100</span>/mo) is best for academies ready to grow, adding online video lessons, quizzes &amp; certificates, assignments, question papers and detailed reports.</p>
       </details>
       <details class="group rounded-2xl bg-white ring-1 ring-slate-200 p-5 [&_summary]:cursor-pointer">
         <summary class="flex items-center justify-between font-semibold text-slate-900">Can I import my existing student list?<i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition group-open:rotate-180"></i></summary>
@@ -1973,5 +1973,6 @@
   <!-- Lucide icons, loaded at end of body so it does not block first paint -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>lucide.createIcons();</script>
+  <script src="/app/pricing-live.js" defer></script>
 </body>
 </html>

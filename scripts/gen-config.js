@@ -262,6 +262,32 @@ function landingBlock() {
     /* GEN:CONFIG:END */`;
 }
 
+// The shared pricing-live.js keeps its own baked DEFAULTS block (offline
+// fallback for every marketing page) in sync with config.master.js via these
+// markers, so prices live in exactly one place.
+function pricesScriptBlock() {
+  return `  /* GEN:PRICES:START — generated from config.master.js, do not edit by hand */
+  var CURRENCY = ${s(shared.currencySymbol)};
+  var DEFAULTS = {
+    core:     ${planLiteral(prices.core)},
+    complete: ${planLiteral(prices.complete)},
+  };
+  /* GEN:PRICES:END */`;
+}
+
+function patchPricesScript(file) {
+  const src = fs.readFileSync(file, 'utf8');
+  const re = /[ \t]*\/\* GEN:PRICES:START[\s\S]*?\/\* GEN:PRICES:END \*\//;
+  if (!re.test(src)) {
+    throw new Error(
+      path.basename(file) + ' is missing the GEN:PRICES:START / GEN:PRICES:END markers.'
+    );
+  }
+  const next = src.replace(re, pricesScriptBlock());
+  if (next !== src) { fs.writeFileSync(file, next); return true; }
+  return false;
+}
+
 function patchLanding(file) {
   const src = fs.readFileSync(file, 'utf8');
   const re = /[ \t]*\/\* GEN:CONFIG:START[\s\S]*?\/\* GEN:CONFIG:END \*\//;
@@ -349,6 +375,10 @@ function main() {
   // Pricing page comparison matrix is generated from the feature catalog.
   const mChanged = patchMatrix(path.join(ROOT, 'client/public/pricing.html'));
   console.log((mChanged ? '  ✓ ' : '  = ') + 'client/public/pricing.html [matrix]' + (mChanged ? '' : ' (unchanged)'));
+
+  // Shared live-pricing script: keep its baked DEFAULTS in sync with master.
+  const pChanged = patchPricesScript(path.join(ROOT, 'client/public/pricing-live.js'));
+  console.log((pChanged ? '  ✓ ' : '  = ') + 'client/public/pricing-live.js' + (pChanged ? '' : ' (unchanged)'));
 
   console.log('✔ config generated');
 }

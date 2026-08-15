@@ -14,7 +14,10 @@
       "VAPID_PUBLIC_KEY": "",
       "VAPID_PRIVATE_KEY": "",
       "VAPID_SUBJECT": "mailto:you@example.com",
-      "CERT_SECRET": "GENERATE-a-long-random-string"
+      "CERT_SECRET": "GENERATE-a-long-random-string",
+      "RESEND_API_KEY": "re_xxx (from resend.com — leave empty to disable lead emails)",
+      "LEADS_NOTIFY_EMAIL": "owner@example.com (where new-lead alerts are sent)",
+      "LEADS_FROM_EMAIL": "VidyaSetu <onboarding@resend.dev> (branded sender once your domain is verified)"
     }
   },
   "execution": {

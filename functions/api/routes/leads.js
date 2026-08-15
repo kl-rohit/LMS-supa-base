@@ -24,6 +24,7 @@
 
 const router = require('express').Router();
 const { insert } = require('../db/catalystDb');
+const { notifyNewLead } = require('../lib/mailer');
 
 const ACADEMY_TYPES = ['Music', 'Dance', 'Coaching', 'Tuition', 'Arts', 'Other'];
 
@@ -99,6 +100,15 @@ router.post('/', async (req, res) => {
         hint: 'Create a Leads table in the Catalyst console (Data Store) with columns name, email, phone, academy_type, academy_name, student_count, city, message, source, status, notes.',
         detail: e.message,
       });
+    }
+
+    // Alert the platform admin by email. Best-effort: a mail failure (or no
+    // RESEND_API_KEY configured yet) must never affect the visitor's submit.
+    try {
+      const result = await notifyNewLead({ name, email, phone, academy_type, academy_name, student_count, city, message });
+      if (result && result.error) console.warn('[leads] admin email failed: ' + result.error);
+    } catch (e) {
+      console.warn('[leads] admin email threw: ' + (e && e.message));
     }
 
     // Return only an acknowledgement — never echo the stored row to a public caller.

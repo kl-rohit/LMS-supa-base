@@ -17,6 +17,7 @@ import {
   Users,
   Youtube,
   PlayCircle,
+  RotateCcw,
   CheckCircle2,
   Scissors,
   FolderTree,
@@ -185,6 +186,7 @@ export default function Lessons() {
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [courses, setCourses] = useState([]);
+  const [courseStatus, setCourseStatus] = useState('active'); // active | archived | all
   const [selectedCourse, setSelectedCourse] = useState(null); // course object
   const [tab, setTab] = useState('lessons'); // 'lessons' | 'enrollments'
   const [lessons, setLessons] = useState([]);
@@ -272,12 +274,24 @@ export default function Lessons() {
   const fetchCourses = async () => {
     try {
       setLoading(true);
-      const data = await api.get('/courses');
+      const data = await api.get(`/courses?status=${courseStatus}`);
       setCourses(data.courses || []);
     } catch (err) {
       toast.error('Failed to load courses: ' + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Un-archive: flip an archived course back to active. Mirrors the Students /
+  // Groups reactivate pattern so archived courses are recoverable from the UI.
+  const restoreCourse = async (c) => {
+    try {
+      await api.put(`/courses/${c.id}`, { status: 'active' });
+      toast.success(`"${c.name}" restored`);
+      fetchCourses();
+    } catch (err) {
+      toast.error('Failed to restore: ' + err.message);
     }
   };
 
@@ -296,7 +310,7 @@ export default function Lessons() {
     }
   };
 
-  useEffect(() => { fetchCourses(); }, []);
+  useEffect(() => { fetchCourses(); }, [courseStatus]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedCourse?.id) fetchCourseDetail(selectedCourse.id);
   }, [selectedCourse?.id]);
@@ -1138,16 +1152,30 @@ export default function Lessons() {
             Organize video lessons into courses. Enroll students to give them access.
           </p>
         </div>
-        <button onClick={openCreateCourse} data-tour="lessons-add" className="btn-primary btn-sm">
-          <Plus className="w-4 h-4" /> New course
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={courseStatus}
+            onChange={(e) => setCourseStatus(e.target.value)}
+            className="input-base text-sm py-1.5 pr-8"
+            aria-label="Filter courses by status"
+          >
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
+          <button onClick={openCreateCourse} data-tour="lessons-add" className="btn-primary btn-sm">
+            <Plus className="w-4 h-4" /> New course
+          </button>
+        </div>
       </div>
 
       {courses.length === 0 ? (
         <EmptyState
           icon={Video}
-          title="No courses yet"
-          message="Create your first course to start adding lessons."
+          title={courseStatus === 'archived' ? 'No archived courses' : 'No courses yet'}
+          message={courseStatus === 'archived'
+            ? 'Courses you archive will appear here. They stay hidden from students but keep their lessons and enrolments.'
+            : 'Create your first course to start adding lessons.'}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1167,21 +1195,37 @@ export default function Lessons() {
                   <h3 className="font-semibold text-gray-900">{c.name}</h3>
                   <PlayCircle className="w-5 h-5 text-indigo-500 flex-shrink-0" />
                 </div>
+                {c.status === 'archived' && (
+                  <span className="inline-block mb-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Archived</span>
+                )}
                 {c.description && (
                   <p className="text-xs text-gray-500 line-clamp-2">{c.description}</p>
                 )}
               </div>
               <div className="relative z-10 mt-3 flex justify-end">
-                <Tooltip label="Archive course">
-                  <button
-                    type="button"
-                    onClick={() => deleteCourse(c)}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    aria-label={`Archive ${c.name}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </Tooltip>
+                {c.status === 'archived' ? (
+                  <Tooltip label="Restore course">
+                    <button
+                      type="button"
+                      onClick={() => restoreCourse(c)}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                      aria-label={`Restore ${c.name}`}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                ) : (
+                  <Tooltip label="Archive course">
+                    <button
+                      type="button"
+                      onClick={() => deleteCourse(c)}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      aria-label={`Archive ${c.name}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                )}
               </div>
             </div>
           ))}

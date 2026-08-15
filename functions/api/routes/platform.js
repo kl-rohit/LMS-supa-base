@@ -9,7 +9,7 @@
 
 const router = require('express').Router();
 const {
-  insert, update, zcql, zcqlAll, unwrap, normalize, safeId, appFor, readCount, mapLimit,
+  insert, update, remove, zcql, zcqlAll, unwrap, normalize, safeId, appFor, readCount, mapLimit,
 } = require('../db/catalystDb');
 const { getUserById, resetUserPassword } = require('../lib/supabaseAuth');
 const { loadBranding, saveBranding } = require('../lib/platformSettings');
@@ -361,6 +361,64 @@ router.put('/orgs/:id', async (req, res) => {
     res.json({ org: normalize(updated) });
   } catch (e) {
     res.status(500).json({ error: 'Failed to update org', detail: e.message });
+  }
+});
+
+// =============================================================================
+// DELETE /api/platform/orgs/:id — platform-admin only. HARD delete, allowed
+// ONLY when the academy is completely empty: every tenant module reads 0 rows.
+// This is the escape hatch for throwaway/test orgs. A populated academy is
+// NEVER deletable here — the endpoint refuses and lists what still has data, so
+// the safe path for a live academy stays "suspend", not "wipe". We re-count
+// server-side (never trust a client "all zero"), then purge the org's residual
+// memberships + AppSettings (plan/module-flag rows) and the Organizations row.
+// =============================================================================
+router.delete('/orgs/:id', async (req, res) => {
+  try {
+    const rowId = safeId(req.params.id);
+    if (!rowId) return res.status(400).json({ error: 'Invalid org id' });
+    const orgId = Number(req.params.id);
+    const existing = await zcql(req, `SELECT * FROM Organizations WHERE ROWID = ${rowId}`);
+    const org = normalize(unwrap(existing, 'Organizations')[0] || null);
+    if (!org) return res.status(404).json({ error: 'Org not found' });
+
+    // Guard: re-verify every module is empty. readCount un-wraps the aggregate
+    // (a raw read is a silent 0). A missing table counts as empty.
+    const nonEmpty = [];
+    await mapLimit(MODULES, async (m) => {
+      try {
+        const rows = await zcql(req, `SELECT COUNT(ROWID) AS c FROM ${m.table} WHERE ${m.table}.org_id = ${orgId}`);
+        const c = readCount(rows, m.table);
+        if (c > 0) nonEmpty.push({ label: m.label, table: m.table, count: c });
+      } catch (_e) { /* table absent → treat as empty */ }
+    });
+    if (nonEmpty.length) {
+      return res.status(409).json({
+        error: 'This academy still has data, so it cannot be deleted. Suspend it instead, or clear these modules first.',
+        nonEmpty,
+      });
+    }
+
+    // Empty → safe to purge. Clear memberships + any residual settings the
+    // module count does not cover, then remove the org itself.
+    const removed = { memberships: 0, settings: 0 };
+    try {
+      const mr = await zcqlAll(req, `SELECT ROWID FROM OrgMemberships WHERE OrgMemberships.org_id = ${orgId}`, 'OrgMemberships');
+      for (const r of unwrap(mr, 'OrgMemberships')) { try { await remove(req, 'OrgMemberships', r.ROWID); removed.memberships++; } catch {} }
+    } catch {}
+    try {
+      const sr = await zcqlAll(req, `SELECT ROWID FROM AppSettings WHERE AppSettings.org_id = ${orgId}`, 'AppSettings');
+      for (const r of unwrap(sr, 'AppSettings')) { try { await remove(req, 'AppSettings', r.ROWID); removed.settings++; } catch {} }
+    } catch {}
+    await remove(req, 'Organizations', rowId);
+
+    try {
+      await writeAudit(req, { action: 'org.delete', orgId: org.ROWID, orgName: org.name, detail: { removed } });
+    } catch { /* audit is best-effort */ }
+
+    res.json({ ok: true, message: `${org.name} has been deleted.`, removed });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete academy', detail: e.message });
   }
 });
 

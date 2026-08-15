@@ -47,6 +47,8 @@ import {
   AtSign,
   MapPin,
   Palette,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
@@ -364,6 +366,28 @@ export default function Platform() {
       fetchAll();
     } catch (e) {
       toast.error('Action failed: ' + e.message);
+    }
+  };
+
+  // Hard-delete an empty academy. The backend refuses unless every module reads
+  // 0 rows, so this only ever removes throwaway/test orgs. Populated academies
+  // must be suspended, not deleted.
+  const deleteOrg = async (org) => {
+    const ok = await confirm({
+      title: `Delete ${org.name}?`,
+      message: `This permanently removes the academy "${org.name}". It has no data (all modules are empty), so nothing else is lost. This cannot be undone.`,
+      confirmText: 'Delete academy',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/platform/orgs/${org.id}`);
+      toast.success(`${org.name} deleted`);
+      setDetail(null);
+      fetchAll();
+    } catch (e) {
+      // 409 = academy still has data; surface the server's specific message.
+      toast.error(e.message || 'Could not delete academy');
     }
   };
 
@@ -904,6 +928,7 @@ export default function Platform() {
                 onExport={exportOrg}
                 onImpersonate={(o) => { setDetail(null); startImpersonate(o); }}
                 onBack={() => setDetail(null)}
+                onDelete={deleteOrg}
               />
             ) : (
               <AcademiesSection
@@ -1789,7 +1814,7 @@ function AcademiesSection({
 // ----------------------------------------------------------------------------
 function DetailPanel({
   detail, detailLoading, piiBusy, piiShown, onReveal, flagBusy, onToggleFlag,
-  resending, exporting, onResend, onExport, onImpersonate, onBack,
+  resending, exporting, onResend, onExport, onImpersonate, onBack, onDelete,
 }) {
   const d = detail.org || {};
   const counts = detail.counts || [];
@@ -1908,6 +1933,29 @@ function DetailPanel({
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Delete an empty academy. Only offered once record totals have
+              loaded AND every module is 0; otherwise a note points to Suspend. */}
+          {!detailLoading && detail.counts && (
+            totalRecords === 0 ? (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-start gap-2 min-w-0">
+                  <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-xs text-red-700">This academy has no data. You can permanently delete it.</span>
+                </div>
+                <button
+                  onClick={() => onDelete(detail.org)}
+                  className="btn-sm rounded-md px-2.5 py-1 text-xs bg-red-600 text-white hover:bg-red-700 inline-flex items-center gap-1 flex-shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete this academy
+                </button>
+              </div>
+            ) : (
+              <p className="mt-3 text-[11px] text-gray-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" /> Delete is only available for an empty academy. To take this one offline, use Suspend.
+              </p>
+            )
           )}
         </div>
 

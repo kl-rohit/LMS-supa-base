@@ -100,6 +100,7 @@ export const V = {
     const n = Number(v);
     if (!Number.isFinite(n)) return `${label} should be a number`;
     if (n < 0) return `${label} should be 0 or more`;
+    if (opts.max != null && n > opts.max) return `${label} looks too large (max ${Number(opts.max).toLocaleString('en-IN')})`;
     return null;
   },
 

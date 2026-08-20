@@ -204,7 +204,9 @@ export default function Fees() {
     }
     const errs = validate(feeForm, {
       description: V.maxLen('Description', 500, { required: true }),
-      amount: V.nonNegative('Amount', { required: true }),
+      // Cap at 10 lakh per line so a mistyped/garbage value (e.g. 3.2e23) can
+      // never be saved and later render as scientific notation in a reminder.
+      amount: V.nonNegative('Amount', { required: true, max: 1000000 }),
       date: V.date('Date', { required: true }),
     });
     if (Object.keys(errs).length) {
@@ -458,7 +460,7 @@ export default function Fees() {
   const saveEditFee = async () => {
     const errs = validate(editFeeForm, {
       description: V.maxLen('Description', 500, { required: true }),
-      amount: V.nonNegative('Amount', { required: true }),
+      amount: V.nonNegative('Amount', { required: true, max: 1000000 }),
     });
     if (Object.keys(errs).length) {
       setErrors(errs);

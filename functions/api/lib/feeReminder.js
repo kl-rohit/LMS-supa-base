@@ -29,15 +29,30 @@ async function loadSchoolCtx(req) {
 const MONTH_NAMES = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December'];
 
+// Money placeholders are rendered with Indian digit grouping and at most two
+// decimals, so a large or fractional value can never leak scientific notation
+// (e.g. "3.245e+23") or a raw float into a parent-facing message. Non-money
+// keys (year, month, name, count) are left exactly as-is.
+const MONEY_KEYS = new Set([
+  'amount', 'class_fees', 'additional_fees', 'paid_amount', 'paid',
+  'due', 'balance', 'total', 'discount',
+]);
+function formatMoney(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
 // Replace {placeholder} tokens. Mirror of the helper in messages.js — they
 // must stay identical so manual + cron generate the same wording.
 function substituteTemplate(text, ctx) {
   if (!text || typeof text !== 'string') return '';
-  return text.replace(/\{(\w+)\}/g, (match, key) =>
-    (ctx && Object.prototype.hasOwnProperty.call(ctx, key) && ctx[key] !== undefined && ctx[key] !== null)
-      ? String(ctx[key])
-      : match
-  );
+  return text.replace(/\{(\w+)\}/g, (match, key) => {
+    if (!(ctx && Object.prototype.hasOwnProperty.call(ctx, key) && ctx[key] !== undefined && ctx[key] !== null)) {
+      return match;
+    }
+    return MONEY_KEYS.has(key) ? formatMoney(ctx[key]) : String(ctx[key]);
+  });
 }
 
 function pickTemplate(templates, type) {
@@ -215,6 +230,7 @@ async function notifyAdminFeeRemindersReady(req, { orgId, month, year, created }
 module.exports = {
   generateFeeReminders,
   substituteTemplate,
+  formatMoney,
   pickTemplate,
   applyFeeReminderConditionalBlock,
   notifyAdminFeeRemindersReady,

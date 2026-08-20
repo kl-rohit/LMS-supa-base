@@ -1,0 +1,39 @@
+# e2e tests (Playwright)
+
+Browser tests that exercise the live app across every module. The headline
+check is **no horizontal scroll** on mobile — the automated version of the
+manual PWA sweep — plus a guard that no rupee value ever renders in scientific
+notation.
+
+## First-time setup
+
+```bash
+cd qa
+npm i -D @playwright/test
+npx playwright install chromium
+node create-auth.js          # opens a browser; log in once → saves .auth/state.json
+```
+
+`.auth/state.json` holds your logged-in session (gitignored). Regenerate it with
+`node create-auth.js` whenever it expires (a test failure saying "session
+expired" is the signal).
+
+## Run
+
+```bash
+npx playwright test                     # against the live Netlify app
+PLAYWRIGHT_BASE_URL=http://localhost:8080 npx playwright test   # against a local build
+npx playwright test --project=mobile    # phone viewport only (where scroll bugs live)
+```
+
+## What's covered
+- Every module route loads without erroring or bouncing to login.
+- No page scrolls horizontally (mobile + desktop).
+- No money value leaks scientific notation on Messages.
+
+Rules these tests assert against live in [`../module-rules.md`](../module-rules.md).
+Add a test whenever you add a rule.
+
+## Not covered yet (follow-ups)
+- Client-side validators (needs a Vitest/babel setup because `validation.js` is ESM/JSX-adjacent).
+- Write flows (create/edit) — kept read-only for now so tests don't mutate live data.

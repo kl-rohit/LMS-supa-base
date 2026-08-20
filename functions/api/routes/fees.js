@@ -6,6 +6,12 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, sa
 const { loadAppSettings } = require('./settings');
 const { requireFeature } = require('../middleware/entitlement');
 
+// Upper bound (₹) for any single fee / payment line. Guards against a mistyped
+// or garbage value (e.g. 3.2e23) being stored and later leaking into a
+// parent-facing reminder as scientific notation. Mirrors the client cap.
+const MAX_FEE = 1000000;
+const feeInRange = (n) => Number.isFinite(n) && Math.abs(n) <= MAX_FEE;
+
 // Attendance counts by hours, not by sessions: a 2-hour class marked present
 // counts as 2 toward present/late/absent totals and the min-classes threshold.
 // `duration_hours` is frozen on each Attendance row at record time; legacy rows
@@ -166,6 +172,9 @@ router.post('/payments', async (req, res) => {
     if (!student_id || !fee_month || !fee_year || !Number.isFinite(paid_amount)) {
       return res.status(400).json({ error: 'student_id, fee_month, fee_year, paid_amount required' });
     }
+    if (paid_amount < 0 || !feeInRange(paid_amount)) {
+      return res.status(400).json({ error: `paid_amount must be between 0 and ${MAX_FEE.toLocaleString('en-IN')}.` });
+    }
     // Verify student is in caller's org.
     const stu = await getById(req, 'Students', student_id);
     if (!stu || Number(stu.org_id) !== Number(req.orgId)) {
@@ -270,6 +279,9 @@ router.post('/additional', requireFeature('fees.additional'), async (req, res) =
     if (!ids.length || !description || amount === undefined || !fee_date || !month || !year) {
       return res.status(400).json({ error: 'student_ids[]/student_id, description, amount, fee_date, month, year required' });
     }
+    if (!feeInRange(Number(amount))) {
+      return res.status(400).json({ error: `Amount must be a number no larger than ${MAX_FEE.toLocaleString('en-IN')}.` });
+    }
     const created = [];
     const skipped = [];   // ids that did not belong to this academy
     const failed = [];    // ids whose insert threw
@@ -321,7 +333,13 @@ router.put('/additional/:id', requireFeature('fees.additional'), async (req, res
     }
     const patch = {};
     if (req.body.description !== undefined) patch.description = req.body.description;
-    if (req.body.amount !== undefined)      patch.amount = Number(req.body.amount);
+    if (req.body.amount !== undefined) {
+      const amt = Number(req.body.amount);
+      if (!feeInRange(amt)) {
+        return res.status(400).json({ error: `Amount must be a number no larger than ${MAX_FEE.toLocaleString('en-IN')}.` });
+      }
+      patch.amount = amt;
+    }
     if (req.body.fee_date !== undefined)    patch.fee_date = req.body.fee_date;
     if (req.body.month !== undefined)       patch.fee_month = parseInt(req.body.month);
     if (req.body.year !== undefined)        patch.fee_year = parseInt(req.body.year);

@@ -18,6 +18,12 @@ node create-auth.js          # opens a browser; log in once → saves .auth/stat
 `node create-auth.js` whenever it expires (a test failure saying "session
 expired" is the signal).
 
+> ⚠️ **Always create a dedicated session with `create-auth.js`. Do NOT export /
+> copy the token from a browser you're actively using.** Supabase rotates refresh
+> tokens, so two clients sharing one session invalidate each other — running the
+> suite against a copied live token will log you out of that live browser. A
+> throwaway login via `create-auth.js` avoids this entirely.
+
 ## Run
 
 ```bash

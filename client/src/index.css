@@ -163,6 +163,18 @@
 .dark .hover\:border-indigo-300:hover { border-color: rgb(var(--c-indigo-400, 129 140 248) / 0.5); }
 
 @layer base {
+  /* App-wide guard against accidental left/right scroll: the PWA should only
+     ever scroll vertically. Any genuinely wide content (tables, timetable grid)
+     must carry its OWN `overflow-x-auto` wrapper so it scrolls inside its box,
+     never dragging the whole page sideways. `clip` is preferred (it does not
+     start a scroll container, so sticky headers keep working); `hidden` is the
+     fallback for older engines. */
+  html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
   body {
     @apply font-sans antialiased text-gray-800;
     /* Inter reads best with a hair of negative tracking + its stylistic set for

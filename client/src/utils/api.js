@@ -85,6 +85,12 @@ async function request(url, options = {}) {
     const isAuthMe = url === '/auth/me';
     const onLogin = typeof window !== 'undefined' && window.location.pathname.endsWith('/login');
     if (!isAuthMe && !onLogin && typeof window !== 'undefined') {
+      // Clear the stored session so a forced logout is a *clean* logout — the
+      // stale token must not linger in localStorage and silently auto-restore
+      // on the next visit (matters on shared devices). Mirrors signOut cleanup.
+      try { localStorage.removeItem('veena_auth'); } catch { /* ignore */ }
+      try { localStorage.removeItem('veena_active_org_id'); } catch { /* ignore */ }
+      try { localStorage.removeItem('veena_impersonate_org_id'); } catch { /* ignore */ }
       const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
       window.location.href = `${base}/login`;
     }

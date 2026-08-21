@@ -14,33 +14,47 @@ const { test, expect } = require('@playwright/test');
 const TAG = `UICRUD-${Date.now()}`;
 
 test.describe('Students — create → appears → remove (UI)', () => {
+  // NOTE: student names are validated (letters/spaces/.-' only, NO digits — see
+  // V.name / NAME_RE), so the test name must be letters-only, not a timestamp.
+  const NAME = 'Zzqa Uicrud Student';
+
+  // Delete any leftover from a previous run (via the in-page authed API) so the
+  // test is idempotent.
+  async function purge(page) {
+    await page.evaluate(async (name) => {
+      const org = localStorage.getItem('veena_impersonate_org_id') || localStorage.getItem('veena_active_org_id') || '0';
+      const tok = JSON.parse(localStorage.getItem('veena_auth') || '{}').access_token;
+      const h = { 'X-Auth-Token': tok };
+      for (const st of ['active', 'inactive']) {
+        const r = await fetch(`/api/students?status=${st}&limit=500&org=${org}`, { headers: h });
+        const j = await r.json().catch(() => ({}));
+        for (const s of (j.students || [])) {
+          if ((s.name || '') === name) await fetch(`/api/students/${s.id || s.ROWID}?org=${org}`, { method: 'DELETE', headers: h });
+        }
+      }
+    }, NAME);
+  }
+
   test('happy path', async ({ page }) => {
     await page.goto('/students', { waitUntil: 'networkidle' });
     expect(page.url(), 'session expired — run create-auth.js').toContain('/students');
+    await purge(page); // clear any prior run's record first
 
     // CREATE — the toolbar "Add Student" opens the modal. Fields have no linked
     // <label>, so target them by placeholder. The modal's save button is also
     // labelled "Add Student" (Modal saveLabel), so .last() = the save button.
     await page.getByRole('button', { name: 'Add Student' }).first().click();
-    await page.getByPlaceholder('Student name').fill(`${TAG} Student`);
-    await page.getByPlaceholder('Parent name').fill('UI CRUD Parent');
+    await page.getByPlaceholder('Student name').fill(NAME);
+    await page.getByPlaceholder('Parent name').fill('Zzqa Parent');
     await page.getByPlaceholder('98765 43210').fill('9000000008');
     await page.getByRole('button', { name: 'Add Student' }).last().click();
 
     // APPEARS — the new student is visible in the list.
-    await expect(page.getByText(`${TAG} Student`)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(NAME)).toBeVisible({ timeout: 10_000 });
 
     // CLEAN UP via the authenticated API (mobile shows cards, not rows, so a
     // UI delete is brittle; the in-page session token drives a reliable delete).
-    await page.evaluate(async (tag) => {
-      const org = localStorage.getItem('veena_impersonate_org_id') || localStorage.getItem('veena_active_org_id') || '0';
-      const tok = JSON.parse(localStorage.getItem('veena_auth') || '{}').access_token;
-      const h = { 'X-Auth-Token': tok };
-      const r = await fetch(`/api/students?status=all&org=${org}`, { headers: h });
-      const j = await r.json();
-      const s = (j.students || []).find((x) => (x.name || '').includes(tag));
-      if (s) await fetch(`/api/students/${s.id || s.ROWID}?org=${org}`, { method: 'DELETE', headers: h });
-    }, TAG);
+    await purge(page);
   });
 });
 

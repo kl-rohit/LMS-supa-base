@@ -38,24 +38,74 @@ test.describe('Students — create → appears → remove (UI)', () => {
   });
 });
 
-// --- The remaining three follow the SAME shape. Enable + verify selectors on
-// the first authenticated run, then remove the skip. Kept as skips so the suite
-// stays green while the Students pattern is proven. ---
+// --- The remaining three are real bodies below, kept `.skip`-gated. On the
+// FIRST authenticated run, remove `.skip` one at a time and adjust any locator
+// the app words differently — UI selectors normally need one confirming pass.
+// The flows and assertions are source-derived (e.g. the Present toggle really
+// does get `bg-green-500` when active — see Attendance.jsx). ---
 
 test.skip('Fees — add additional fee → appears → remove (UI)', async ({ page }) => {
-  // goto /fees → "Add fee"/"Additional" → fill description + amount (≤10,00,000)
-  // → save → assert row → delete → confirm → assert gone.
-  // Also assert a huge amount (e.g. 9e9) shows the inline "too large" error.
+  await page.goto('/fees', { waitUntil: 'networkidle' });
+  expect(page.url()).toContain('/fees');
+
+  // Open the "add charge" modal (Fees.jsx sets adjustment_type:'fee').
+  await page.getByRole('button', { name: /add (charge|fee)|additional/i }).first().click();
+  // Pick the first student in the modal's picker, then fill the fields.
+  await page.getByRole('checkbox').first().check().catch(() => {});
+  await page.getByLabel(/description/i).first().fill(`${TAG} exam fee`);
+  await page.getByLabel(/amount/i).first().fill('500');
+  await page.getByRole('button', { name: /save|add/i }).last().click();
+  await expect(page.getByText(`${TAG} exam fee`)).toBeVisible({ timeout: 10_000 });
+
+  // Client cap: a value over ₹10,00,000 must surface an inline error, not save.
+  await page.getByRole('button', { name: /add (charge|fee)|additional/i }).first().click();
+  await page.getByRole('checkbox').first().check().catch(() => {});
+  await page.getByLabel(/description/i).first().fill(`${TAG} too big`);
+  await page.getByLabel(/amount/i).first().fill('99999999');
+  await page.getByRole('button', { name: /save|add/i }).last().click();
+  await expect(page.getByText(/too large|max/i)).toBeVisible();
+  await page.getByRole('button', { name: /cancel|close/i }).last().click();
+
+  // Remove the real fee we added.
+  const row = page.getByRole('row', { name: new RegExp(`${TAG} exam fee`) }).first();
+  await row.getByRole('button', { name: /delete|remove/i }).first().click();
+  await page.getByRole('button', { name: /^(delete|remove|confirm|yes)/i }).last().click();
+  await expect(page.getByText(`${TAG} exam fee`)).toHaveCount(0, { timeout: 10_000 });
 });
 
-test.skip('Attendance — mark present is GREEN then save (UI)', async ({ page }) => {
-  // goto /attendance → pick class or Ad-hoc → select a student → the Present
-  // toggle has a green background (getByRole('button',{name:/present/i}) →
-  // expect a green bg via toHaveCSS or class) → Save → appears in "Marked".
+test.skip('Attendance — Present toggle is GREEN (UI)', async ({ page }) => {
+  await page.goto('/attendance', { waitUntil: 'networkidle' });
+  expect(page.url()).toContain('/attendance');
+  // Precondition: a class roster must be on screen (pick "Any class" → a class,
+  // or use "Ad-hoc attendance" and select a student) so the per-student
+  // Present/Absent toggles render.
+  const present = page.getByRole('button', { name: /^present/i }).first();
+  await present.click();
+  // Source of truth (Attendance.jsx): active Present = 'bg-green-500 text-white'.
+  await expect(present).toHaveClass(/bg-green-500/);
 });
 
-test.skip('Classes — create recurring class → shows on timetable, no page scroll (UI)', async ({ page }) => {
-  // goto /classes → New class → name + type + day + start/end → save → the
-  // class appears; assert documentElement.scrollWidth === clientWidth at phone
-  // width (timetable scrolls inside its own box) → delete the class.
+test.skip('Classes — create class → appears, timetable does not scroll page (UI)', async ({ page }) => {
+  await page.goto('/classes', { waitUntil: 'networkidle' });
+  expect(page.url()).toContain('/classes');
+
+  await page.getByRole('button', { name: /new class|add class|create/i }).first().click();
+  await page.getByLabel(/class name|^name/i).first().fill(`${TAG} Class`);
+  // Pick a weekday and start/end times (Classes.jsx uses day_of_week + times).
+  await page.getByRole('button', { name: /^mon/i }).first().click().catch(() => {});
+  await page.getByLabel(/start/i).first().fill('10:00').catch(() => {});
+  await page.getByLabel(/end/i).first().fill('11:00').catch(() => {});
+  await page.getByRole('button', { name: /save|create|add/i }).last().click();
+  await expect(page.getByText(`${TAG} Class`)).toBeVisible({ timeout: 10_000 });
+
+  // Timetable must scroll inside its own box, not the page.
+  const { scrollW, clientW } = await page.evaluate(() => ({
+    scrollW: document.documentElement.scrollWidth, clientW: document.documentElement.clientWidth,
+  }));
+  expect(scrollW, 'page scrolls sideways with a class on the timetable').toBeLessThanOrEqual(clientW + 1);
+
+  // Clean up.
+  const row = page.getByRole('row', { name: new RegExp(`${TAG} Class`) }).first();
+  await row.getByRole('button', { name: /delete|remove/i }).first().click();
+  await page.getByRole('button', { name: /^(delete|remove|confirm|yes)/i }).last().click();
 });

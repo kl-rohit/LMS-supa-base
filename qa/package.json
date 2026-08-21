@@ -1,8 +1,14 @@
 {
   "name": "vidyasetu-qa",
   "private": true,
+  "description": "Pre-deploy test suite: API smoke/CRUD + Playwright browser e2e.",
+  "type": "commonjs",
   "scripts": {
-    "test": "playwright test"
+    "auth": "node create-auth.js",
+    "e2e": "playwright test",
+    "e2e:desktop": "PW_DESKTOP=1 playwright test",
+    "smoke:api": "node api-smoke.mjs",
+    "crud:api": "node api-crud.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1"

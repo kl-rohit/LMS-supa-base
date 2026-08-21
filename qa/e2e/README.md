@@ -27,10 +27,15 @@ expired" is the signal).
 ## Run
 
 ```bash
-npx playwright test                     # against the live Netlify app
+npx playwright test                     # mobile (Pixel 5), serial — the default
+PW_DESKTOP=1 npx playwright test        # desktop viewport instead (run separately)
 PLAYWRIGHT_BASE_URL=http://localhost:8080 npx playwright test   # against a local build
-npx playwright test --project=mobile    # phone viewport only (where scroll bugs live)
 ```
+
+The suite runs **serial (1 worker), one viewport per invocation** on purpose:
+all specs share one Supabase session, and parallel contexts rotate/invalidate
+each other's token (→ bounce to landing). Run mobile and desktop as separate
+commands, never together.
 
 ## What's covered
 - Every module route loads without erroring or bouncing to login.

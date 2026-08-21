@@ -12,18 +12,25 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './e2e',
-  timeout: 30_000,
+  timeout: 60_000,
   expect: { timeout: 8_000 },
-  fullyParallel: true,
+  // Serial, single worker: all specs share ONE Supabase session, and parallel
+  // contexts rotate/invalidate each other's refresh token (→ bounce to landing).
+  // One worker keeps the session stable across the run.
+  fullyParallel: false,
+  workers: 1,
   reporter: [['list']],
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'https://academy-management.netlify.app',
     storageState: '.auth/state.json',
     trace: 'on-first-retry',
   },
-  projects: [
-    // Phone-sized: this is where horizontal-scroll and layout bugs surface.
-    { name: 'mobile', use: { ...devices['Pixel 5'] } },
-    { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-  ],
+  // Run ONE project per invocation. Two projects = two browser contexts that
+  // both reload the same on-disk session; once the first rotates the Supabase
+  // token, the second bounces to landing. So we expose exactly one project at a
+  // time. Mobile is the default (phone width is where layout/scroll bugs live);
+  // check desktop separately with:  PW_DESKTOP=1 npx playwright test
+  projects: process.env.PW_DESKTOP
+    ? [{ name: 'desktop', use: { ...devices['Desktop Chrome'] } }]
+    : [{ name: 'mobile', use: { ...devices['Pixel 5'] } }],
 });

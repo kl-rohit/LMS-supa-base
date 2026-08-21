@@ -1,6 +1,12 @@
-// Smoke + regression sweep across every module. The star assertion is
+// Smoke + regression sweep across every module. The headline assertion is
 // "no horizontal scroll" — the automated version of the manual PWA sweep.
-// Rules verified here are documented in qa/module-rules.md.
+//
+// IMPORTANT: this is ONE test that sweeps every route on a SINGLE page/context.
+// Do NOT split it into one-test-per-route: each Playwright test spawns a fresh
+// context that reloads the shared session, and Supabase rotates the refresh
+// token — so multiple contexts invalidate each other's session and bounce to
+// the landing page. One page + workers:1 (see playwright.config.js) avoids that.
+// Rules verified here are documented in qa/module-rules.md and e2e-scenarios.md.
 
 const { test, expect } = require('@playwright/test');
 
@@ -9,27 +15,30 @@ const MODULES = [
   '/classes', '/messages', '/reports', '/lessons', '/settings',
 ];
 
-for (const path of MODULES) {
-  test(`${path} — loads and does not scroll horizontally`, async ({ page }) => {
+test('all modules: load, scroll only vertically, no bad values', async ({ page }) => {
+  const problems = [];
+
+  for (const path of MODULES) {
     const resp = await page.goto(path, { waitUntil: 'networkidle' });
-    expect(resp?.status(), `${path} should not error`).toBeLessThan(400);
+    if (resp && resp.status() >= 400) { problems.push(`${path}: HTTP ${resp.status()}`); continue; }
 
-    // Must not have bounced to the marketing/login page (i.e. session is valid).
-    expect(page.url(), 'session expired — regenerate .auth/state.json').toContain(path);
+    // Bounced to marketing/login ⇒ the .auth session lapsed — regenerate it
+    // with create-auth.js (see e2e/README.md). Not an app bug.
+    if (!page.url().includes(path)) {
+      problems.push(`${path}: bounced to ${page.url()} — session expired, run create-auth.js`);
+      continue;
+    }
 
-    // The page may only scroll vertically.
-    const { scrollW, clientW } = await page.evaluate(() => ({
+    const { scrollW, clientW, bad } = await page.evaluate(() => ({
       scrollW: document.documentElement.scrollWidth,
       clientW: document.documentElement.clientWidth,
+      // e.g. "₹3.2e+23", "₹NaN", stray "undefined" in a value
+      bad: (document.body.innerText || '').match(/e\+\d{2,}|₹\s?NaN|\bNaN\b/i),
     }));
-    expect(scrollW, `${path} scrolls sideways (scrollW ${scrollW} > clientW ${clientW})`)
-      .toBeLessThanOrEqual(clientW + 1);
-  });
-}
 
-test('no rupee value renders in scientific notation (Messages)', async ({ page }) => {
-  await page.goto('/messages', { waitUntil: 'networkidle' });
-  const body = await page.evaluate(() => document.body.innerText);
-  // e.g. "₹3.245678944343434e+23" — must never appear in a user-facing message.
-  expect(body, 'a money value leaked scientific notation').not.toMatch(/e\+?\d{2,}/i);
+    if (scrollW > clientW + 1) problems.push(`${path}: scrolls sideways (${scrollW} > ${clientW})`);
+    if (bad) problems.push(`${path}: bad value in text ("${bad[0]}")`);
+  }
+
+  expect(problems, `\n${problems.join('\n')}\n`).toEqual([]);
 });

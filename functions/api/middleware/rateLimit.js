@@ -1,6 +1,6 @@
 // Anti-hammer rate limiter.
 //
-// Policy (per the product owner's choice): ~100 requests/minute per client IP.
+// Policy (per the product owner's choice): ~200 requests/minute per client IP.
 // Exceed it and the client is blocked with HTTP 429 for a 5-minute cool-off.
 // This is a coarse abuse guard, not a fine-grained quota — normal human use of
 // the app (a dashboard screen fires a handful of calls) stays well under 100/min.
@@ -16,7 +16,7 @@
 // for basic hammering protection on this deployment size.
 
 const WINDOW_MS = 60 * 1000;   // rolling 1-minute window
-const MAX = 100;               // requests allowed per window
+const MAX = 200;               // requests allowed per window
 const BLOCK_MS = 5 * 60 * 1000; // cool-off once tripped
 
 const buckets = new Map(); // ip -> { start, count, blockedUntil }

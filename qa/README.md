@@ -1,5 +1,22 @@
 # QA — test before you deploy
 
+## Strategy (what we automate, and why)
+At pilot scale the goal is **maximum safety per unit of maintenance**:
+
+- **Automated (run every deploy):** unit tests · **API CRUD for all modules**
+  (the real safety net — data, validation, business rules) · UI **smoke** sweep
+  (loads, no horizontal scroll, no bad values) · **one** UI CRUD canary
+  (Students) proving the screens genuinely work end to end.
+- **Manual (pre-deploy checklist):** per-screen create/edit/delete for the other
+  modules — see the `[manual]` scenarios in `e2e-scenarios.md` (~3 min).
+
+Full UI CRUD for every module is **intentionally not automated**: UI specs are
+brittle (labels, breakpoints, dual table/card renders, validation) and cost far
+more to maintain than they catch once the API layer already covers the logic.
+Automate another UI flow only if a specific screen keeps regressing.
+
+---
+
 Three layers, fastest first. Run them **before `./deploy.sh`**.
 
 | Layer | What it checks | Command | Needs |

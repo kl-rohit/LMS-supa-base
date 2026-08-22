@@ -50,7 +50,7 @@ test.describe('Students', () => {
   const NAME = `${LETTERS} Student`; // letters only (V.name)
   const purge = (page) => apiDeleteWhere(page, '/students?status=all&limit=500', 'students', ['name'], NAME, '/students');
   test('create → appears → remove', async ({ page }) => {
-    await page.goto('/students', { waitUntil: 'networkidle' }); guard(page, '/students');
+    await page.goto('/students', { waitUntil: 'domcontentloaded' }); guard(page, '/students');
     await purge(page);
     await page.getByRole('button', { name: 'Add Student' }).first().click();
     await page.getByPlaceholder('Student name').fill(NAME);
@@ -67,7 +67,7 @@ test.describe('Groups', () => {
   const NAME = `ZzGroup ${STAMP}`; // V.text — digits allowed
   const purge = (page) => apiDeleteWhere(page, '/groups?status=all&limit=500', 'groups', ['name'], String(STAMP), '/groups', true);
   test('create → appears → remove', async ({ page }) => {
-    await page.goto('/groups', { waitUntil: 'networkidle' }); guard(page, '/groups');
+    await page.goto('/groups', { waitUntil: 'domcontentloaded' }); guard(page, '/groups');
     await purge(page);
     await page.getByRole('button', { name: 'New Group' }).first().click();
     await page.getByPlaceholder('e.g., Beginners Batch').fill(NAME);
@@ -82,7 +82,7 @@ test.describe('Assignments', () => {
   const TITLE = `ZzAssignment ${STAMP}`;
   const purge = (page) => apiDeleteWhere(page, '/assignments', 'assignments', ['title'], String(STAMP), '/assignments');
   test('create (target everyone) → appears → remove', async ({ page }) => {
-    await page.goto('/assignments', { waitUntil: 'networkidle' }); guard(page, '/assignments');
+    await page.goto('/assignments', { waitUntil: 'domcontentloaded' }); guard(page, '/assignments');
     await purge(page);
     await page.getByRole('button', { name: 'New Assignment' }).first().click();
     await page.locator('[data-field="title"]').fill(TITLE);
@@ -98,7 +98,7 @@ test.describe('Question Papers', () => {
   const TITLE = `ZzPaper ${STAMP}`;
   const purge = (page) => apiDeleteWhere(page, '/question-papers', 'question_papers', ['title'], String(STAMP), '/question-papers');
   test('create → appears → remove', async ({ page }) => {
-    await page.goto('/question-papers', { waitUntil: 'networkidle' }); guard(page, '/question-papers');
+    await page.goto('/question-papers', { waitUntil: 'domcontentloaded' }); guard(page, '/question-papers');
     await purge(page);
     await page.getByRole('button', { name: 'Add Paper' }).first().click();
     await page.locator('[data-field="title"]').fill(TITLE);
@@ -115,7 +115,7 @@ test.describe('Lessons', () => {
   const NAME = `ZzCourse ${STAMP}`;
   const purge = (page) => apiDeleteWhere(page, '/courses?status=all', 'courses', ['name'], String(STAMP), '/courses');
   test('create course → appears → archive', async ({ page }) => {
-    await page.goto('/lessons', { waitUntil: 'networkidle' }); guard(page, '/lessons');
+    await page.goto('/lessons', { waitUntil: 'domcontentloaded' }); guard(page, '/lessons');
     await purge(page);
     await page.getByRole('button', { name: 'New course' }).first().click();
     await page.locator('[data-field="name"]').fill(NAME);
@@ -131,7 +131,7 @@ test.describe('Messages', () => {
   // "Everyone" fans out one row per student — purge every row carrying our stamp.
   const purge = (page) => apiDeleteWhere(page, '/messages', 'messages', ['message', 'body'], String(STAMP), '/messages');
   test('compose (everyone) → created → remove', async ({ page }) => {
-    await page.goto('/messages', { waitUntil: 'networkidle' }); guard(page, '/messages');
+    await page.goto('/messages', { waitUntil: 'domcontentloaded' }); guard(page, '/messages');
     await purge(page);
     await page.getByRole('button', { name: 'Compose' }).first().click();
     await page.getByRole('button', { name: 'Everyone' }).click().catch(() => {});
@@ -151,7 +151,7 @@ test.describe('Fees', () => {
   const DESC = `Zzfee CRUD ${STAMP}`;
   const purge = (page) => apiDeleteWhere(page, `/fees/additional?month=${new Date().getMonth() + 1}&year=${new Date().getFullYear()}`, 'additional_fees', ['description'], String(STAMP), '/fees/additional');
   test('add additional fee (first student) → appears → remove', async ({ page }) => {
-    await page.goto('/fees', { waitUntil: 'networkidle' }); guard(page, '/fees');
+    await page.goto('/fees', { waitUntil: 'domcontentloaded' }); guard(page, '/fees');
     await purge(page);
     await page.getByRole('button', { name: 'Add Additional Fee' }).first().click();
     // Pick students: "Select All" is the simplest reliable way to satisfy the
@@ -173,7 +173,7 @@ test.describe('Camps', () => {
   const NAME = `ZzCamp ${STAMP}`;
   const purge = (page) => apiDeleteWhere(page, '/camps', 'camps', ['name'], String(STAMP), '/camps');
   test('create camp → appears → remove', async ({ page }) => {
-    await page.goto('/classes', { waitUntil: 'networkidle' }); guard(page, '/classes');
+    await page.goto('/classes', { waitUntil: 'domcontentloaded' }); guard(page, '/classes');
     await purge(page);
     await page.getByRole('button', { name: 'Camps' }).click();          // Camps tab
     await page.getByRole('button', { name: 'New Camp' }).first().click();
@@ -190,7 +190,7 @@ test.describe('Camps', () => {
 test.describe('Attendance', () => {
   const TOPIC = `Zzatt CRUD ${STAMP}`;
   test('ad-hoc mark present → saved', async ({ page }) => {
-    await page.goto('/attendance', { waitUntil: 'networkidle' }); guard(page, '/attendance');
+    await page.goto('/attendance', { waitUntil: 'domcontentloaded' }); guard(page, '/attendance');
     await page.getByRole('button', { name: 'Ad-hoc attendance' }).click();
     await page.getByPlaceholder('What was taught...').fill(TOPIC).catch(() => {});
     await page.getByRole('button', { name: 'Select All' }).click();     // select all students
@@ -211,7 +211,7 @@ test.describe('Classes', () => {
   const NAME = `ZzClass ${STAMP}`;
   const purge = (page) => apiDeleteWhere(page, '/classes', 'classes', ['name'], String(STAMP), '/classes');
   test('create class (offline group, Monday) → appears → remove', async ({ page }) => {
-    await page.goto('/classes', { waitUntil: 'networkidle' }); guard(page, '/classes');
+    await page.goto('/classes', { waitUntil: 'domcontentloaded' }); guard(page, '/classes');
     await purge(page);
     await page.getByRole('button', { name: 'List' }).click().catch(() => {}); // Add Class lives in List view
     await page.getByRole('button', { name: 'Add Class' }).first().click();

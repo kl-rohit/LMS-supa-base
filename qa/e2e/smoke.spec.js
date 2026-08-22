@@ -20,8 +20,11 @@ test('all modules: load, scroll only vertically, no bad values', async ({ page }
   const problems = [];
 
   for (const path of MODULES) {
-    const resp = await page.goto(path, { waitUntil: 'networkidle' });
+    // domcontentloaded, NOT networkidle: many pages poll/animate and never go
+    // idle, which hangs the navigation until timeout.
+    const resp = await page.goto(path, { waitUntil: 'domcontentloaded' });
     if (resp && resp.status() >= 400) { problems.push(`${path}: HTTP ${resp.status()}`); continue; }
+    await page.waitForTimeout(700); // let the SPA render before measuring
 
     // Bounced to marketing/login ⇒ the .auth session lapsed — regenerate it
     // with create-auth.js (see e2e/README.md). Not an app bug.

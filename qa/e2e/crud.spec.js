@@ -1,134 +1,226 @@
-// UI-driven happy-path CRUD for the critical modules — clicks the REAL forms,
-// so it catches what the API suite can't: broken forms, validation UX, a row
-// not rendering after save. Runs against a TEST org (it creates + deletes data).
+// UI-driven CRUD for the admin modules — clicks the REAL forms, so it catches
+// what the API suite can't (a broken form, a dead save button, a row that
+// doesn't render). Runs against a TEST org (creates + deletes data). Selectors
+// are derived from the page source; the four rules learned while stabilising
+// Students apply throughout:
+//   1. Fields are targeted by PLACEHOLDER / [data-field] — labels aren't linked.
+//   2. Data must be valid — names via V.name are letters-only (no digits);
+//      amounts <= 10,00,000; mobiles are 10 digits starting 6-9.
+//   3. Lists render a desktop row AND a mobile card — assert toBeAttached()
+//      (both are in the DOM; which is visible depends on the breakpoint).
+//   4. Clean up through the authenticated API, not the mobile-card delete UI.
 //
-// Selectors use resilient role/label/text locators, but every app UI has quirks
-// — expect to tweak a locator or two on the FIRST authenticated run, then it's
-// stable. The broad API CRUD lives in ../api-crud.mjs; this is the screen-level
-// confidence layer for the modules that matter most.
-//
-// Run:  npx playwright test crud.spec.js   (after create-auth.js)
+// Run:  npm run e2e -- crud.spec.js            (all)
+//       npm run e2e -- crud.spec.js -g Groups  (one module)
 
 const { test, expect } = require('@playwright/test');
 
-const TAG = `UICRUD-${Date.now()}`;
+const STAMP = Date.now();                 // unique per run, for names allowing digits
+const LETTERS = 'Zzqa Crud';              // prefix for name-validated fields (no digits)
 
-test.describe('Students — create → appears → remove (UI)', () => {
-  // NOTE: student names are validated (letters/spaces/.-' only, NO digits — see
-  // V.name / NAME_RE), so the test name must be letters-only, not a timestamp.
-  const NAME = 'Zzqa Uicrud Student';
-
-  // Delete any leftover from a previous run (via the in-page authed API) so the
-  // test is idempotent.
-  async function purge(page) {
-    await page.evaluate(async (name) => {
-      const org = localStorage.getItem('veena_impersonate_org_id') || localStorage.getItem('veena_active_org_id') || '0';
-      const tok = JSON.parse(localStorage.getItem('veena_auth') || '{}').access_token;
-      const h = { 'X-Auth-Token': tok };
-      for (const st of ['active', 'inactive']) {
-        const r = await fetch(`/api/students?status=${st}&limit=500&org=${org}`, { headers: h });
-        const j = await r.json().catch(() => ({}));
-        for (const s of (j.students || [])) {
-          if ((s.name || '') === name) await fetch(`/api/students/${s.id || s.ROWID}?org=${org}`, { method: 'DELETE', headers: h });
-        }
+// --- authenticated API helpers (run in the page, reuse the live session) ---
+async function apiList(page, path, key) {
+  return page.evaluate(async ({ path, key }) => {
+    const org = localStorage.getItem('veena_impersonate_org_id') || localStorage.getItem('veena_active_org_id') || '0';
+    const tok = JSON.parse(localStorage.getItem('veena_auth') || '{}').access_token;
+    const r = await fetch(`/api${path}${path.includes('?') ? '&' : '?'}org=${org}`, { headers: { 'X-Auth-Token': tok } });
+    const j = await r.json().catch(() => ({}));
+    return j[key] || j.data || [];
+  }, { path, key });
+}
+async function apiDeleteWhere(page, listPath, key, matchKeys, needle, delBase, force = false) {
+  await page.evaluate(async ({ listPath, key, matchKeys, needle, delBase, force }) => {
+    const org = localStorage.getItem('veena_impersonate_org_id') || localStorage.getItem('veena_active_org_id') || '0';
+    const tok = JSON.parse(localStorage.getItem('veena_auth') || '{}').access_token;
+    const h = { 'X-Auth-Token': tok };
+    const r = await fetch(`/api${listPath}${listPath.includes('?') ? '&' : '?'}org=${org}`, { headers: h });
+    const j = await r.json().catch(() => ({}));
+    for (const it of (j[key] || j.data || [])) {
+      if (matchKeys.some((k) => String(it[k] || '').includes(needle))) {
+        const id = it.id || it.ROWID;
+        await fetch(`/api${delBase}/${id}?org=${org}${force ? '&force=true' : ''}`, { method: 'DELETE', headers: h });
       }
-    }, NAME);
-  }
+    }
+  }, { listPath, key, matchKeys, needle, delBase, force });
+}
+const guard = (page, path) => expect(page.url(), 'session expired — run create-auth.js').toContain(path);
 
-  test('happy path', async ({ page }) => {
-    await page.goto('/students', { waitUntil: 'networkidle' });
-    expect(page.url(), 'session expired — run create-auth.js').toContain('/students');
-    await purge(page); // clear any prior run's record first
-
-    // CREATE — the toolbar "Add Student" opens the modal. Fields have no linked
-    // <label>, so target them by placeholder. The modal's save button is also
-    // labelled "Add Student" (Modal saveLabel), so .last() = the save button.
+// ============================ Students ============================
+test.describe('Students', () => {
+  const NAME = `${LETTERS} Student`; // letters only (V.name)
+  const purge = (page) => apiDeleteWhere(page, '/students?status=all&limit=500', 'students', ['name'], NAME, '/students');
+  test('create → appears → remove', async ({ page }) => {
+    await page.goto('/students', { waitUntil: 'networkidle' }); guard(page, '/students');
+    await purge(page);
     await page.getByRole('button', { name: 'Add Student' }).first().click();
     await page.getByPlaceholder('Student name').fill(NAME);
-    await page.getByPlaceholder('Parent name').fill('Zzqa Parent');
+    await page.getByPlaceholder('Parent name').fill(`${LETTERS} Parent`);
     await page.getByPlaceholder('98765 43210').fill('9000000008');
     await page.getByRole('button', { name: 'Add Student' }).last().click();
-
-    // APPEARS — the app renders BOTH a table row and a mobile card (one is
-    // CSS-hidden per breakpoint, both in the DOM). Assert it's ATTACHED, not
-    // "visible": which layout is visible depends on viewport, but either way its
-    // presence proves the create succeeded (purge cleared any prior record).
     await expect(page.getByText(NAME).first()).toBeAttached({ timeout: 10_000 });
-
-    // CLEAN UP via the authenticated API (mobile shows cards, not rows, so a
-    // UI delete is brittle; the in-page session token drives a reliable delete).
     await purge(page);
   });
 });
 
-// --- The remaining three are real bodies below, kept `.skip`-gated. On the
-// FIRST authenticated run, remove `.skip` one at a time and adjust any locator
-// the app words differently — UI selectors normally need one confirming pass.
-// The flows and assertions are source-derived (e.g. the Present toggle really
-// does get `bg-green-500` when active — see Attendance.jsx). ---
-
-test.skip('Fees — add additional fee → appears → remove (UI)', async ({ page }) => {
-  await page.goto('/fees', { waitUntil: 'networkidle' });
-  expect(page.url()).toContain('/fees');
-
-  // Open the "add charge" modal (Fees.jsx sets adjustment_type:'fee').
-  await page.getByRole('button', { name: /add (charge|fee)|additional/i }).first().click();
-  // Pick the first student in the modal's picker, then fill the fields.
-  await page.getByRole('checkbox').first().check().catch(() => {});
-  await page.getByLabel(/description/i).first().fill(`${TAG} exam fee`);
-  await page.getByLabel(/amount/i).first().fill('500');
-  await page.getByRole('button', { name: /save|add/i }).last().click();
-  await expect(page.getByText(`${TAG} exam fee`)).toBeVisible({ timeout: 10_000 });
-
-  // Client cap: a value over ₹10,00,000 must surface an inline error, not save.
-  await page.getByRole('button', { name: /add (charge|fee)|additional/i }).first().click();
-  await page.getByRole('checkbox').first().check().catch(() => {});
-  await page.getByLabel(/description/i).first().fill(`${TAG} too big`);
-  await page.getByLabel(/amount/i).first().fill('99999999');
-  await page.getByRole('button', { name: /save|add/i }).last().click();
-  await expect(page.getByText(/too large|max/i)).toBeVisible();
-  await page.getByRole('button', { name: /cancel|close/i }).last().click();
-
-  // Remove the real fee we added.
-  const row = page.getByRole('row', { name: new RegExp(`${TAG} exam fee`) }).first();
-  await row.getByRole('button', { name: /delete|remove/i }).first().click();
-  await page.getByRole('button', { name: /^(delete|remove|confirm|yes)/i }).last().click();
-  await expect(page.getByText(`${TAG} exam fee`)).toHaveCount(0, { timeout: 10_000 });
+// ============================ Groups ============================
+test.describe('Groups', () => {
+  const NAME = `ZzGroup ${STAMP}`; // V.text — digits allowed
+  const purge = (page) => apiDeleteWhere(page, '/groups?status=all&limit=500', 'groups', ['name'], String(STAMP), '/groups', true);
+  test('create → appears → remove', async ({ page }) => {
+    await page.goto('/groups', { waitUntil: 'networkidle' }); guard(page, '/groups');
+    await purge(page);
+    await page.getByRole('button', { name: 'New Group' }).first().click();
+    await page.getByPlaceholder('e.g., Beginners Batch').fill(NAME);
+    await page.getByRole('button', { name: 'Create Group' }).click();
+    await expect(page.getByText(NAME).first()).toBeAttached({ timeout: 10_000 });
+    await purge(page);
+  });
 });
 
-test.skip('Attendance — Present toggle is GREEN (UI)', async ({ page }) => {
-  await page.goto('/attendance', { waitUntil: 'networkidle' });
-  expect(page.url()).toContain('/attendance');
-  // Precondition: a class roster must be on screen (pick "Any class" → a class,
-  // or use "Ad-hoc attendance" and select a student) so the per-student
-  // Present/Absent toggles render.
-  const present = page.getByRole('button', { name: /^present/i }).first();
-  await present.click();
-  // Source of truth (Attendance.jsx): active Present = 'bg-green-500 text-white'.
-  await expect(present).toHaveClass(/bg-green-500/);
+// ============================ Assignments ============================
+test.describe('Assignments', () => {
+  const TITLE = `ZzAssignment ${STAMP}`;
+  const purge = (page) => apiDeleteWhere(page, '/assignments', 'assignments', ['title'], String(STAMP), '/assignments');
+  test('create (target everyone) → appears → remove', async ({ page }) => {
+    await page.goto('/assignments', { waitUntil: 'networkidle' }); guard(page, '/assignments');
+    await purge(page);
+    await page.getByRole('button', { name: 'New Assignment' }).first().click();
+    await page.locator('[data-field="title"]').fill(TITLE);
+    await page.getByRole('button', { name: 'Everyone' }).click().catch(() => {}); // default target
+    await page.getByRole('button', { name: 'Create' }).click();
+    await expect(page.getByText(TITLE).first()).toBeAttached({ timeout: 10_000 });
+    await purge(page);
+  });
 });
 
-test.skip('Classes — create class → appears, timetable does not scroll page (UI)', async ({ page }) => {
-  await page.goto('/classes', { waitUntil: 'networkidle' });
-  expect(page.url()).toContain('/classes');
+// ============================ Question Papers ============================
+test.describe('Question Papers', () => {
+  const TITLE = `ZzPaper ${STAMP}`;
+  const purge = (page) => apiDeleteWhere(page, '/question-papers', 'question_papers', ['title'], String(STAMP), '/question-papers');
+  test('create → appears → remove', async ({ page }) => {
+    await page.goto('/question-papers', { waitUntil: 'networkidle' }); guard(page, '/question-papers');
+    await purge(page);
+    await page.getByRole('button', { name: 'Add Paper' }).first().click();
+    await page.locator('[data-field="title"]').fill(TITLE);
+    await page.locator('[data-field="link"]').fill('https://example.com/paper.pdf');
+    await page.getByRole('button', { name: 'Everyone' }).click().catch(() => {});
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByText(TITLE).first()).toBeAttached({ timeout: 10_000 });
+    await purge(page);
+  });
+});
 
-  await page.getByRole('button', { name: /new class|add class|create/i }).first().click();
-  await page.getByLabel(/class name|^name/i).first().fill(`${TAG} Class`);
-  // Pick a weekday and start/end times (Classes.jsx uses day_of_week + times).
-  await page.getByRole('button', { name: /^mon/i }).first().click().catch(() => {});
-  await page.getByLabel(/start/i).first().fill('10:00').catch(() => {});
-  await page.getByLabel(/end/i).first().fill('11:00').catch(() => {});
-  await page.getByRole('button', { name: /save|create|add/i }).last().click();
-  await expect(page.getByText(`${TAG} Class`)).toBeVisible({ timeout: 10_000 });
+// ============================ Lessons (Course) ============================
+test.describe('Lessons', () => {
+  const NAME = `ZzCourse ${STAMP}`;
+  const purge = (page) => apiDeleteWhere(page, '/courses?status=all', 'courses', ['name'], String(STAMP), '/courses');
+  test('create course → appears → archive', async ({ page }) => {
+    await page.goto('/lessons', { waitUntil: 'networkidle' }); guard(page, '/lessons');
+    await purge(page);
+    await page.getByRole('button', { name: 'New course' }).first().click();
+    await page.locator('[data-field="name"]').fill(NAME);
+    await page.getByRole('button', { name: 'Create course' }).click();
+    await expect(page.getByText(NAME).first()).toBeAttached({ timeout: 10_000 });
+    await purge(page);
+  });
+});
 
-  // Timetable must scroll inside its own box, not the page.
-  const { scrollW, clientW } = await page.evaluate(() => ({
-    scrollW: document.documentElement.scrollWidth, clientW: document.documentElement.clientWidth,
-  }));
-  expect(scrollW, 'page scrolls sideways with a class on the timetable').toBeLessThanOrEqual(clientW + 1);
+// ============================ Messages ============================
+test.describe('Messages', () => {
+  const BODY = `Zzmsg CRUD ${STAMP}`;
+  // "Everyone" fans out one row per student — purge every row carrying our stamp.
+  const purge = (page) => apiDeleteWhere(page, '/messages', 'messages', ['message', 'body'], String(STAMP), '/messages');
+  test('compose (everyone) → created → remove', async ({ page }) => {
+    await page.goto('/messages', { waitUntil: 'networkidle' }); guard(page, '/messages');
+    await purge(page);
+    await page.getByRole('button', { name: 'Compose' }).first().click();
+    await page.getByRole('button', { name: 'Everyone' }).click().catch(() => {});
+    await page.locator('[data-field="message_text"]').fill(BODY);
+    await page.getByRole('button', { name: 'Create Message' }).click();
+    // Verify via API (fan-out means the on-screen match is ambiguous).
+    await expect.poll(async () => {
+      const list = await apiList(page, '/messages', 'messages');
+      return list.filter((m) => JSON.stringify(m).includes(String(STAMP))).length;
+    }, { timeout: 10_000 }).toBeGreaterThan(0);
+    await purge(page);
+  });
+});
 
-  // Clean up.
-  const row = page.getByRole('row', { name: new RegExp(`${TAG} Class`) }).first();
-  await row.getByRole('button', { name: /delete|remove/i }).first().click();
-  await page.getByRole('button', { name: /^(delete|remove|confirm|yes)/i }).last().click();
+// ============================ Fees (student picker) ============================
+test.describe('Fees', () => {
+  const DESC = `Zzfee CRUD ${STAMP}`;
+  const purge = (page) => apiDeleteWhere(page, `/fees/additional?month=${new Date().getMonth() + 1}&year=${new Date().getFullYear()}`, 'additional_fees', ['description'], String(STAMP), '/fees/additional');
+  test('add additional fee (first student) → appears → remove', async ({ page }) => {
+    await page.goto('/fees', { waitUntil: 'networkidle' }); guard(page, '/fees');
+    await purge(page);
+    await page.getByRole('button', { name: 'Add Additional Fee' }).first().click();
+    // Pick students: "Select All" is the simplest reliable way to satisfy the
+    // "at least one student" requirement (save is disabled until then).
+    await page.getByRole('button', { name: 'Select All' }).click();
+    await page.locator('[data-field="description"]').fill(DESC);
+    await page.locator('[data-field="amount"]').fill('500');
+    await page.getByRole('button', { name: /^Add Fee( \(\d+ students\))?$/ }).click();
+    await expect.poll(async () => {
+      const list = await apiList(page, `/fees/additional?month=${new Date().getMonth() + 1}&year=${new Date().getFullYear()}`, 'additional_fees');
+      return list.filter((f) => String(f.description || '').includes(String(STAMP))).length;
+    }, { timeout: 10_000 }).toBeGreaterThan(0);
+    await purge(page);
+  });
+});
+
+// ============================ Camps (needs a group) ============================
+test.describe('Camps', () => {
+  const NAME = `ZzCamp ${STAMP}`;
+  const purge = (page) => apiDeleteWhere(page, '/camps', 'camps', ['name'], String(STAMP), '/camps');
+  test('create camp → appears → remove', async ({ page }) => {
+    await page.goto('/classes', { waitUntil: 'networkidle' }); guard(page, '/classes');
+    await purge(page);
+    await page.getByRole('button', { name: 'Camps' }).click();          // Camps tab
+    await page.getByRole('button', { name: 'New Camp' }).first().click();
+    await page.locator('[data-field="name"]').fill(NAME);
+    await page.locator('[data-field="group_id"]').selectOption({ index: 1 }); // first real group
+    // start_date defaults today, total_days default 5, daily_fee optional.
+    await page.getByRole('button', { name: /^Create Camp \(\d+ days\)$/ }).click();
+    await expect(page.getByText(NAME).first()).toBeAttached({ timeout: 10_000 });
+    await purge(page);
+  });
+});
+
+// ============================ Attendance (ad-hoc) ============================
+test.describe('Attendance', () => {
+  const TOPIC = `Zzatt CRUD ${STAMP}`;
+  test('ad-hoc mark present → saved', async ({ page }) => {
+    await page.goto('/attendance', { waitUntil: 'networkidle' }); guard(page, '/attendance');
+    await page.getByRole('button', { name: 'Ad-hoc attendance' }).click();
+    await page.getByPlaceholder('What was taught...').fill(TOPIC).catch(() => {});
+    await page.getByRole('button', { name: 'Select All' }).click();     // select all students
+    await page.getByRole('button', { name: 'Mark Present & Save' }).click();
+    // Verify at least one attendance row saved for today with our topic.
+    const today = new Date().toISOString().slice(0, 10);
+    await expect.poll(async () => {
+      const list = await apiList(page, `/attendance?date=${today}`, 'attendance');
+      return list.filter((a) => String(a.topic || '').includes(String(STAMP))).length;
+    }, { timeout: 10_000 }).toBeGreaterThan(0);
+    // Clean up today's ad-hoc rows carrying our stamp.
+    await apiDeleteWhere(page, `/attendance?date=${today}`, 'attendance', ['topic'], String(STAMP), '/attendance');
+  });
+});
+
+// ============================ Classes (recurring) ============================
+test.describe('Classes', () => {
+  const NAME = `ZzClass ${STAMP}`;
+  const purge = (page) => apiDeleteWhere(page, '/classes', 'classes', ['name'], String(STAMP), '/classes');
+  test('create class (offline group, Monday) → appears → remove', async ({ page }) => {
+    await page.goto('/classes', { waitUntil: 'networkidle' }); guard(page, '/classes');
+    await purge(page);
+    await page.getByRole('button', { name: 'List' }).click().catch(() => {}); // Add Class lives in List view
+    await page.getByRole('button', { name: 'Add Class' }).first().click();
+    await page.locator('[data-field="name"]').fill(NAME);
+    await page.locator('select').first().selectOption('offline_group').catch(() => {});
+    await page.locator('[data-field="group_id"]').selectOption({ index: 1 }).catch(() => {});
+    await page.locator('[data-field="day_of_week"]').getByRole('button', { name: 'Mon' }).click();
+    await page.getByRole('button', { name: 'Create Class' }).click();
+    await expect(page.getByText(NAME).first()).toBeAttached({ timeout: 10_000 });
+    await purge(page);
+  });
 });

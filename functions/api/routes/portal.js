@@ -1289,7 +1289,12 @@ router.post('/push/subscribe', requireFeature('notify.push'), async (req, res) =
     const auth = sub && sub.keys && sub.keys.auth;
     if (!endpoint || !p256dh || !auth) return res.status(400).json({ error: 'Invalid subscription' });
 
-    // De-dupe on endpoint within this org.
+    // De-dupe on endpoint within this org. An endpoint identifies one physical
+    // device, so it must map to exactly ONE student — the current registrant
+    // (who is holding the device). Remove ANY prior rows for this endpoint,
+    // whatever student they point at, then insert fresh. This closes the
+    // re-point issue where submitting another family's endpoint could redirect
+    // a student's pushes to someone else's device.
     let existing = [];
     try {
       existing = await zcqlAll(
@@ -1298,11 +1303,8 @@ router.post('/push/subscribe', requireFeature('notify.push'), async (req, res) =
         'PushSubscriptions'
       );
     } catch { existing = []; }
-    const match = unwrap(existing, 'PushSubscriptions').find((r) => r.endpoint === endpoint);
-    if (match) {
-      await update(req, 'PushSubscriptions', match.ROWID, { student_id: sid, p256dh, auth }).catch(() => {});
-      return res.json({ ok: true, id: match.ROWID });
-    }
+    const dupes = unwrap(existing, 'PushSubscriptions').filter((r) => r.endpoint === endpoint);
+    for (const d of dupes) { await removeRow(req, 'PushSubscriptions', d.ROWID).catch(() => {}); }
     const inserted = await insert(req, 'PushSubscriptions', {
       student_id: sid,
       org_id: Number(req.orgId),

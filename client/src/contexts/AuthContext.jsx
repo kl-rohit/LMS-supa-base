@@ -129,6 +129,10 @@ export function AuthProvider({ children }) {
   // a stale session. (To end sessions on other devices, use signOutOthers.)
   const signOut = useCallback(async () => {
     try { localStorage.removeItem(ACTIVE_ORG_KEY); } catch { /* ignore */ }
+    // Also drop any platform-admin impersonation target — it must NOT survive a
+    // logout, or the next login sends every call to a stale org the user isn't a
+    // member of ("Not a member of org <id>"). Mirrors the 401 cleanup in api.js.
+    try { localStorage.removeItem('veena_impersonate_org_id'); } catch { /* ignore */ }
     try { api.clearCache(); } catch { /* ignore */ }
     try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
     try { localStorage.removeItem('veena_auth'); } catch { /* ignore */ }

@@ -109,6 +109,15 @@ async function request(url, options = {}) {
     } catch {
       // Could not parse error response
     }
+    // Self-heal a stale impersonation: a 403 "Not a member of org <id>" means the
+    // saved impersonate/active org points at an org this user can't access (e.g.
+    // a platform-admin impersonation that outlived its session). Clear the stale
+    // ids so the NEXT call re-resolves to the user's real org. No auto-reload —
+    // that risks a loop and adds load; the app recovers on the next fetch/nav.
+    if (response.status === 403 && /Not a member of org/i.test(errorMessage) && typeof window !== 'undefined') {
+      try { localStorage.removeItem('veena_impersonate_org_id'); } catch { /* ignore */ }
+      try { localStorage.removeItem('veena_active_org_id'); } catch { /* ignore */ }
+    }
     throw new Error(errorMessage);
   }
 

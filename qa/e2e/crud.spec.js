@@ -49,10 +49,11 @@ test.describe('Students — create → appears → remove (UI)', () => {
     await page.getByPlaceholder('98765 43210').fill('9000000008');
     await page.getByRole('button', { name: 'Add Student' }).last().click();
 
-    // APPEARS — the new student is visible. The app renders BOTH a table row
-    // and a mobile card (one hidden per breakpoint but both in the DOM), so the
-    // text matches twice — assert the first is visible.
-    await expect(page.getByText(NAME).first()).toBeVisible({ timeout: 10_000 });
+    // APPEARS — the app renders BOTH a table row and a mobile card (one is
+    // CSS-hidden per breakpoint, both in the DOM). Assert it's ATTACHED, not
+    // "visible": which layout is visible depends on viewport, but either way its
+    // presence proves the create succeeded (purge cleared any prior record).
+    await expect(page.getByText(NAME).first()).toBeAttached({ timeout: 10_000 });
 
     // CLEAN UP via the authenticated API (mobile shows cards, not rows, so a
     // UI delete is brittle; the in-page session token drives a reliable delete).

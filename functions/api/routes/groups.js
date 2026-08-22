@@ -2,7 +2,7 @@
 // All queries are scoped to req.orgId set by middleware/org.resolveOrg.
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, q, safeId } = require('../db/catalystDb');
 const { overCapBlock } = require('../lib/studentLimit');
 
 // Group names are unique per org (case-insensitive). Returns true if another
@@ -207,7 +207,12 @@ router.delete('/:id/students/:studentId', async (req, res) => {
     if (!group || Number(group.org_id) !== Number(req.orgId)) {
       return res.status(404).json({ error: 'Group not found' });
     }
-    const links = await zcql(req, `SELECT ROWID FROM GroupStudents WHERE GroupStudents.group_id = ${req.params.id} AND GroupStudents.student_id = ${req.params.studentId} AND GroupStudents.org_id = ${Number(req.orgId)}`);
+    // safeId (digits-only) on BOTH path params — otherwise a crafted studentId
+    // like "0 OR 1=1" breaks out of the org_id filter and deletes another
+    // academy's memberships (raw zcql is not parameterized).
+    const gsGroupId = safeId(req.params.id), gsStudentId = safeId(req.params.studentId);
+    if (!gsGroupId || !gsStudentId) return res.status(400).json({ error: 'Invalid id' });
+    const links = await zcql(req, `SELECT ROWID FROM GroupStudents WHERE GroupStudents.group_id = ${gsGroupId} AND GroupStudents.student_id = ${gsStudentId} AND GroupStudents.org_id = ${Number(req.orgId)}`);
     const rowsToDel = unwrap(links, 'GroupStudents');
     for (const l of rowsToDel) {
       try { await remove(req, 'GroupStudents', l.ROWID); } catch {}

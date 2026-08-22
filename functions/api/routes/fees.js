@@ -222,7 +222,11 @@ router.delete('/payments/:id', async (req, res) => {
 router.get('/student/:id', async (req, res) => {
   try {
     const { from, to } = req.query;
-    const where = [`Attendance.student_id = ${req.params.id}`, `Attendance.org_id = ${Number(req.orgId)}`];
+    // safeId: a raw ":id" like "1 OR 1=1" would defeat the org_id filter and
+    // return every academy's attendance/fee rows (raw zcql is not parameterized).
+    const stuId = safeId(req.params.id);
+    if (!stuId) return res.status(400).json({ error: 'Invalid student id' });
+    const where = [`Attendance.student_id = ${stuId}`, `Attendance.org_id = ${Number(req.orgId)}`];
     if (from) where.push(`Attendance.class_date >= ${q(from)}`);
     if (to) where.push(`Attendance.class_date <= ${q(to)}`);
     const aRows = await zcqlAll(req, `SELECT * FROM Attendance WHERE ${where.join(' AND ')} ORDER BY Attendance.class_date DESC`, 'Attendance');

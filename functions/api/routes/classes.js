@@ -2,7 +2,7 @@
 // Org-scoped via middleware/org.resolveOrg (req.orgId).
 
 const router = require('express').Router();
-const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId } = require('../db/catalystDb');
+const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId, q } = require('../db/catalystDb');
 const { createNotifications } = require('../lib/notify');
 const { substituteTemplate } = require('../lib/feeReminder');
 const { loadTemplates, loadAppSettings } = require('./settings');
@@ -218,7 +218,9 @@ router.get('/', async (req, res) => {
     if (gid) where.push(`Classes.group_id = ${gid}`);
     if (sid) where.push(`Classes.student_id = ${sid}`);
     if (is_active !== undefined) where.push(`Classes.is_active = ${parseInt(is_active)}`);
-    if (class_type) where.push(`Classes.class_type = '${class_type}'`);
+    // q() escapes the value — a raw "x' OR ''='" would defeat the org_id filter
+    // and return every academy's classes (raw zcql is not parameterized).
+    if (class_type) where.push(`Classes.class_type = ${q(class_type)}`);
     const whereSql = `WHERE ${where.join(' AND ')}`;
     const rows = await zcql(req, `SELECT * FROM Classes ${whereSql} ORDER BY Classes.day_of_week, Classes.start_time ASC`);
     const list = unwrap(rows, 'Classes');

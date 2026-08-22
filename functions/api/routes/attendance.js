@@ -288,7 +288,7 @@ router.post('/bulk', async (req, res) => {
     const existingByStudent = {};
     if (class_id) {
       try {
-        const existing = await zcqlAll(req, `SELECT ROWID, student_id FROM Attendance WHERE Attendance.class_id = ${class_id} AND Attendance.class_date = ${q(date)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance');
+        const existing = await zcqlAll(req, `SELECT ROWID, student_id FROM Attendance WHERE Attendance.class_id = ${safeId(class_id)} AND Attendance.class_date = ${q(date)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance');
         for (const row of unwrap(existing, 'Attendance')) existingByStudent[String(row.student_id)] = row.ROWID;
       } catch {}
     }

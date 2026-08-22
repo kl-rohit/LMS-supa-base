@@ -350,7 +350,11 @@ async function loadAppSettings(req) {
 // see HANDOFF.md "Critical gotchas #1".
 async function resolveOrgName(req) {
   if (!req.orgId) return '';
-  if (req._orgNameCache !== undefined) return req._orgNameCache;
+  // Cache is keyed by orgId, NOT a bare req flag: the fee-reminder cron reuses a
+  // single `req` across every org in its loop, so a req-scoped cache would pin
+  // the first org's name and bleed it into every later org's parent messages
+  // ({school}/{signature}). Keying by orgId keeps each org's name correct.
+  if (req._orgNameCache && req._orgNameCache.id === Number(req.orgId)) return req._orgNameCache.name;
   let name = '';
   try {
     const rows = await zcql(req, `SELECT name, ROWID FROM Organizations`);
@@ -358,7 +362,7 @@ async function resolveOrgName(req) {
     const match = orgs.find((o) => Number(o.ROWID ?? o.id) === Number(req.orgId));
     name = match?.name || '';
   } catch { /* table may be missing in un-bootstrapped envs */ }
-  req._orgNameCache = name;
+  req._orgNameCache = { id: Number(req.orgId), name };
   return name;
 }
 

@@ -17,6 +17,9 @@ const CONSENT_VERSION = '2026-07';
 // have the org_id column. Used to verify Phase A schema before running the
 // /api/platform/bootstrap migration.
 router.get('/debug/tables', async (req, res) => {
+  // Diagnostic: exposes global row counts + schema across ALL orgs. Restrict to
+  // the platform owner — a normal academy user must not see other tenants' data.
+  if (!req.isPlatformAdmin) return res.status(403).json({ error: 'Not authorized' });
   const { query } = require('../db/pg');
   const result = { tables: null, probe: {} };
   try {

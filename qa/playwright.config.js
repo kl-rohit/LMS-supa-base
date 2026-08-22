@@ -24,6 +24,9 @@ module.exports = defineConfig({
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'https://academy-management.netlify.app',
     storageState: '.auth/state.json',
     trace: 'on-first-retry',
+    // Fail a missing click/fill in 20s, not the 60s test timeout — otherwise two
+    // stuck tests eat 2 minutes and the shared session expires for later ones.
+    actionTimeout: 20_000,
   },
   // Run ONE project per invocation. Two projects = two browser contexts that
   // both reload the same on-disk session; once the first rotates the Supabase

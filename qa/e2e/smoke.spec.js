@@ -12,7 +12,8 @@ const { test, expect } = require('@playwright/test');
 
 const MODULES = [
   '/dashboard', '/students', '/groups', '/attendance', '/fees',
-  '/classes', '/messages', '/reports', '/lessons', '/settings',
+  '/classes', '/messages', '/reports', '/lessons', '/assignments',
+  '/question-papers', '/quizzes', '/student-logins', '/settings', '/help',
 ];
 
 test('all modules: load, scroll only vertically, no bad values', async ({ page }) => {

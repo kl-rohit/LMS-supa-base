@@ -1218,6 +1218,17 @@ export default function Attendance() {
               </p>
             </div>
             <div className="flex items-center gap-4 text-sm">
+              {isOnlineClassType(selectedClass.class_type) && selectedClass.meeting_link && (
+                <a
+                  href={selectedClass.meeting_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700"
+                >
+                  <Video className="w-4 h-4" />
+                  Join
+                </a>
+              )}
               {isOnlineClassType(selectedClass.class_type) && (
                 <button
                   onClick={() => setShareLinkOpen(true)}

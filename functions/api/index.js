@@ -132,6 +132,7 @@ app.use('/api/quizzes',        requireAuth, resolveOrg, requireOrgId, requireMod
 app.use('/api/enrollments',    requireAuth, resolveOrg, requireOrgId, requireModule('lessons'),         require('./routes/enrollments'));
 app.use('/api/assignments',    requireAuth, resolveOrg, requireOrgId, requireModule('assignments'),     require('./routes/assignments'));
 app.use('/api/question-papers',requireAuth, resolveOrg, requireOrgId, requireModule('question_papers'), require('./routes/questionpapers'));
+app.use('/api/programs',       requireAuth, resolveOrg, requireOrgId, requireModule('programs'),        require('./routes/programs'));
 app.use('/api/settings',       requireAuth, resolveOrg, requireOrgId, require('./routes/settings'));
 app.use('/api/organization',   requireAuth, resolveOrg, requireOrgId, require('./routes/organization'));
 app.use('/api/notifications',  requireAuth, resolveOrg, requireOrgId, require('./routes/notifications'));

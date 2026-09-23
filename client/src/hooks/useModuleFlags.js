@@ -20,6 +20,7 @@ const DEFAULTS = {
   'modules.student_photos': true,
   'modules.assignments':    false, // off by default — opt-in
   'modules.question_papers': false, // off by default — opt-in
+  'modules.programs':       false, // off by default — opt-in
   // Parent portal
   'portal.show_lessons':       true,
   'portal.show_fees':          true,

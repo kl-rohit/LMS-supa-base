@@ -17,6 +17,7 @@ import {
   KeyRound,
   Video,
   ClipboardList,
+  CalendarDays,
   FileText,
   ListChecks,
   HelpCircle,
@@ -75,6 +76,7 @@ const StudentLogins  = lazyWithReload(() => import('./pages/StudentLogins'));
 const Lessons        = lazyWithReload(() => import('./pages/Lessons'));
 const Assignments    = lazyWithReload(() => import('./pages/Assignments'));
 const QuestionPapers = lazyWithReload(() => import('./pages/QuestionPapers'));
+const Programs       = lazyWithReload(() => import('./pages/Programs'));
 const Quizzes = lazyWithReload(() => import('./pages/Quizzes'));
 const QuizMaster = lazyWithReload(() => import('./pages/QuizMaster'));
 const QuizEditorPage = lazyWithReload(() => import('./pages/QuizEditorPage'));
@@ -108,6 +110,7 @@ const BASE_NAV = [
   { to: '/assignments',    label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
   { to: '/question-papers',label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
   { to: '/quizzes',        label: 'Quizzes',       icon: ListChecks,      flag: 'modules.assignments' },
+  { to: '/programs',       label: 'Programs',      icon: CalendarDays,    flag: 'modules.programs' },
   { to: '/student-logins', label: 'Parent Logins', icon: KeyRound,        flag: null },
 ];
 // Maps the first URL segment to the Help article slug that documents it, so the
@@ -127,6 +130,7 @@ const HELP_SLUG_BY_PATH = {
   assignments: 'assignments',
   'question-papers': 'question-papers',
   quizzes: 'assignments',
+  programs: 'programs',
   'student-logins': 'parent-logins',
   settings: 'settings',
 };
@@ -329,6 +333,7 @@ function TeacherLayout() {
               <Route path="/quizzes" element={<Quizzes />} />
               <Route path="/quizzes/:lessonId/edit" element={<QuizEditorPage />} />
               <Route path="/quizzes/:lessonId" element={<QuizMaster />} />
+              <Route path="/programs" element={<Programs />} />
               <Route path="/student-logins" element={<StudentLogins />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />

@@ -33,6 +33,7 @@ const MODULE_FLAGS = [
   { key: 'modules.lessons',         label: 'Lessons',         default: true,  premium: true  },
   { key: 'modules.assignments',     label: 'Assignments',     default: false, premium: true  },
   { key: 'modules.question_papers', label: 'Question papers', default: false, premium: true  },
+  { key: 'modules.programs',        label: 'Programs',        default: false, premium: true  },
 ];
 const MODULE_FLAG_KEYS = new Set(MODULE_FLAGS.map((m) => m.key));
 

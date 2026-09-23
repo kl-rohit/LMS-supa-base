@@ -161,6 +161,18 @@ const MODULES = [
     // the assignment itself.
     requiredFks: [],
   },
+  {
+    key: 'programs',
+    table: 'Programs',
+    label: 'Programs',
+    fks: {},
+  },
+  {
+    key: 'program-students',
+    table: 'ProgramStudents',
+    label: 'Program participants',
+    fks: { program_id: 'Programs', student_id: 'Students' },
+  },
 
   // ---- Level 3: activity / history ----
   {

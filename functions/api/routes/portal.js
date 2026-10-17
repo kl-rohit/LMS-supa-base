@@ -1265,6 +1265,55 @@ router.get('/question-papers', async (req, res) => {
   }
 });
 
+// GET /api/portal/programs — programs/events this student is a participant in.
+// Read-only; cancelled programs are hidden. Scoped to the student's org.
+router.get('/programs', async (req, res) => {
+  try {
+    const sid = safeId(req.studentId);
+    if (!sid) return res.json({ programs: [] });
+    // Respect the parent-portal programs visibility choice (academy-wide or a
+    // per-child override). Hidden → return an empty list.
+    try {
+      const vis = await loadAppSettings(req);
+      if (!portalVisible(req, vis, 'show_programs')) {
+        return res.json({ programs: [], hidden: true });
+      }
+    } catch { /* settings unavailable → show by default */ }
+    // Which programs this student is enrolled in (+ whether their fee is billed).
+    const links = await zcqlAll(
+      req,
+      `SELECT program_id, billed FROM ProgramStudents WHERE ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${Number(req.orgId)}`,
+      'ProgramStudents'
+    );
+    const linkRows = unwrap(links, 'ProgramStudents');
+    const billedByProgram = new Map(linkRows.map((r) => [String(r.program_id), Number(r.billed) === 1]));
+    const ids = [...new Set(linkRows.map((r) => Number(r.program_id)).filter(Boolean))];
+    if (!ids.length) return res.json({ programs: [] });
+    const progRows = await zcqlAll(
+      req,
+      `SELECT * FROM Programs WHERE Programs.org_id = ${Number(req.orgId)} AND Programs.ROWID IN (${ids.join(',')})`,
+      'Programs'
+    );
+    const out = unwrap(progRows, 'Programs')
+      .map(normalize)
+      .filter((p) => p.status !== 'cancelled')
+      .map((p) => ({
+        id: p.id,
+        name: p.name || '',
+        type: p.type || 'other',
+        program_date: p.program_date || '',
+        description: p.description || '',
+        status: p.status || 'planned',
+        fee: Number(p.fee) || 0,
+        billed: billedByProgram.get(String(p.id)) === true,
+      }));
+    out.sort((a, b) => String(b.program_date || '').localeCompare(String(a.program_date || '')));
+    res.json({ programs: out });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch programs', detail: e.message });
+  }
+});
+
 // ---------- Notifications (in-app inbox) ----------
 // Rows are written by lib/notify.createNotifications when academy events fire
 // (new lesson/quiz, enrollment, assignment, fee/in-app message, class reminder).

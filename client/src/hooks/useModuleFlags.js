@@ -27,6 +27,7 @@ const DEFAULTS = {
   'portal.show_attendance':    true,
   'portal.show_assignments':   true,
   'portal.show_papers':        true,
+  'portal.show_programs':      true,
   'portal.allow_profile_edit': true,
 };
 

@@ -112,6 +112,7 @@ const EMPTY_SETTINGS = {
   'portal.show_attendance':    'true',
   'portal.show_assignments':   'true',
   'portal.show_papers':        'true',
+  'portal.show_programs':      'true',
   'portal.allow_profile_edit': 'true',
   // Alerts — consecutive absences before an attendance alert fires (2/3/4...).
   'alerts.absence_threshold':  '2',
@@ -1159,12 +1160,13 @@ function ModulesTab({ form, set, plan = 'complete', entitlements = {} }) {
           <h3 className="text-base font-semibold text-gray-900">Parent portal visibility</h3>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Choose what parents see when they log in. Assignments and Question papers also need the matching module enabled above. You can also override these per child on the Parent Logins page.
+          Choose what parents see when they log in. Assignments, Question papers and Programs also need the matching module enabled above. You can also override these per child on the Parent Logins page.
         </p>
         <div className="space-y-1">
           <ModuleToggle label="My Lessons"        hint="Parents see enrolled courses + watch lessons" on={isOn('portal.show_lessons')}       onClick={toggle('portal.show_lessons')} />
           <ModuleToggle label="Assignments"       hint="Parents see assignments set for their child" on={isOn('portal.show_assignments')}   onClick={toggle('portal.show_assignments')} />
           <ModuleToggle label="Question papers"   hint="Parents can download shared papers and practice sets" on={isOn('portal.show_papers')}        onClick={toggle('portal.show_papers')} />
+          <ModuleToggle label="Programs"          hint="Parents see events their child is part of (recitals, kutcheris, workshops)" on={isOn('portal.show_programs')}      onClick={toggle('portal.show_programs')} />
           <ModuleToggle label="Class history"     hint="Parents can see their attendance / class history" on={isOn('portal.show_attendance')}    onClick={toggle('portal.show_attendance')} />
           <ModuleToggle label="Fees tab"          hint="Parents can see their fee breakdown by month" on={isOn('portal.show_fees')}          onClick={toggle('portal.show_fees')} />
           <ModuleToggle label="Profile editing"   hint="Parents can edit name, DOB, address, photo. Disable to lock the profile." on={isOn('portal.allow_profile_edit')} onClick={toggle('portal.allow_profile_edit')} />

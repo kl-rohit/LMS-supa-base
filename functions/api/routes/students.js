@@ -420,7 +420,7 @@ router.put('/:id', async (req, res) => {
     if (portal_overrides !== undefined) {
       const ALLOWED = new Set([
         'show_lessons', 'show_fees', 'show_attendance',
-        'show_assignments', 'show_papers', 'allow_profile_edit',
+        'show_assignments', 'show_papers', 'show_programs', 'allow_profile_edit',
       ]);
       const clean = {};
       const src = portal_overrides && typeof portal_overrides === 'object' ? portal_overrides : {};

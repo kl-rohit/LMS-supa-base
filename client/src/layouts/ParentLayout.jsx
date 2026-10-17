@@ -10,6 +10,7 @@ import {
   Video,
   ClipboardList,
   FileText,
+  CalendarDays,
   Menu,
   X,
   LogOut,
@@ -36,6 +37,7 @@ const PortalProfile    = lazy(() => import('../pages/portal/Profile'));
 const CoursePlayer     = lazy(() => import('../pages/portal/CoursePlayer'));
 const PortalAssignments = lazy(() => import('../pages/portal/Assignments'));
 const PortalPapers      = lazy(() => import('../pages/portal/QuestionPapers'));
+const PortalPrograms    = lazy(() => import('../pages/portal/Programs'));
 const PortalHelp        = lazy(() => import('../pages/portal/Help'));
 
 // Each nav item carries the AppSettings flags that gate it; it shows only when
@@ -49,6 +51,7 @@ const ALL_NAV = [
   { to: '/portal/lessons',    label: 'My Lessons',     icon: Video,           flags: ['portal.show_lessons'] },
   { to: '/portal/assignments',label: 'Assignments',    icon: ClipboardList,   flags: ['modules.assignments', 'portal.show_assignments'] },
   { to: '/portal/papers',     label: 'Question Papers',icon: FileText,        flags: ['modules.question_papers', 'portal.show_papers'] },
+  { to: '/portal/programs',   label: 'Programs',       icon: CalendarDays,    flags: ['modules.programs', 'portal.show_programs'] },
   { to: '/portal/attendance', label: 'Class History',  icon: ClipboardCheck,  flags: ['portal.show_attendance'] },
   { to: '/portal/fees',       label: 'Fees',           icon: IndianRupee,     flags: ['portal.show_fees'] },
   { to: '/portal/profile',    label: 'My Profile',     icon: UserCircle2,     flags: [] },
@@ -236,6 +239,7 @@ export default function ParentLayout() {
               <Route path="lessons/:courseId" element={<CoursePlayer />} />
               <Route path="assignments" element={<PortalAssignments />} />
               <Route path="papers" element={<PortalPapers />} />
+              <Route path="programs" element={<PortalPrograms />} />
               <Route path="attendance" element={<PortalAttendance />} />
               <Route path="fees" element={<PortalFees />} />
               <Route path="profile" element={<PortalProfile />} />

@@ -236,6 +236,7 @@ const APP_SETTINGS_DEFAULTS = {
   'portal.show_attendance':   'true', // class-history visibility for parents
   'portal.show_assignments':  'true', // assignments tab visibility for parents
   'portal.show_papers':       'true', // question-papers tab visibility for parents
+  'portal.show_programs':     'true', // programs/events tab visibility for parents
   'portal.allow_profile_edit':'true',
 
   // ---- Appearance (Phase 4) --------------------------------------------

@@ -45,6 +45,7 @@ const PORTAL_ITEMS = [
   { key: 'show_lessons',       label: 'My Lessons' },
   { key: 'show_assignments',   label: 'Assignments' },
   { key: 'show_papers',        label: 'Question papers' },
+  { key: 'show_programs',      label: 'Programs' },
   { key: 'show_attendance',    label: 'Class history' },
   { key: 'show_fees',          label: 'Fees' },
   { key: 'allow_profile_edit', label: 'Profile editing' },

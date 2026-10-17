@@ -109,7 +109,14 @@ async function tableColumns(table) {
     [t]
   );
   const set = new Set(rows.map((r) => r.column_name));
-  _colCache.set(t, set);
+  // Only cache a non-empty result. An empty set means the table doesn't exist
+  // yet (e.g. a migration hasn't been run on this DB). Caching that would
+  // permanently break inserts/updates to the table even AFTER it's created,
+  // until the function is redeployed — because insert() would see "no columns"
+  // and fall back to `default values`, violating NOT NULL constraints. Leaving
+  // an absent table uncached lets the first write after the table appears
+  // re-query and succeed on its own.
+  if (set.size) _colCache.set(t, set);
   return set;
 }
 

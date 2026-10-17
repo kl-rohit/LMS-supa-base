@@ -113,6 +113,9 @@ export function AuthProvider({ children }) {
   // app root so EVERYTHING re-resolves cleanly for the new academy.
   const switchOrg = useCallback((orgId) => {
     try { localStorage.setItem(ACTIVE_ORG_KEY, String(orgId)); } catch { /* ignore */ }
+    // Switching academy invalidates the viewed-child pick (that student belongs
+    // to the previous academy), so drop it — the portal re-picks the first child.
+    try { localStorage.removeItem('veena_active_student_id'); } catch { /* ignore */ }
     const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
     window.location.href = `${base}/`;
   }, []);
@@ -133,6 +136,7 @@ export function AuthProvider({ children }) {
     // logout, or the next login sends every call to a stale org the user isn't a
     // member of ("Not a member of org <id>"). Mirrors the 401 cleanup in api.js.
     try { localStorage.removeItem('veena_impersonate_org_id'); } catch { /* ignore */ }
+    try { localStorage.removeItem('veena_active_student_id'); } catch { /* ignore */ }
     try { api.clearCache(); } catch { /* ignore */ }
     try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* ignore */ }
     try { localStorage.removeItem('veena_auth'); } catch { /* ignore */ }

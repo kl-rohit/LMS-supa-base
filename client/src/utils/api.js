@@ -19,16 +19,26 @@ import { getAccessToken } from './supabaseClient';
 // Leaves URLs that already carry ?org= untouched.
 const IMPERSONATE_KEY = 'veena_impersonate_org_id';
 const ACTIVE_ORG_KEY = 'veena_active_org_id';
+// Which child a multi-student parent is viewing in the portal. Appended as
+// ?student=<id> on /portal/* calls so the backend (requireParent) scopes to it.
+const ACTIVE_STUDENT_KEY = 'veena_active_student_id';
 
 function withActiveOrg(url) {
   try {
     if (typeof window === 'undefined') return url;
     if (url.startsWith('/auth/') || url.startsWith('/platform')) return url;
-    if (url.includes('?org=') || url.includes('&org=')) return url;
-    const orgId = localStorage.getItem(IMPERSONATE_KEY) || localStorage.getItem(ACTIVE_ORG_KEY);
-    if (!orgId) return url;
-    const sep = url.includes('?') ? '&' : '?';
-    return `${url}${sep}org=${encodeURIComponent(orgId)}`;
+    let out = url;
+    if (!/[?&]org=/.test(out)) {
+      const orgId = localStorage.getItem(IMPERSONATE_KEY) || localStorage.getItem(ACTIVE_ORG_KEY);
+      if (orgId) { const sep = out.includes('?') ? '&' : '?'; out = `${out}${sep}org=${encodeURIComponent(orgId)}`; }
+    }
+    // Parent portal only: pin the active child so a family with more than one
+    // student in the academy keeps viewing the chosen one across requests.
+    if (out.startsWith('/portal') && !/[?&]student=/.test(out)) {
+      const sid = localStorage.getItem(ACTIVE_STUDENT_KEY);
+      if (sid) { const sep = out.includes('?') ? '&' : '?'; out = `${out}${sep}student=${encodeURIComponent(sid)}`; }
+    }
+    return out;
   } catch {
     return url;
   }
@@ -91,6 +101,7 @@ async function request(url, options = {}) {
       try { localStorage.removeItem('veena_auth'); } catch { /* ignore */ }
       try { localStorage.removeItem('veena_active_org_id'); } catch { /* ignore */ }
       try { localStorage.removeItem('veena_impersonate_org_id'); } catch { /* ignore */ }
+      try { localStorage.removeItem('veena_active_student_id'); } catch { /* ignore */ }
       const base = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
       window.location.href = `${base}/login`;
     }

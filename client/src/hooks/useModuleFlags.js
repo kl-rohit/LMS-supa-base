@@ -24,6 +24,9 @@ const DEFAULTS = {
   // Parent portal
   'portal.show_lessons':       true,
   'portal.show_fees':          true,
+  'portal.show_attendance':    true,
+  'portal.show_assignments':   true,
+  'portal.show_papers':        true,
   'portal.allow_profile_edit': true,
 };
 

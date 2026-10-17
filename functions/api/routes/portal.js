@@ -27,6 +27,19 @@ const { publicVapidKey } = require('../lib/notify');
 const { parentKey, setFlag, isPending } = require('../lib/onboarding');
 const { loadAppSettings } = require('./settings');
 
+// Effective parent-portal visibility for one tab, for the active child.
+// `key` is the suffix (e.g. 'show_fees'). A per-student override set by an admin
+// wins over the academy-wide setting:
+//   'on'  → always visible for this child
+//   'off' → always hidden for this child
+//   absent / anything else → inherit the academy's portal.<key> setting.
+function portalVisible(req, appSettings, key) {
+  const ov = req.studentPortalOverrides?.[key];
+  if (ov === 'on') return true;
+  if (ov === 'off') return false;
+  return (appSettings || {})[`portal.${key}`] !== 'false';
+}
+
 // Attendance counts by hours, not by sessions: a 2-hour class marked present
 // counts as 2 toward classes_attended. `duration_hours` is frozen on each
 // Attendance row at record time; legacy rows without it fall back to 1 hour.
@@ -163,12 +176,29 @@ router.get('/me', async (req, res) => {
     // parent dismisses it (see POST /onboarding-seen). Existing parents have
     // no flag → false → tour never shows.
     const onboarding_pending = await isPending(req, req.orgId, parentKey(req.studentId));
+    // Siblings — the other children linked to this same parent login IN THIS
+    // academy, so the portal can offer a child-switcher when a family has more
+    // than one student here. (Cross-academy switching is the OrgSwitcher's job.)
+    let siblings = [];
+    try {
+      const uid = req.studentLogin?.user_id;
+      if (uid && req.orgId) {
+        const sRows = await zcql(
+          req,
+          `SELECT ROWID, name FROM Students WHERE Students.login_user_id = ${q(String(uid))} AND Students.org_id = ${Number(req.orgId)}`
+        );
+        siblings = unwrap(sRows, 'Students')
+          .map((s) => ({ id: String(s.ROWID), name: s.name || '' }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch { /* switcher is optional — a lookup failure just hides it */ }
     res.json({
       student: normalize(student),
       login: {
         email: req.studentLogin?.email,
         user_id: req.studentLogin?.user_id,
       },
+      siblings,
       onboarding_pending,
     });
   } catch (e) {
@@ -198,7 +228,7 @@ router.get('/attendance', async (req, res) => {
     // has hidden class history, return an empty list rather than the records.
     try {
       const appSettings = await loadAppSettings(req);
-      if (appSettings['portal.show_attendance'] === 'false') {
+      if (!portalVisible(req, appSettings, 'show_attendance')) {
         return res.json({ attendance: [], hidden: true });
       }
     } catch { /* settings unavailable → show by default */ }
@@ -237,6 +267,18 @@ router.get('/fees', async (req, res) => {
   try {
     const sid = safeId(req.studentId);
     if (!sid) return res.status(400).json({ error: 'Invalid student id on session' });
+    // Respect the parent-portal fees visibility choice (academy-wide or a
+    // per-child override). Hidden → return an empty breakdown, not the figures.
+    try {
+      const vis = await loadAppSettings(req);
+      if (!portalVisible(req, vis, 'show_fees')) {
+        return res.json({
+          month: null, class_fees: 0, additional_fees: 0, discount: 0, total: 0,
+          classes_attended: 0, hidden: true,
+          payment: { upi_id: '', payee_name: '', note: '', qr_image: '', enabled: false },
+        });
+      }
+    } catch { /* settings unavailable → show by default */ }
     const { month } = req.query;
     let monthClause = '';
     if (month && /^\d{4}-\d{2}$/.test(month)) {
@@ -938,6 +980,14 @@ router.get('/assignments', async (req, res) => {
   try {
     const sid = safeId(req.studentId);
     if (!sid) return res.json({ assignments: [] });
+    // Respect the parent-portal assignments visibility choice (academy-wide or
+    // a per-child override). Hidden → return an empty list.
+    try {
+      const vis = await loadAppSettings(req);
+      if (!portalVisible(req, vis, 'show_assignments')) {
+        return res.json({ assignments: [], hidden: true });
+      }
+    } catch { /* settings unavailable → show by default */ }
     const all = await loadAssignments(req);
     const groupSet = await studentGroupIds(req, sid);
     const mine = all.filter((a) => assignmentAppliesTo(a, sid, groupSet));
@@ -1164,6 +1214,16 @@ router.post('/assignments/:id/quiz/submit', async (req, res) => {
 router.get('/flags', async (req, res) => {
   try {
     const settings = await loadAppSettings(req);
+    // Fold the active child's per-student portal overrides into the returned
+    // flags, so the portal nav reflects THIS child's effective visibility
+    // (an admin may show/hide a tab for one child independent of the academy
+    // default). Overrides only touch the portal.show_* visibility flags.
+    const ov = req.studentPortalOverrides || {};
+    for (const [k, v] of Object.entries(ov)) {
+      if (!/^show_/.test(k) && k !== 'allow_profile_edit') continue;
+      if (v === 'on') settings[`portal.${k}`] = 'true';
+      else if (v === 'off') settings[`portal.${k}`] = 'false';
+    }
     res.json({ settings });
   } catch (e) {
     res.status(500).json({ error: 'Failed to load flags', detail: e.message });
@@ -1175,6 +1235,14 @@ router.get('/flags', async (req, res) => {
 router.get('/question-papers', async (req, res) => {
   try {
     const sid = safeId(req.studentId);
+    // Respect the parent-portal question-papers visibility choice (academy-wide
+    // or a per-child override). Hidden → return an empty list.
+    try {
+      const vis = await loadAppSettings(req);
+      if (!portalVisible(req, vis, 'show_papers')) {
+        return res.json({ papers: [], hidden: true });
+      }
+    } catch { /* settings unavailable → show by default */ }
     const [rows, groupSet] = await Promise.all([
       loadPapers(req),
       studentGroupIds(req, sid),

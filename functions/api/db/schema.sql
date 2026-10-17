@@ -84,6 +84,10 @@ create table if not exists students (              -- Students
   login_email            text default '',          -- parent-login fields (on-row)
   login_user_id          text,                     -- Supabase auth user UUID (parent login)
   login_status           text default '',
+  -- Per-student parent-portal visibility overrides. JSON string of
+  -- { <tab>: 'on'|'off' } (e.g. {"show_fees":"off"}); empty = inherit the
+  -- academy-wide portal.* settings. See routes/portal.js portalVisible().
+  portal_overrides       text default '',
   -- Parental / guardian consent to store this student's data (DPDP). Stamped
   -- either by the parent in the portal (consent_source='parent_portal') or by
   -- an admin attestation on the student form (consent_source='admin_attested').

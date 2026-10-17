@@ -18,6 +18,7 @@ import {
   EyeOff,
   Compass,
   KeyRound,
+  SlidersHorizontal,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
@@ -37,6 +38,17 @@ import { V, validate, firstErrorField, focusField, fieldCls, clearError } from '
 
 const BASE = (process.env.PUBLIC_URL || '/').replace(/\/$/, '');
 const LOGIN_URL = `${window.location.origin}${BASE}/login`;
+
+// Portal tabs an admin can override per child. "Default" follows the academy's
+// own Parent portal visibility settings; Show/Hide pin it for this child only.
+const PORTAL_ITEMS = [
+  { key: 'show_lessons',       label: 'My Lessons' },
+  { key: 'show_assignments',   label: 'Assignments' },
+  { key: 'show_papers',        label: 'Question papers' },
+  { key: 'show_attendance',    label: 'Class history' },
+  { key: 'show_fees',          label: 'Fees' },
+  { key: 'allow_profile_edit', label: 'Profile editing' },
+];
 
 // Build the sign-in message shared with the parent. Includes the temporary
 // password when we have it (just after creating the login); otherwise tells
@@ -91,6 +103,11 @@ export default function StudentLogins() {
   const [busyId, setBusyId] = useState(null);
   // Login row pending a password-reset confirmation.
   const [resetTarget, setResetTarget] = useState(null);
+  // Per-student portal-visibility override editor. visFor = the student being
+  // edited; visForm maps each portal item to 'default' | 'on' | 'off'.
+  const [visFor, setVisFor] = useState(null);
+  const [visForm, setVisForm] = useState({});
+  const [savingVis, setSavingVis] = useState(false);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -233,6 +250,38 @@ export default function StudentLogins() {
     }
   };
 
+  // Open the per-child portal-visibility editor, seeded from the student's saved
+  // overrides (a JSON string of { <tab>: 'on'|'off' }). Missing keys = default.
+  const openVisibility = (student) => {
+    let ov = {};
+    try { ov = student.portal_overrides ? JSON.parse(student.portal_overrides) : {}; } catch { ov = {}; }
+    const next = {};
+    PORTAL_ITEMS.forEach(({ key }) => {
+      next[key] = (ov[key] === 'on' || ov[key] === 'off') ? ov[key] : 'default';
+    });
+    setVisForm(next);
+    setVisFor(student);
+  };
+
+  const saveVisibility = async () => {
+    if (!visFor || savingVis) return;
+    setSavingVis(true);
+    const overrides = {};
+    PORTAL_ITEMS.forEach(({ key }) => {
+      if (visForm[key] === 'on' || visForm[key] === 'off') overrides[key] = visForm[key];
+    });
+    try {
+      await api.put(`/students/${visFor.id}`, { portal_overrides: overrides });
+      toast.success('Portal visibility saved');
+      setVisFor(null);
+      await fetchAll();
+    } catch (e) {
+      toast.error('Failed: ' + e.message);
+    } finally {
+      setSavingVis(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirmDeleteId) return;
     try {
@@ -360,6 +409,14 @@ export default function StudentLogins() {
                                 <KeyRound className="w-4 h-4" />
                               </button>
                             </Tooltip>
+                            <Tooltip label="Portal visibility for this child">
+                              <button
+                                onClick={() => openVisibility(student)}
+                                className="p-1.5 rounded-md hover:bg-indigo-50 text-gray-500 hover:text-indigo-600"
+                              >
+                                <SlidersHorizontal className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
                             <Tooltip label={login.status === 'active' ? 'Disable login' : 'Enable login'}>
                               <button
                                 onClick={() => toggleStatus(login)}
@@ -471,6 +528,13 @@ export default function StudentLogins() {
                         title="Reset password and share the new one"
                       >
                         <KeyRound className="w-4 h-4" /> Reset
+                      </button>
+                      <button
+                        onClick={() => openVisibility(student)}
+                        className="btn-secondary btn-sm text-indigo-600"
+                        title="Portal visibility for this child"
+                      >
+                        <SlidersHorizontal className="w-4 h-4" /> Portal
                       </button>
                       <button
                         onClick={() => toggleStatus(login)}
@@ -619,6 +683,54 @@ export default function StudentLogins() {
         message={`This sets a new temporary password for ${resetTarget?.student_name || 'this parent'} and signs out their current one. You'll get the new password to share, and they will be asked to set their own on next sign-in.`}
         confirmText="Reset password"
       />
+
+      {/* Per-child portal visibility overrides */}
+      <Modal
+        isOpen={!!visFor}
+        onClose={() => setVisFor(null)}
+        title={`Portal visibility — ${visFor?.name || ''}`}
+        size="md"
+        onSave={saveVisibility}
+        saving={savingVis}
+        saveLabel="Save"
+      >
+        {visFor && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Override what this child's parent sees in the portal. Default follows your academy-wide Parent portal visibility settings.
+            </p>
+            {PORTAL_ITEMS.map(({ key, label }) => (
+              <div key={key} className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-gray-800">{label}</span>
+                <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
+                  {[
+                    { v: 'default', t: 'Default' },
+                    { v: 'on', t: 'Show' },
+                    { v: 'off', t: 'Hide' },
+                  ].map(({ v, t }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setVisForm((f) => ({ ...f, [key]: v }))}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        visForm[key] === v
+                          ? v === 'off'
+                            ? 'bg-red-50 text-red-700'
+                            : v === 'on'
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-indigo-50 text-indigo-700'
+                          : 'text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

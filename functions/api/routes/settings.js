@@ -220,6 +220,7 @@ const APP_SETTINGS_DEFAULTS = {
   'modules.student_photos': 'true',
   'modules.assignments':    'false', // off by default — opt-in
   'modules.question_papers':'false', // off by default — opt-in
+  'modules.programs':       'false', // off by default — opt-in (premium)
 
   // ---- Alerts ----------------------------------------------------------
   // How many consecutive absences trigger an attendance alert (banner on the
@@ -233,6 +234,8 @@ const APP_SETTINGS_DEFAULTS = {
   'portal.show_lessons':      'true',
   'portal.show_fees':         'true',
   'portal.show_attendance':   'true', // class-history visibility for parents
+  'portal.show_assignments':  'true', // assignments tab visibility for parents
+  'portal.show_papers':       'true', // question-papers tab visibility for parents
   'portal.allow_profile_edit':'true',
 
   // ---- Appearance (Phase 4) --------------------------------------------

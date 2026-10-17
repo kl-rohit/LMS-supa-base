@@ -388,7 +388,7 @@ router.put('/:id', async (req, res) => {
       monthly_fee,
       status, notes, date_of_birth,
       email, address, father_name, mother_name, photo_url,
-      parent_consent,
+      parent_consent, portal_overrides,
     } = req.body;
     // Reactivating an inactive student counts against the plan cap. (A no-op
     // re-save of an already-active student doesn't add to the count.)
@@ -413,6 +413,22 @@ router.put('/:id', async (req, res) => {
     if (father_name !== undefined)           patch.father_name           = father_name || '';
     if (mother_name !== undefined)           patch.mother_name           = mother_name || '';
     if (photo_url !== undefined)             patch.photo_url             = photo_url || '';
+    // Per-student parent-portal visibility overrides. Stored as a JSON string of
+    // { <tab>: 'on'|'off' } — only the tabs the admin explicitly overrode; a tab
+    // left out inherits the academy-wide portal.* setting. We whitelist both the
+    // keys and the values so nothing arbitrary lands in the column.
+    if (portal_overrides !== undefined) {
+      const ALLOWED = new Set([
+        'show_lessons', 'show_fees', 'show_attendance',
+        'show_assignments', 'show_papers', 'allow_profile_edit',
+      ]);
+      const clean = {};
+      const src = portal_overrides && typeof portal_overrides === 'object' ? portal_overrides : {};
+      for (const [k, v] of Object.entries(src)) {
+        if (ALLOWED.has(k) && (v === 'on' || v === 'off')) clean[k] = v;
+      }
+      patch.portal_overrides = Object.keys(clean).length ? JSON.stringify(clean) : '';
+    }
     // Admin attestation: stamp consent once, only if not already recorded.
     // We never clear an existing consent from this form.
     if (parent_consent && !existing.consent_at) {

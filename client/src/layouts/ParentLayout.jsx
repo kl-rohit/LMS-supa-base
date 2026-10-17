@@ -38,21 +38,25 @@ const PortalAssignments = lazy(() => import('../pages/portal/Assignments'));
 const PortalPapers      = lazy(() => import('../pages/portal/QuestionPapers'));
 const PortalHelp        = lazy(() => import('../pages/portal/Help'));
 
-// Each nav item has a `flag` — the AppSettings toggle that gates it. The
-// portal nav respects the academy's per-org visibility choices.
+// Each nav item carries the AppSettings flags that gate it; it shows only when
+// every listed flag is on. Assignments and Question Papers need BOTH the
+// academy's module flag AND the parent-portal visibility toggle, so an academy
+// can run a module internally yet keep it out of the parent portal. The portal
+// nav also respects per-child overrides (the /portal/flags response folds them
+// into these same keys — see routes/portal.js).
 const ALL_NAV = [
-  { to: '/portal/dashboard',  label: 'Overview',      icon: LayoutDashboard, flag: null },
-  { to: '/portal/lessons',    label: 'My Lessons',    icon: Video,           flag: 'portal.show_lessons' },
-  { to: '/portal/assignments',label: 'Assignments',   icon: ClipboardList,   flag: 'modules.assignments' },
-  { to: '/portal/papers',     label: 'Question Papers',icon: FileText,       flag: 'modules.question_papers' },
-  { to: '/portal/attendance', label: 'Class History', icon: ClipboardCheck,  flag: 'portal.show_attendance' },
-  { to: '/portal/fees',       label: 'Fees',          icon: IndianRupee,     flag: 'portal.show_fees' },
-  { to: '/portal/profile',    label: 'My Profile',    icon: UserCircle2,     flag: null },
-  { to: '/portal/help',       label: 'Help & Guide',  icon: HelpCircle,      flag: null },
+  { to: '/portal/dashboard',  label: 'Overview',       icon: LayoutDashboard, flags: [] },
+  { to: '/portal/lessons',    label: 'My Lessons',     icon: Video,           flags: ['portal.show_lessons'] },
+  { to: '/portal/assignments',label: 'Assignments',    icon: ClipboardList,   flags: ['modules.assignments', 'portal.show_assignments'] },
+  { to: '/portal/papers',     label: 'Question Papers',icon: FileText,        flags: ['modules.question_papers', 'portal.show_papers'] },
+  { to: '/portal/attendance', label: 'Class History',  icon: ClipboardCheck,  flags: ['portal.show_attendance'] },
+  { to: '/portal/fees',       label: 'Fees',           icon: IndianRupee,     flags: ['portal.show_fees'] },
+  { to: '/portal/profile',    label: 'My Profile',     icon: UserCircle2,     flags: [] },
+  { to: '/portal/help',       label: 'Help & Guide',   icon: HelpCircle,      flags: [] },
 ];
 
 function visibleNav(flags) {
-  return ALL_NAV.filter((item) => !item.flag || flags[item.flag] !== false);
+  return ALL_NAV.filter((item) => (item.flags || []).every((f) => flags[f] !== false));
 }
 
 export default function ParentLayout() {
@@ -63,7 +67,8 @@ export default function ParentLayout() {
   const navItems = visibleNav(flags);
   const branding = useOrgBranding();
   const displayName = branding.name || BRAND_NAME;
-  const [studentName, setStudentName] = useState('');
+  // The linked student + any siblings in this academy (for the child switcher).
+  const [me, setMe] = useState(null);
   // Reflect the academy name in the browser tab title.
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -80,15 +85,24 @@ export default function ParentLayout() {
     return restore;
   }, []);
 
-  // Fetch the linked student's name once. Skipped for admin (they'll be redirected).
+  // Fetch the linked student + siblings once. Skipped for admin (redirected).
   useEffect(() => {
     if (isAdmin) return;
     let cancelled = false;
     api.get('/portal/me')
-      .then((d) => { if (!cancelled) setStudentName(d?.student?.name || ''); })
+      .then((d) => { if (!cancelled) setMe(d || null); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [isAdmin]);
+
+  // Switch which child the portal is viewing. Persists the pick (api.js appends
+  // it as ?student=<id> on every portal call) and reloads so every screen
+  // re-resolves for the new child — mirrors the academy switcher's clean reload.
+  const switchStudent = (id) => {
+    if (!id || String(id) === String(me?.student?.id)) return;
+    try { localStorage.setItem('veena_active_student_id', String(id)); } catch { /* ignore */ }
+    window.location.reload();
+  };
 
   // Admin shouldn't be in the parent portal — bounce them home.
   if (isAdmin) return <Navigate to="/dashboard" replace />;
@@ -135,10 +149,23 @@ export default function ParentLayout() {
           </button>
         </div>
 
-        {studentName && (
+        {me?.student && (
           <div className="px-6 py-3 border-b border-gray-100">
             <p className="text-xs text-gray-400 uppercase tracking-wide">Viewing</p>
-            <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">{studentName}</p>
+            {Array.isArray(me.siblings) && me.siblings.length > 1 ? (
+              <select
+                value={String(me.student.id)}
+                onChange={(e) => switchStudent(e.target.value)}
+                aria-label="Switch child"
+                className="mt-1 w-full text-sm font-semibold text-gray-800 bg-white border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {me.siblings.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">{me.student.name}</p>
+            )}
           </div>
         )}
 

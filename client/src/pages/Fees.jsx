@@ -88,6 +88,10 @@ export default function Fees() {
   const [expandedStudent, setExpandedStudent] = useState(null);
   const [studentBreakdown, setStudentBreakdown] = useState([]);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  // Edit a posted attendance row straight from the fees breakdown.
+  const [editAttn, setEditAttn] = useState(null); // the attendance row being edited
+  const [editAttnForm, setEditAttnForm] = useState({ status: 'present', fee_charged: '', topic: '' });
+  const [savingAttn, setSavingAttn] = useState(false);
   const [additionalFees, setAdditionalFees] = useState([]);
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false);
   const [quickStudentOpen, setQuickStudentOpen] = useState(false);
@@ -184,6 +188,29 @@ export default function Fees() {
     } finally {
       setLoadingBreakdown(false);
     }
+  };
+
+  const openEditAttn = (row) => {
+    setEditAttn(row);
+    setEditAttnForm({ status: row.status || 'present', fee_charged: String(row.fee_charged ?? ''), topic: row.topic || '' });
+    setErrors({});
+  };
+  const saveEditAttn = async () => {
+    const errs = validate(editAttnForm, { fee_charged: V.nonNegative('Fee', { max: 1000000 }) });
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    setSavingAttn(true);
+    try {
+      await api.put(`/attendance/${editAttn.id || editAttn.ROWID}`, {
+        status: editAttnForm.status,
+        topic: editAttnForm.topic,
+        fee_charged: editAttnForm.status === 'absent' ? 0 : Number(editAttnForm.fee_charged) || 0,
+      });
+      toast.success('Attendance updated');
+      setEditAttn(null);
+      if (expandedStudent) await fetchBreakdown(expandedStudent); // refresh the rows
+      await fetchFees();                                          // refresh the monthly totals
+    } catch (err) { toast.error('Failed to update: ' + err.message); }
+    finally { setSavingAttn(false); }
   };
 
   const toggleExpand = async (studentId) => {
@@ -843,6 +870,7 @@ export default function Fees() {
                                       <th className="pb-2 text-left font-medium">Duration</th>
                                       <th className="pb-2 text-left font-medium">Topic</th>
                                       <th className="pb-2 text-right font-medium">Fee</th>
+                                      <th className="pb-2"></th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
@@ -872,6 +900,13 @@ export default function Fees() {
                                         <td className="py-2 text-right font-medium text-gray-900">
                                           {'\u20B9'}{Number(row.fee_charged || 0).toLocaleString('en-IN')}
                                         </td>
+                                        <td className="py-2 text-right">
+                                          {(row.id || row.ROWID) && (
+                                            <button onClick={() => openEditAttn(row)} className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title="Edit this attendance" aria-label="Edit attendance">
+                                              <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -885,8 +920,15 @@ export default function Fees() {
                                       <span className="text-sm font-medium text-gray-900">
                                         {row.class_name || (row.camp_id ? 'Camp' : 'Ad-hoc')}
                                       </span>
-                                      <span className="text-sm font-semibold text-gray-900 flex-shrink-0">
-                                        {'₹'}{Number(row.fee_charged || 0).toLocaleString('en-IN')}
+                                      <span className="flex items-center gap-2 flex-shrink-0">
+                                        <span className="text-sm font-semibold text-gray-900">
+                                          {'₹'}{Number(row.fee_charged || 0).toLocaleString('en-IN')}
+                                        </span>
+                                        {(row.id || row.ROWID) && (
+                                          <button onClick={() => openEditAttn(row)} className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" aria-label="Edit attendance">
+                                            <Edit2 className="w-4 h-4" />
+                                          </button>
+                                        )}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -1362,6 +1404,59 @@ export default function Fees() {
             </p>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit a posted attendance row from the fees breakdown */}
+      <Modal
+        isOpen={!!editAttn}
+        onClose={() => { setEditAttn(null); setErrors({}); }}
+        title="Edit attendance"
+        onSave={saveEditAttn}
+        saving={savingAttn}
+        saveLabel="Save"
+      >
+        {editAttn && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500">
+              {editAttn.class_name || (editAttn.camp_id ? 'Camp' : 'Ad-hoc')}
+              {editAttn.date ? ` · ${new Date(editAttn.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={editAttnForm.status}
+                onChange={(e) => setEditAttnForm({ ...editAttnForm, status: e.target.value })}
+                className="input-field"
+              >
+                <option value="present">Present</option>
+                <option value="absent">Absent</option>
+                <option value="late">Late</option>
+              </select>
+            </div>
+            {editAttnForm.status !== 'absent' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fee charged</label>
+                <input
+                  type="number" min="0" data-field="fee_charged"
+                  value={editAttnForm.fee_charged}
+                  onChange={(e) => { setEditAttnForm({ ...editAttnForm, fee_charged: e.target.value }); setErrors((x) => clearError(x, 'fee_charged')); }}
+                  className={fieldCls('input-field', errors.fee_charged)}
+                />
+                <FieldError msg={errors.fee_charged} />
+                <p className="text-xs text-gray-400 mt-1">Marking Absent sets this to ₹0.</p>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+              <input
+                value={editAttnForm.topic}
+                onChange={(e) => setEditAttnForm({ ...editAttnForm, topic: e.target.value })}
+                placeholder="What was taught (optional)"
+                className="input-field"
+              />
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

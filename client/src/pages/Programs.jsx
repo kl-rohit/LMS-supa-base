@@ -3,7 +3,7 @@
 // docs/programs-module-spec.md.
 
 import { useState, useEffect } from 'react';
-import { Plus, CalendarDays, IndianRupee, Users, Trash2, Edit2, Receipt } from 'lucide-react';
+import { Plus, CalendarDays, IndianRupee, Users, Trash2, Edit2, ReceiptIndianRupee } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
@@ -238,7 +238,7 @@ export default function Programs() {
                 <h4 className="text-sm font-semibold text-gray-800">Participants ({detail.roster?.length || 0})</h4>
                 {Number(detail.program.fee) > 0 && (
                   <button onClick={billAll} disabled={busy} className="btn-sm inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                    <Receipt className="w-3.5 h-3.5" /> Bill participants
+                    <ReceiptIndianRupee className="w-3.5 h-3.5" /> Bill participants
                   </button>
                 )}
               </div>

@@ -137,6 +137,22 @@ router.delete('/:id/students/:studentId', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to remove participant', detail: e.message }); }
 });
 
+// ---- set a participant's itinerary note (parent-visible) ----
+router.put('/:id/students/:studentId', async (req, res) => {
+  try {
+    const id = safeId(req.params.id), sid = safeId(req.params.studentId);
+    if (!id || !sid) return res.status(400).json({ error: 'Invalid id' });
+    const program = await getById(req, 'Programs', id);
+    if (!program || Number(program.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Program not found' });
+    const notes = String(req.body.notes ?? '').slice(0, 2000);
+    const links = await zcql(req, `SELECT ROWID FROM ProgramStudents WHERE ProgramStudents.program_id = ${id} AND ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${Number(req.orgId)}`);
+    const rows = unwrap(links, 'ProgramStudents');
+    if (!rows.length) return res.status(404).json({ error: 'Participant not found' });
+    for (const l of rows) { try { await update(req, 'ProgramStudents', l.ROWID, { notes }); } catch {} }
+    res.json({ message: 'Note saved', notes });
+  } catch (e) { res.status(500).json({ error: 'Failed to save note', detail: e.message }); }
+});
+
 // ---- bill participants: create an AdditionalFees row per enrolled, unbilled
 // student, then mark them billed. Flows into fee collection + reminders. ----
 router.post('/:id/bill', async (req, res) => {

@@ -315,9 +315,10 @@ router.get('/:id/activity', async (req, res) => {
     // academy that hasn't run the Programs migration still gets the rest.
     let programs = [];
     try {
-      const links = await zcqlAll(req, `SELECT program_id, billed FROM ProgramStudents WHERE ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${orgId}`, 'ProgramStudents');
+      const links = await zcqlAll(req, `SELECT program_id, billed, notes FROM ProgramStudents WHERE ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${orgId}`, 'ProgramStudents');
       const linkRows = unwrap(links, 'ProgramStudents');
       const billedBy = new Map(linkRows.map((r) => [String(r.program_id), Number(r.billed) === 1]));
+      const noteBy = new Map(linkRows.map((r) => [String(r.program_id), String(r.notes || '')]));
       const pids = [...new Set(linkRows.map((r) => Number(r.program_id)).filter(Boolean))];
       if (pids.length) {
         const pRows = await zcqlAll(req, `SELECT * FROM Programs WHERE Programs.org_id = ${orgId} AND Programs.ROWID IN (${pids.join(',')})`, 'Programs');
@@ -329,6 +330,7 @@ router.get('/:id/activity', async (req, res) => {
           status: p.status || 'planned',
           fee: Number(p.fee) || 0,
           billed: billedBy.get(String(p.id)) === true,
+          note: noteBy.get(String(p.id)) || '',
         })).sort((a, b) => String(b.program_date || '').localeCompare(String(a.program_date || '')));
       }
     } catch { programs = []; }

@@ -1282,11 +1282,12 @@ router.get('/programs', async (req, res) => {
     // Which programs this student is enrolled in (+ whether their fee is billed).
     const links = await zcqlAll(
       req,
-      `SELECT program_id, billed FROM ProgramStudents WHERE ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${Number(req.orgId)}`,
+      `SELECT program_id, billed, notes FROM ProgramStudents WHERE ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${Number(req.orgId)}`,
       'ProgramStudents'
     );
     const linkRows = unwrap(links, 'ProgramStudents');
     const billedByProgram = new Map(linkRows.map((r) => [String(r.program_id), Number(r.billed) === 1]));
+    const noteByProgram = new Map(linkRows.map((r) => [String(r.program_id), String(r.notes || '')]));
     const ids = [...new Set(linkRows.map((r) => Number(r.program_id)).filter(Boolean))];
     if (!ids.length) return res.json({ programs: [] });
     const progRows = await zcqlAll(
@@ -1306,6 +1307,7 @@ router.get('/programs', async (req, res) => {
         status: p.status || 'planned',
         fee: Number(p.fee) || 0,
         billed: billedByProgram.get(String(p.id)) === true,
+        note: noteByProgram.get(String(p.id)) || '',
       }));
     out.sort((a, b) => String(b.program_date || '').localeCompare(String(a.program_date || '')));
     res.json({ programs: out });

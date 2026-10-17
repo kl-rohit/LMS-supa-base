@@ -476,6 +476,9 @@ function StudentActivity({ studentId }) {
                   <div className="text-xs text-gray-500 mt-0.5 capitalize">
                     {p.type}{p.program_date ? ` · ${prettyDate(p.program_date)}` : ''}
                   </div>
+                  {p.note && (
+                    <div className="mt-1 text-xs text-indigo-800 bg-indigo-50 border border-indigo-100 rounded px-2 py-1 whitespace-pre-wrap normal-case">{p.note}</div>
+                  )}
                 </div>
               </div>
             ))}

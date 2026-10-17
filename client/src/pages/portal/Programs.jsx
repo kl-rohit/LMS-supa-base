@@ -95,6 +95,11 @@ export default function PortalPrograms() {
               {p.description && (
                 <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{p.description}</p>
               )}
+              {p.note && (
+                <div className="mt-2 text-sm text-indigo-800 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 whitespace-pre-wrap">
+                  {p.note}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -110,6 +110,15 @@ export default function Programs() {
   const removeParticipant = async (sid) => {
     try { await api.delete(`/programs/${detail.program.id || detail.program.ROWID}/students/${sid}`); await refreshDetail(); } catch (e) { toast.error('Failed: ' + e.message); }
   };
+  const saveNote = async (sid, notes) => {
+    const pid = detail.program.id || detail.program.ROWID;
+    try {
+      await api.put(`/programs/${pid}/students/${sid}`, { notes });
+      // reflect the saved note locally without a full refetch
+      setDetail((d) => (d ? { ...d, roster: (d.roster || []).map((r) => (String(r.student_id) === String(sid) ? { ...r, notes } : r)) } : d));
+      toast.success('Note saved');
+    } catch (e) { toast.error('Failed: ' + e.message); }
+  };
   const billAll = async () => {
     const p = detail.program;
     if (!(Number(p.fee) > 0)) { toast.error('Set a program fee greater than 0 first (edit the program).'); return; }
@@ -238,13 +247,14 @@ export default function Programs() {
               ) : (
                 <div className="space-y-1.5">
                   {detail.roster.map((r) => (
-                    <div key={r.id || r.ROWID} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm">
-                      <span className="text-gray-900">{nameOf(r.student_id)}</span>
-                      <span className="flex items-center gap-2">
-                        {Number(r.billed) === 1 && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">billed</span>}
-                        <button onClick={() => removeParticipant(r.student_id)} className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
-                      </span>
-                    </div>
+                    <ParticipantRow
+                      key={r.id || r.ROWID}
+                      name={nameOf(r.student_id)}
+                      note={r.notes}
+                      billed={Number(r.billed) === 1}
+                      onRemove={() => removeParticipant(r.student_id)}
+                      onSaveNote={(notes) => saveNote(r.student_id, notes)}
+                    />
                   ))}
                 </div>
               )}
@@ -275,6 +285,46 @@ export default function Programs() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+// One participant in a program's roster, with an editable per-student itinerary
+// note. The note is parent-visible (shown in the portal Programs tab). Saves on
+// blur or Enter when changed; an explicit Save button appears while dirty.
+function ParticipantRow({ name, note, billed, onRemove, onSaveNote }) {
+  const [draft, setDraft] = useState(note || '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(note || ''); }, [note]);
+  const dirty = (draft || '') !== (note || '');
+  const save = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    try { await onSaveNote(draft.trim()); } finally { setSaving(false); }
+  };
+  return (
+    <div className="rounded-lg border border-gray-200 px-3 py-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-gray-900">{name}</span>
+        <span className="flex items-center gap-2">
+          {billed && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">billed</span>}
+          <button onClick={onRemove} className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-start gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+          placeholder="Note for this student (song, slot, timing)… parents can see this"
+          maxLength={2000}
+          className="input-field text-xs py-1 flex-1"
+        />
+        {dirty && (
+          <button onClick={save} disabled={saving} className="btn-primary btn-sm text-xs shrink-0">Save</button>
+        )}
+      </div>
     </div>
   );
 }

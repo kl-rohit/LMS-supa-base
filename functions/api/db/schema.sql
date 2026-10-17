@@ -194,6 +194,7 @@ create table if not exists programstudents (       -- ProgramStudents (M2M)
   program_id  bigint not null,
   student_id  bigint not null,
   billed      integer default 0,
+  notes       text default '',                       -- per-student itinerary note (parent-visible)
   source_id   bigint,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz

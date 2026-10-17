@@ -331,17 +331,17 @@ function ParticipantRow({ name, note, billed, collected, onRemove, onSaveNote, o
         </span>
       </div>
       <div className="mt-1.5 flex items-start gap-2">
-        <input
+        <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={save}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+          rows={2}
           placeholder="Note for this student (song, slot, timing)… parents can see this"
           maxLength={2000}
-          className="input-field text-xs py-1 flex-1"
+          className="input-field text-xs py-1 flex-1 resize-y"
         />
         {dirty && (
-          <button onClick={save} disabled={saving} className="btn-primary btn-sm text-xs shrink-0">Save</button>
+          <button onClick={save} disabled={saving} className="btn-primary btn-sm text-xs shrink-0 self-start">Save</button>
         )}
       </div>
     </div>

@@ -1481,7 +1481,12 @@
       // Host-aware: on Catalyst the page is served under /app/ and the API is at
       // /server/api/api; on Netlify (served at the domain root) the API is proxied
       // at /api. Picking the wrong one 404s the lead POST ("Something went wrong").
-      var API_BASE = location.pathname.indexOf('/app/') === 0 ? '/server/api/api' : '/api';
+      // NOTE: '/app' + '/' is deliberately concatenated, not a literal '/app/'.
+      // The Netlify build (scripts/fix-landing-paths.js) blanket-replaces every
+      // '/app/' with '/', which would otherwise turn indexOf('/app/') into
+      // indexOf('/') (always 0 → always picks /server/api/api, breaking the
+      // proxied lead POST on Netlify). Concatenation hides it from that rewrite.
+      var API_BASE = location.pathname.indexOf('/app' + '/') === 0 ? '/server/api/api' : '/api';
       var btn   = document.getElementById('lf-submit');
       var label = form.querySelector('.lf-label');
       var spin  = form.querySelector('.lf-spinner');

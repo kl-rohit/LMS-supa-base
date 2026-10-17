@@ -1613,7 +1613,9 @@
       // under /server/api/api. Keep these in sync if the mount ever changes.
       // Host-aware: Catalyst serves under /app/ (API at /server/api/api); Netlify
       // serves at root (API proxied at /api). Wrong base 404s the lead POST.
-      var API_BASE = location.pathname.indexOf('/app/') === 0 ? '/server/api/api' : '/api';
+      // '/app' + '/' is concatenated on purpose — see landing.html for why
+      // (the Netlify build rewrites literal '/app/' → '/', which would break this).
+      var API_BASE = location.pathname.indexOf('/app' + '/') === 0 ? '/server/api/api' : '/api';
       var btn   = document.getElementById('lf-submit');
       var label = form.querySelector('.lf-label');
       var spin  = form.querySelector('.lf-spinner');

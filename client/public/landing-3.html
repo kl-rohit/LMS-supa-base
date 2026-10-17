@@ -1041,7 +1041,9 @@ if(mesh&&!matchMedia('(prefers-reduced-motion:reduce)').matches){
 // per-field validation and specific messages.
 (function(){
   var form=document.getElementById('lead-form'); if(!form) return;
-  var API_BASE = location.pathname.indexOf('/app/')===0 ? '/server/api/api' : '/api';
+  // '/app' + '/' concatenated on purpose — the Netlify build rewrites literal
+  // '/app/' → '/', which would otherwise break this detection. See landing.html.
+  var API_BASE = location.pathname.indexOf('/app' + '/')===0 ? '/server/api/api' : '/api';
   var t0=Date.now();
   var $=function(id){return document.getElementById(id);};
   function fieldOf(id){ var el=$(id); return el && el.closest('.lf-field'); }

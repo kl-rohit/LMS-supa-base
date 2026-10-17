@@ -755,7 +755,9 @@ footer{border-top:1px solid var(--border);padding:40px 0}
 // Contact / lead form — host-aware POST to /leads with per-field validation.
 (function(){
   var form=document.getElementById('lead-form'); if(!form) return;
-  var API_BASE = location.pathname.indexOf('/app/')===0 ? '/server/api/api' : '/api';
+  // '/app' + '/' concatenated on purpose — the Netlify build rewrites literal
+  // '/app/' → '/', which would otherwise break this detection. See landing.html.
+  var API_BASE = location.pathname.indexOf('/app' + '/')===0 ? '/server/api/api' : '/api';
   var t0=Date.now();
   var $=function(id){return document.getElementById(id);};
   function fieldOf(id){ var el=$(id); return el && el.closest('.lf-field'); }

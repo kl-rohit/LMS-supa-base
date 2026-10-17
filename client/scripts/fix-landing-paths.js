@@ -3,6 +3,14 @@
 // where the app is served under /app/. On Netlify the app is at the root, so
 // rewrite "/app/" -> "/" in the copied dist files (CSS, logo, /login links, etc).
 // The Catalyst build (npm run build) does NOT run this, so it keeps /app/.
+//
+// GOTCHA: this is a blanket text replace, so it also rewrites any "/app/" that
+// appears inside inline <script> logic. The lead-form API-base detection used to
+// read location.pathname.indexOf('/app/') and got silently turned into
+// indexOf('/') here (always 0 → always picked /server/api/api → lead POST 404s
+// on Netlify). Those scripts now write the literal as '/app' + '/' so it does
+// NOT match below. If you add new inline script that must test for "/app/",
+// concatenate it the same way rather than writing the literal.
 
 const fs = require('fs');
 const path = require('path');

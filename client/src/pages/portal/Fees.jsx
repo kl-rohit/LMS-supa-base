@@ -77,6 +77,25 @@ export default function PortalFees() {
           </div>
         )}
 
+        {!loading && data?.additional_items?.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Additional charges</h4>
+            <div className="space-y-1.5">
+              {data.additional_items.map((it, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 text-sm py-1">
+                  <span className="text-gray-700 min-w-0 truncate">{it.description}</span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${it.collected ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {it.collected ? 'Paid' : 'Pending'}
+                    </span>
+                    <span className="font-medium text-gray-900">₹{Number(it.amount).toLocaleString('en-IN')}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {data?.discount > 0 && (
           <div className="mt-4 p-3 rounded-lg bg-green-50 text-green-700 text-sm flex items-center gap-2">
             <TrendingDown className="w-4 h-4" />

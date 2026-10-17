@@ -321,6 +321,19 @@ router.get('/fees', async (req, res) => {
 
     const total = classFees + positiveAdditional + discountTotal;
 
+    // Itemised charges so the parent sees each one (e.g. a program fee) with its
+    // status — Paid when the academy marked it collected, Pending otherwise.
+    const additionalItems = additional
+      .filter((a) => (Number(a.amount) || 0) > 0)
+      .map((a) => ({
+        description: a.description || 'Additional fee',
+        amount: Number(a.amount) || 0,
+        collected: Number(a.collected) === 1,
+        date: a.fee_date || a.date || '',
+      }))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const pendingTotal = additionalItems.reduce((s, it) => s + (it.collected ? 0 : it.amount), 0);
+
     // Payment QR for the parent: a UPI id (the portal builds a UPI deep-link QR
     // client-side) and/or an uploaded payment-QR image (streamed inline as a
     // data URL so it embeds without a cross-origin Stratus fetch). Both are
@@ -342,6 +355,8 @@ router.get('/fees', async (req, res) => {
       month: month || null,
       class_fees: classFees,
       additional_fees: positiveAdditional,
+      additional_items: additionalItems,
+      additional_pending: pendingTotal,
       discount: Math.abs(discountTotal),
       total,
       classes_attended: sumHrs(attendance.filter((a) => a.status === 'present' || a.status === 'late')),

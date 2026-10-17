@@ -1290,24 +1290,32 @@ router.get('/programs', async (req, res) => {
     const noteByProgram = new Map(linkRows.map((r) => [String(r.program_id), String(r.notes || '')]));
     const ids = [...new Set(linkRows.map((r) => Number(r.program_id)).filter(Boolean))];
     if (!ids.length) return res.json({ programs: [] });
-    // Collection status for this student's program charges (one source of truth:
-    // the linked AdditionalFees row, keyed by program_id).
-    const collectedByProgram = new Map();
-    try {
-      const afRows = await zcqlAll(
-        req,
-        `SELECT program_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND AdditionalFees.program_id IN (${ids.join(',')})`,
-        'AdditionalFees'
-      );
-      for (const af of unwrap(afRows, 'AdditionalFees')) collectedByProgram.set(String(af.program_id), Number(af.collected) === 1);
-    } catch { /* columns not migrated yet → no collection info */ }
     const progRows = await zcqlAll(
       req,
       `SELECT * FROM Programs WHERE Programs.org_id = ${Number(req.orgId)} AND Programs.ROWID IN (${ids.join(',')})`,
       'Programs'
     );
-    const out = unwrap(progRows, 'Programs')
-      .map(normalize)
+    const progs = unwrap(progRows, 'Programs').map(normalize);
+    // Collection status for this student's program charges. The source of truth
+    // is the linked AdditionalFees row: match by program_id (new charges) OR by
+    // the "Program: <name>" description (legacy charges billed before program_id
+    // existed), so both reflect the collected badge.
+    const nameToId = new Map(progs.map((p) => [`Program: ${p.name || ''}`, String(p.id)]));
+    const nameKeys = progs.map((p) => q(`Program: ${p.name || ''}`));
+    const descClause = nameKeys.length ? ` OR AdditionalFees.description IN (${nameKeys.join(',')})` : '';
+    const collectedByProgram = new Map();
+    try {
+      const afRows = await zcqlAll(
+        req,
+        `SELECT program_id, description, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND (AdditionalFees.program_id IN (${ids.join(',')})${descClause})`,
+        'AdditionalFees'
+      );
+      for (const af of unwrap(afRows, 'AdditionalFees')) {
+        const pid = af.program_id ? String(af.program_id) : nameToId.get(String(af.description || ''));
+        if (pid) collectedByProgram.set(pid, Number(af.collected) === 1);
+      }
+    } catch { /* columns not migrated yet → no collection info */ }
+    const out = progs
       .filter((p) => p.status !== 'cancelled')
       .map((p) => ({
         id: p.id,

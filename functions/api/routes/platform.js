@@ -1133,9 +1133,9 @@ router.put('/invoices/:id', async (req, res) => {
 //     city, message, source, status, notes
 //
 // status pipeline (the "track"): new (form filled) -> called -> signed_up
-// -> invited -> trial -> won | lost.
+// -> invited -> trial -> won | lost | disqualified (not a real/eligible lead).
 // =============================================================================
-const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 'lost'];
+const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 'lost', 'disqualified'];
 
 router.get('/leads', async (req, res) => {
   try {

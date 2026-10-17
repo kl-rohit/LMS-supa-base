@@ -2234,8 +2234,8 @@ function SearchSection({ searchQ, setSearchQ, runSearch, searchBusy, results, on
 // landing page. Each request moves through a follow-up pipeline.
 // ----------------------------------------------------------------------------
 // The pipeline order. The "track" the owner asked for: form filled -> called
-// -> signed up -> invited -> under trial -> won | lost.
-const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 'lost'];
+// -> signed up -> invited -> under trial -> won | lost | disqualified.
+const LEAD_STATUSES = ['new', 'called', 'signed_up', 'invited', 'trial', 'won', 'lost', 'disqualified'];
 const LEAD_LABEL = {
   new: 'New',
   called: 'Called',
@@ -2244,15 +2244,17 @@ const LEAD_LABEL = {
   trial: 'On trial',
   won: 'Won',
   lost: 'Lost',
+  disqualified: 'Disqualified',
 };
 const LEAD_BADGE = {
-  new:       'bg-indigo-100 text-indigo-700',
-  called:    'bg-sky-100 text-sky-700',
-  signed_up: 'bg-violet-100 text-violet-700',
-  invited:   'bg-amber-100 text-amber-700',
-  trial:     'bg-teal-100 text-teal-700',
-  won:       'bg-green-100 text-green-700',
-  lost:      'bg-gray-100 text-gray-500',
+  new:          'bg-indigo-100 text-indigo-700',
+  called:       'bg-sky-100 text-sky-700',
+  signed_up:    'bg-violet-100 text-violet-700',
+  invited:      'bg-amber-100 text-amber-700',
+  trial:        'bg-teal-100 text-teal-700',
+  won:          'bg-green-100 text-green-700',
+  lost:         'bg-gray-100 text-gray-500',
+  disqualified: 'bg-rose-100 text-rose-700',
 };
 
 // ----------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 // docs/programs-module-spec.md.
 
 import { useState, useEffect } from 'react';
-import { Plus, CalendarDays, IndianRupee, Users, Trash2, Edit2, ReceiptIndianRupee } from 'lucide-react';
+import { Plus, CalendarDays, IndianRupee, Users, Trash2, Edit2, ReceiptIndianRupee, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
 import api from '../utils/api';
@@ -117,6 +117,14 @@ export default function Programs() {
       // reflect the saved note locally without a full refetch
       setDetail((d) => (d ? { ...d, roster: (d.roster || []).map((r) => (String(r.student_id) === String(sid) ? { ...r, notes } : r)) } : d));
       toast.success('Note saved');
+    } catch (e) { toast.error('Failed: ' + e.message); }
+  };
+  const toggleCollected = async (sid, next) => {
+    const pid = detail.program.id || detail.program.ROWID;
+    try {
+      await api.put(`/programs/${pid}/students/${sid}/collected`, { collected: next });
+      setDetail((d) => (d ? { ...d, roster: (d.roster || []).map((r) => (String(r.student_id) === String(sid) ? { ...r, collected: next } : r)) } : d));
+      toast.success(next ? 'Marked collected' : 'Marked not collected');
     } catch (e) { toast.error('Failed: ' + e.message); }
   };
   const billAll = async () => {
@@ -252,8 +260,10 @@ export default function Programs() {
                       name={nameOf(r.student_id)}
                       note={r.notes}
                       billed={Number(r.billed) === 1}
+                      collected={r.collected === true}
                       onRemove={() => removeParticipant(r.student_id)}
                       onSaveNote={(notes) => saveNote(r.student_id, notes)}
+                      onToggleCollected={(next) => toggleCollected(r.student_id, next)}
                     />
                   ))}
                 </div>
@@ -292,7 +302,7 @@ export default function Programs() {
 // One participant in a program's roster, with an editable per-student itinerary
 // note. The note is parent-visible (shown in the portal Programs tab). Saves on
 // blur or Enter when changed; an explicit Save button appears while dirty.
-function ParticipantRow({ name, note, billed, onRemove, onSaveNote }) {
+function ParticipantRow({ name, note, billed, collected, onRemove, onSaveNote, onToggleCollected }) {
   const [draft, setDraft] = useState(note || '');
   const [saving, setSaving] = useState(false);
   useEffect(() => { setDraft(note || ''); }, [note]);
@@ -306,8 +316,17 @@ function ParticipantRow({ name, note, billed, onRemove, onSaveNote }) {
     <div className="rounded-lg border border-gray-200 px-3 py-2">
       <div className="flex items-center justify-between text-sm">
         <span className="text-gray-900">{name}</span>
-        <span className="flex items-center gap-2">
-          {billed && <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">billed</span>}
+        <span className="flex items-center gap-1.5">
+          {collected ? (
+            <button onClick={() => onToggleCollected(false)} title="Fee collected — click to undo" className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+              <Check className="w-3 h-3" /> Collected
+            </button>
+          ) : billed ? (
+            <>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">billed</span>
+              <button onClick={() => onToggleCollected(true)} className="text-[11px] px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50">Mark collected</button>
+            </>
+          ) : null}
           <button onClick={onRemove} className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
         </span>
       </div>

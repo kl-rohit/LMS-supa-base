@@ -1290,6 +1290,17 @@ router.get('/programs', async (req, res) => {
     const noteByProgram = new Map(linkRows.map((r) => [String(r.program_id), String(r.notes || '')]));
     const ids = [...new Set(linkRows.map((r) => Number(r.program_id)).filter(Boolean))];
     if (!ids.length) return res.json({ programs: [] });
+    // Collection status for this student's program charges (one source of truth:
+    // the linked AdditionalFees row, keyed by program_id).
+    const collectedByProgram = new Map();
+    try {
+      const afRows = await zcqlAll(
+        req,
+        `SELECT program_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND AdditionalFees.program_id IN (${ids.join(',')})`,
+        'AdditionalFees'
+      );
+      for (const af of unwrap(afRows, 'AdditionalFees')) collectedByProgram.set(String(af.program_id), Number(af.collected) === 1);
+    } catch { /* columns not migrated yet → no collection info */ }
     const progRows = await zcqlAll(
       req,
       `SELECT * FROM Programs WHERE Programs.org_id = ${Number(req.orgId)} AND Programs.ROWID IN (${ids.join(',')})`,
@@ -1307,6 +1318,7 @@ router.get('/programs', async (req, res) => {
         status: p.status || 'planned',
         fee: Number(p.fee) || 0,
         billed: billedByProgram.get(String(p.id)) === true,
+        collected: collectedByProgram.get(String(p.id)) === true,
         note: noteByProgram.get(String(p.id)) || '',
       }));
     out.sort((a, b) => String(b.program_date || '').localeCompare(String(a.program_date || '')));

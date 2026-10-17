@@ -87,9 +87,15 @@ export default function PortalPrograms() {
                   </span>
                 )}
                 {p.billed && p.fee > 0 && (
-                  <span className="inline-flex items-center gap-1 text-gray-700">
-                    <IndianRupee className="w-3 h-3" /> {p.fee.toLocaleString('en-IN')} (added to fees)
-                  </span>
+                  p.collected ? (
+                    <span className="inline-flex items-center gap-1 text-green-700 font-medium">
+                      <IndianRupee className="w-3 h-3" /> {p.fee.toLocaleString('en-IN')} paid
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-gray-700">
+                      <IndianRupee className="w-3 h-3" /> {p.fee.toLocaleString('en-IN')} (added to fees)
+                    </span>
+                  )
                 )}
               </div>
               {p.description && (

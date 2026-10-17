@@ -525,6 +525,19 @@ export default function Fees() {
       toast.error('Failed: ' + err.message);
     }
   };
+  // Toggle whether an additional charge (e.g. a program fee) has been collected.
+  // Independent of the whole-month payment — lets you tick off one-off charges
+  // like a recital fee as collected on their own.
+  const toggleFeeCollected = async (af) => {
+    const next = !(Number(af.collected) === 1);
+    try {
+      await api.put(`/fees/additional/${af.id}`, { collected: next });
+      toast.success(next ? 'Marked collected' : 'Marked not collected');
+      fetchFees();
+    } catch (err) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
 
   // Undo a payment.
   const undoPayment = async (student) => {
@@ -974,6 +987,15 @@ export default function Fees() {
                                               </span>
                                             </div>
                                             <div className="flex items-center gap-2 ml-2" onClick={(e) => e.stopPropagation()}>
+                                              {!isDiscount && (
+                                                Number(af.collected) === 1 ? (
+                                                  <button onClick={() => toggleFeeCollected(af)} title="Collected \u2014 click to undo" className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                                    <Check className="w-3 h-3" /> Collected
+                                                  </button>
+                                                ) : (
+                                                  <button onClick={() => toggleFeeCollected(af)} className="text-[11px] px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-50">Mark collected</button>
+                                                )
+                                              )}
                                               <span className={`font-medium ${isDiscount ? 'text-green-700' : 'text-gray-900'}`}>
                                                 {isDiscount ? '\u2212' : ''}{'\u20B9'}{Math.abs(amt).toLocaleString('en-IN')}
                                               </span>
@@ -1105,8 +1127,17 @@ export default function Fees() {
                                   <span className={`min-w-0 truncate ${isDiscount ? 'text-green-700' : 'text-gray-700'}`}>
                                     {isDiscount ? '🏷️ ' : ''}{af.description}
                                   </span>
-                                  <span className={`font-medium flex-shrink-0 ${isDiscount ? 'text-green-700' : 'text-gray-900'}`}>
-                                    {isDiscount ? '−' : ''}{'₹'}{Math.abs(amt).toLocaleString('en-IN')}
+                                  <span className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {!isDiscount && (
+                                      Number(af.collected) === 1 ? (
+                                        <button onClick={() => toggleFeeCollected(af)} title="Collected — tap to undo" className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700"><Check className="w-3 h-3" /> Collected</button>
+                                      ) : (
+                                        <button onClick={() => toggleFeeCollected(af)} className="text-[11px] px-2 py-0.5 rounded-full border border-gray-300 text-gray-600">Collect</button>
+                                      )
+                                    )}
+                                    <span className={`font-medium ${isDiscount ? 'text-green-700' : 'text-gray-900'}`}>
+                                      {isDiscount ? '−' : ''}{'₹'}{Math.abs(amt).toLocaleString('en-IN')}
+                                    </span>
                                   </span>
                                 </div>
                               );

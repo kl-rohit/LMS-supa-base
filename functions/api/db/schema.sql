@@ -384,11 +384,15 @@ create table if not exists additionalfees (        -- AdditionalFees
   fee_date     text,                                -- YYYY-MM-DD (client alias: date)
   fee_month    integer,                             -- 1-12 (client alias: month)
   fee_year     integer,                             -- (client alias: year)
+  collected    integer default 0,                   -- per-charge collection flag (0/1)
+  collected_at timestamptz,                         -- when it was marked collected
+  program_id   bigint,                              -- set when this charge came from a Program's "Bill participants"
   source_id    bigint,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz
 );
 create index if not exists idx_addfees_org on additionalfees (org_id);
+create index if not exists idx_addfees_program on additionalfees (program_id);
 create index if not exists idx_addfees_student on additionalfees (student_id);
 create index if not exists idx_addfees_org_src on additionalfees (org_id, source_id);
 

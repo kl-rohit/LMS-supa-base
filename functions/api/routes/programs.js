@@ -60,7 +60,25 @@ router.get('/:id', async (req, res) => {
     if (!program || Number(program.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Program not found' });
     const rows = await zcqlAll(req, `SELECT * FROM ProgramStudents WHERE ProgramStudents.program_id = ${id} AND ProgramStudents.org_id = ${Number(req.orgId)}`, 'ProgramStudents');
     const roster = unwrap(rows, 'ProgramStudents').map(normalize);
-    res.json({ program: normalize(program), roster });
+    // Collection status per participant. A program's charges carry program_id
+    // (set at billing); legacy charges billed before that column existed are
+    // matched by the "Program: <name>" label as a fallback.
+    const feeByStudent = new Map();
+    try {
+      const afRows = await zcqlAll(
+        req,
+        `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND (AdditionalFees.program_id = ${id} OR AdditionalFees.description = ${q('Program: ' + (program.name || ''))})`,
+        'AdditionalFees'
+      );
+      for (const af of unwrap(afRows, 'AdditionalFees')) {
+        feeByStudent.set(String(af.student_id), { fee_id: String(af.ROWID), collected: Number(af.collected) === 1 });
+      }
+    } catch { /* AdditionalFees columns not migrated yet → no collection info */ }
+    const rosterOut = roster.map((r) => {
+      const f = feeByStudent.get(String(r.student_id));
+      return { ...r, collected: f ? f.collected : false, fee_id: f ? f.fee_id : null };
+    });
+    res.json({ program: normalize(program), roster: rosterOut });
   } catch (e) { res.status(500).json({ error: 'Failed to fetch program', detail: e.message }); }
 });
 
@@ -153,6 +171,28 @@ router.put('/:id/students/:studentId', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to save note', detail: e.message }); }
 });
 
+// ---- mark a participant's program fee collected / not collected ----
+// Flips the collected flag on this student's program charge (the AdditionalFees
+// row), so it shows as collected in the roster, the Fees section and the portal.
+router.put('/:id/students/:studentId/collected', async (req, res) => {
+  try {
+    const id = safeId(req.params.id), sid = safeId(req.params.studentId);
+    if (!id || !sid) return res.status(400).json({ error: 'Invalid id' });
+    const program = await getById(req, 'Programs', id);
+    if (!program || Number(program.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Program not found' });
+    const collected = (req.body.collected === true || req.body.collected === 1 || req.body.collected === 'true') ? 1 : 0;
+    const afRows = await zcql(
+      req,
+      `SELECT ROWID FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND (AdditionalFees.program_id = ${id} OR AdditionalFees.description = ${q('Program: ' + (program.name || ''))})`
+    );
+    const rows = unwrap(afRows, 'AdditionalFees');
+    if (!rows.length) return res.status(400).json({ error: 'Bill this participant first, then mark the fee collected.' });
+    const patch = { collected, collected_at: collected ? new Date().toISOString() : null };
+    for (const r of rows) { try { await update(req, 'AdditionalFees', r.ROWID, patch); } catch {} }
+    res.json({ message: collected ? 'Marked collected' : 'Marked not collected', collected: !!collected });
+  } catch (e) { res.status(500).json({ error: 'Failed to update collection', detail: e.message }); }
+});
+
 // ---- bill participants: create an AdditionalFees row per enrolled, unbilled
 // student, then mark them billed. Flows into fee collection + reminders. ----
 router.post('/:id/bill', async (req, res) => {
@@ -178,6 +218,8 @@ router.post('/:id/bill', async (req, res) => {
           student_id: Number(r.student_id),
           description: `Program: ${program.name}`,
           amount: fee, fee_date: date, fee_month: month, fee_year: year,
+          program_id: Number(id),       // link the charge back to this program
+          collected: 0,
           org_id: Number(req.orgId),
         });
         await update(req, 'ProgramStudents', r.ROWID, { billed: 1 });

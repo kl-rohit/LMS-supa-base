@@ -348,6 +348,11 @@ router.put('/additional/:id', requireFeature('fees.additional'), async (req, res
     if (req.body.month !== undefined)       patch.fee_month = parseInt(req.body.month);
     if (req.body.year !== undefined)        patch.fee_year = parseInt(req.body.year);
     if (req.body.student_id !== undefined)  patch.student_id = String(req.body.student_id);
+    if (req.body.collected !== undefined) {
+      const c = (req.body.collected === true || req.body.collected === 1 || req.body.collected === 'true') ? 1 : 0;
+      patch.collected = c;
+      patch.collected_at = c ? new Date().toISOString() : null;
+    }
     const updated = await update(req, 'AdditionalFees', req.params.id, patch);
     res.json({ additional_fee: normalize(updated) });
   } catch (e) {

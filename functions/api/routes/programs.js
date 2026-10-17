@@ -193,6 +193,32 @@ router.put('/:id/students/:studentId/collected', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to update collection', detail: e.message }); }
 });
 
+// ---- bulk mark collected / not collected for all (or a subset of) the
+// program's participants. Mirrors "Bill participants". ----
+router.post('/:id/collect', async (req, res) => {
+  try {
+    const id = safeId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+    const program = await getById(req, 'Programs', id);
+    if (!program || Number(program.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Program not found' });
+    const collected = (req.body.collected === false || req.body.collected === 0 || req.body.collected === 'false') ? 0 : 1;
+    const only = Array.isArray(req.body.student_ids) ? new Set(req.body.student_ids.map(String)) : null;
+    const afRows = await zcqlAll(
+      req,
+      `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND (AdditionalFees.program_id = ${id} OR AdditionalFees.description = ${q('Program: ' + (program.name || ''))})`,
+      'AdditionalFees'
+    );
+    const stamp = collected ? new Date().toISOString() : null;
+    let changed = 0;
+    for (const r of unwrap(afRows, 'AdditionalFees')) {
+      if (only && !only.has(String(r.student_id))) continue;
+      if (Number(r.collected) === collected) continue;        // already in the wanted state
+      try { await update(req, 'AdditionalFees', r.ROWID, { collected, collected_at: stamp }); changed++; } catch {}
+    }
+    res.json({ message: `${collected ? 'Marked collected' : 'Marked not collected'}: ${changed}`, changed });
+  } catch (e) { res.status(500).json({ error: 'Failed to update collection', detail: e.message }); }
+});
+
 // ---- bill participants: create an AdditionalFees row per enrolled, unbilled
 // student, then mark them billed. Flows into fee collection + reminders. ----
 router.post('/:id/bill', async (req, res) => {

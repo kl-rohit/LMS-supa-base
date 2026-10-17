@@ -138,6 +138,18 @@ export default function Programs() {
     try { const r = await api.post(`/programs/${p.id || p.ROWID}/bill`, {}); toast.success(r.message || 'Billed'); await refreshDetail(); }
     catch (e) { toast.error('Failed: ' + e.message); } finally { setBusy(false); }
   };
+  const collectAll = async () => {
+    const p = detail.program;
+    const billed = (detail.roster || []).filter((r) => Number(r.billed) === 1);
+    if (!billed.length) { toast('Bill participants first, then mark collected.'); return; }
+    const pending = billed.filter((r) => r.collected !== true).length;
+    if (!pending) { toast('Everyone is already collected.'); return; }
+    const ok = await confirm({ title: 'Mark all collected?', message: `Mark the ${rupee(p.fee)} program fee collected for ${pending} participant(s).`, confirmText: 'Mark collected' });
+    if (!ok) return;
+    setBusy(true);
+    try { const r = await api.post(`/programs/${p.id || p.ROWID}/collect`, {}); toast.success(r.message || 'Collected'); await refreshDetail(); }
+    catch (e) { toast.error('Failed: ' + e.message); } finally { setBusy(false); }
+  };
 
   if (loading) return <Loader />;
 
@@ -245,9 +257,14 @@ export default function Programs() {
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold text-gray-800">Participants ({detail.roster?.length || 0})</h4>
                 {Number(detail.program.fee) > 0 && (
-                  <button onClick={billAll} disabled={busy} className="btn-sm inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                    <ReceiptIndianRupee className="w-3.5 h-3.5" /> Bill participants
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={billAll} disabled={busy} className="btn-sm inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                      <ReceiptIndianRupee className="w-3.5 h-3.5" /> Bill participants
+                    </button>
+                    <button onClick={collectAll} disabled={busy} className="btn-sm inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                      <Check className="w-3.5 h-3.5" /> Mark all collected
+                    </button>
+                  </div>
                 )}
               </div>
               {(detail.roster || []).length === 0 ? (

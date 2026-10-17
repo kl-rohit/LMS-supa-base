@@ -214,15 +214,38 @@ export function bootTheme() {
   watchSystemPreference();
 }
 
-// The parent portal always follows the OS light/dark preference, regardless of
-// any admin device preference stored on this browser. Accent is left untouched
-// (whatever is already applied). Returns a restore fn so the caller can put the
-// device preference back when leaving the portal (shared-device safety).
+// Parent-portal light/dark preference, stored per device SEPARATELY from the
+// admin theme (so a parent's choice never changes an admin's device theme on a
+// shared browser, and vice-versa). Defaults to 'system' (match the device).
+const PORTAL_MODE_KEY = 'veena.portal.mode';
+
+export function loadPortalMode() {
+  try {
+    const raw = localStorage.getItem(PORTAL_MODE_KEY);
+    if (raw && MODES.includes(raw)) return raw;
+  } catch (_e) { /* ignore */ }
+  return 'system';
+}
+
+// The parent portal follows the parent's own saved choice (Light / Dark /
+// Match-device), falling back to the OS preference. Accent is left untouched.
+// Returns a restore fn so the caller can put the admin device preference back
+// when leaving the portal (shared-device safety).
 export function applyPortalMode() {
   const restore = { ...current };
-  current = { ...current, mode: 'system' };
-  applyMode('system');
-  applyMetaThemeColor(current.accent, 'system');
+  const mode = loadPortalMode();
+  current = { ...current, mode };
+  applyMode(mode);
+  applyMetaThemeColor(current.accent, mode);
   watchSystemPreference();
   return () => applyTheme(restore);
+}
+
+// Change the parent-portal theme mode for THIS device and apply it immediately.
+export function setPortalMode(mode) {
+  const m = MODES.includes(mode) ? mode : 'system';
+  try { localStorage.setItem(PORTAL_MODE_KEY, m); } catch (_e) { /* ignore */ }
+  current = { ...current, mode: m };
+  applyMode(m);
+  applyMetaThemeColor(current.accent, m);
 }

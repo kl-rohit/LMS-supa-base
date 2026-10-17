@@ -56,7 +56,7 @@ export default function Programs() {
   const openCreate = () => { setEditing(null); setForm(BLANK()); setErrors({}); setFormOpen(true); };
   const openEdit = (p) => {
     setEditing(p);
-    setForm({ name: p.name || '', type: p.type || 'recital', program_date: p.program_date || today(), fee: p.fee ? String(p.fee) : '', description: p.description || '' });
+    setForm({ name: p.name || '', type: p.type || 'recital', program_date: p.program_date || today(), fee: p.fee ? String(p.fee) : '', description: p.description || '', status: p.status || 'planned' });
     setErrors({}); setFormOpen(true);
   };
 
@@ -200,6 +200,17 @@ export default function Programs() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Optional details for your reference" className="input-field" />
           </div>
+          {editing && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select value={form.status || 'planned'} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input-field">
+                <option value="planned">Planned</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Mark it Completed once the event is done. Fees already billed stay on the students' bills.</p>
+            </div>
+          )}
         </div>
       </Modal>
 

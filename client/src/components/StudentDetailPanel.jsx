@@ -25,6 +25,7 @@ import {
   Users as UsersIcon,
   IndianRupee,
   CalendarClock,
+  CalendarDays,
   Edit2,
   Trash2,
   RotateCcw,
@@ -337,10 +338,11 @@ function StudentActivity({ studentId }) {
   const classes = Array.isArray(data.upcoming_classes) ? data.upcoming_classes : [];
   const att = data.attendance || {};
   const quizzes = Array.isArray(data.quizzes) ? data.quizzes : [];
+  const programs = Array.isArray(data.programs) ? data.programs : [];
   const hasAtt = Number(att.total) > 0;
 
   // Nothing to show at all → render nothing (no empty header).
-  if (!groups.length && !classes.length && !hasAtt && !quizzes.length) return null;
+  if (!groups.length && !classes.length && !hasAtt && !quizzes.length && !programs.length) return null;
 
   const shownClasses = classes.slice(0, 5);
   const moreClasses = classes.length - shownClasses.length;
@@ -448,6 +450,35 @@ function StudentActivity({ studentId }) {
             {moreQuizzes > 0 && (
               <div className="text-xs text-gray-400 pl-6">+{moreQuizzes} more</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {programs.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Programs &amp; events</h3>
+          <div className="space-y-2">
+            {programs.map((p) => (
+              <div key={p.id} className="flex items-start gap-2.5 text-sm">
+                <CalendarDays className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-gray-800 font-medium truncate">{p.name}</span>
+                    {p.status && p.status !== 'planned' && (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] ${p.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {p.status === 'completed' ? 'Completed' : 'Cancelled'}
+                      </span>
+                    )}
+                    {p.billed && p.fee > 0 && (
+                      <span className="rounded-full bg-indigo-100 text-indigo-700 px-2 py-0.5 text-[11px]">₹{p.fee.toLocaleString('en-IN')} billed</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5 capitalize">
+                    {p.type}{p.program_date ? ` · ${prettyDate(p.program_date)}` : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

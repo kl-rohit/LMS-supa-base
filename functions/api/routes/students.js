@@ -311,7 +311,29 @@ router.get('/:id/activity', async (req, res) => {
       }));
     } catch { quizzes = []; }
 
-    res.json({ groups, upcoming_classes, attendance, quizzes });
+    // Programs / events this student is part of (newest first). Guarded so an
+    // academy that hasn't run the Programs migration still gets the rest.
+    let programs = [];
+    try {
+      const links = await zcqlAll(req, `SELECT program_id, billed FROM ProgramStudents WHERE ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${orgId}`, 'ProgramStudents');
+      const linkRows = unwrap(links, 'ProgramStudents');
+      const billedBy = new Map(linkRows.map((r) => [String(r.program_id), Number(r.billed) === 1]));
+      const pids = [...new Set(linkRows.map((r) => Number(r.program_id)).filter(Boolean))];
+      if (pids.length) {
+        const pRows = await zcqlAll(req, `SELECT * FROM Programs WHERE Programs.org_id = ${orgId} AND Programs.ROWID IN (${pids.join(',')})`, 'Programs');
+        programs = unwrap(pRows, 'Programs').map(normalize).map((p) => ({
+          id: p.id,
+          name: p.name || '',
+          type: p.type || 'other',
+          program_date: p.program_date || '',
+          status: p.status || 'planned',
+          fee: Number(p.fee) || 0,
+          billed: billedBy.get(String(p.id)) === true,
+        })).sort((a, b) => String(b.program_date || '').localeCompare(String(a.program_date || '')));
+      }
+    } catch { programs = []; }
+
+    res.json({ groups, upcoming_classes, attendance, quizzes, programs });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch student activity', detail: e.message });
   }

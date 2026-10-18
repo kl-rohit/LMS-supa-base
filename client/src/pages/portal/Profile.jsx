@@ -27,6 +27,7 @@ import toast from 'react-hot-toast';
 import api from '../../utils/api';
 import Loader from '../../components/Loader';
 import ChangePassword from '../../components/ChangePassword';
+import { useModuleFlags } from '../../hooks/useModuleFlags';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirm } from '../../contexts/ConfirmContext';
 import FieldError from '../../components/FieldError';
@@ -48,6 +49,11 @@ const EMPTY = {
 export default function PortalProfile() {
   const { signOutOthers } = useAuth();
   const confirm = useConfirm();
+  // Whether the academy allows parents to edit the profile (academy-wide setting
+  // or a per-child override). When off, the form is locked (the server also
+  // rejects the PUT). Account security below stays available regardless.
+  const { flags } = useModuleFlags('/portal/flags');
+  const canEdit = flags['portal.allow_profile_edit'] !== false;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -182,6 +188,12 @@ export default function PortalProfile() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
+        {!canEdit && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+            Profile editing is turned off by your academy. You can view these details but not change them — please contact your academy to update anything.
+          </div>
+        )}
+        <fieldset disabled={!canEdit} className="space-y-6 m-0 p-0 border-0 min-w-0">
         {/* Photo card */}
         <div className="card flex items-start gap-5">
           <div className="flex-shrink-0">
@@ -321,25 +333,29 @@ export default function PortalProfile() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-50 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 border-t border-gray-200">
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={saving || uploading}
-          >
-            {saving || uploading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {uploading ? 'Uploading photo...' : 'Saving...'}
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Save changes
-              </>
-            )}
-          </button>
-        </div>
+        </fieldset>
+
+        {canEdit && (
+          <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-50 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 border-t border-gray-200">
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={saving || uploading}
+            >
+              {saving || uploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {uploading ? 'Uploading photo...' : 'Saving...'}
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save changes
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </form>
 
       {/* Sign-in security — self-service password change */}

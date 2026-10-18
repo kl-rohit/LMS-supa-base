@@ -11,6 +11,15 @@ const MAX_FEE = 1000000;
 const feeInRange = (n) => Number.isFinite(n) && n >= 0 && n <= MAX_FEE;
 const VALID_TYPES = ['recital', 'workshop', 'competition', 'kutchery', 'other'];
 
+// SQL clause matching a program's AdditionalFees charges: by program_id (the
+// reliable link stamped at billing) OR, ONLY for legacy charges that predate
+// that column (program_id IS NULL), by the "Program: <name>" description.
+// Scoping the description branch to NULL program_id stops two programs sharing a
+// name from cross-contaminating each other's charges / collected status.
+function programChargeClause(id, name) {
+  return `(AdditionalFees.program_id = ${Number(id)} OR (AdditionalFees.program_id IS NULL AND AdditionalFees.description = ${q('Program: ' + (name || ''))}))`;
+}
+
 // ---- list ----
 router.get('/', async (req, res) => {
   try {
@@ -67,7 +76,7 @@ router.get('/:id', async (req, res) => {
     try {
       const afRows = await zcqlAll(
         req,
-        `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND (AdditionalFees.program_id = ${id} OR AdditionalFees.description = ${q('Program: ' + (program.name || ''))})`,
+        `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND ${programChargeClause(id, program.name)}`,
         'AdditionalFees'
       );
       for (const af of unwrap(afRows, 'AdditionalFees')) {
@@ -151,6 +160,16 @@ router.delete('/:id/students/:studentId', async (req, res) => {
     if (!program || Number(program.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Program not found' });
     const links = await zcql(req, `SELECT ROWID FROM ProgramStudents WHERE ProgramStudents.program_id = ${id} AND ProgramStudents.student_id = ${sid} AND ProgramStudents.org_id = ${Number(req.orgId)}`);
     for (const l of unwrap(links, 'ProgramStudents')) { try { await remove(req, 'ProgramStudents', l.ROWID); } catch {} }
+    // Also drop this student's UNCOLLECTED program charge, so an un-enrolled
+    // participant doesn't keep an orphan pending fee and a later re-add + bill
+    // produces a single fresh charge rather than a duplicate. A collected charge
+    // is kept (money already received).
+    try {
+      const charges = await zcql(req, `SELECT ROWID, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND ${programChargeClause(id, program.name)}`);
+      for (const c of unwrap(charges, 'AdditionalFees')) {
+        if (Number(c.collected) !== 1) { try { await remove(req, 'AdditionalFees', c.ROWID); } catch {} }
+      }
+    } catch { /* leave charges untouched if the lookup fails */ }
     res.json({ message: 'Removed' });
   } catch (e) { res.status(500).json({ error: 'Failed to remove participant', detail: e.message }); }
 });
@@ -183,7 +202,7 @@ router.put('/:id/students/:studentId/collected', async (req, res) => {
     const collected = (req.body.collected === true || req.body.collected === 1 || req.body.collected === 'true') ? 1 : 0;
     const afRows = await zcql(
       req,
-      `SELECT ROWID FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND (AdditionalFees.program_id = ${id} OR AdditionalFees.description = ${q('Program: ' + (program.name || ''))})`
+      `SELECT ROWID FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.student_id = ${sid} AND ${programChargeClause(id, program.name)}`
     );
     const rows = unwrap(afRows, 'AdditionalFees');
     if (!rows.length) return res.status(400).json({ error: 'Bill this participant first, then mark the fee collected.' });
@@ -205,7 +224,7 @@ router.post('/:id/collect', async (req, res) => {
     const only = Array.isArray(req.body.student_ids) ? new Set(req.body.student_ids.map(String)) : null;
     const afRows = await zcqlAll(
       req,
-      `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND (AdditionalFees.program_id = ${id} OR AdditionalFees.description = ${q('Program: ' + (program.name || ''))})`,
+      `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND ${programChargeClause(id, program.name)}`,
       'AdditionalFees'
     );
     const stamp = collected ? new Date().toISOString() : null;
@@ -234,11 +253,23 @@ router.post('/:id/bill', async (req, res) => {
     const year = parseInt(date.slice(0, 4), 10) || new Date().getFullYear();
     const only = Array.isArray(req.body.student_ids) ? new Set(req.body.student_ids.map(String)) : null;
 
+    // Students that ALREADY have a charge for this program — so a remove + re-add
+    // (which creates a fresh ProgramStudents row with billed:0) can never produce
+    // a second real-money charge. Dedup on the charge, not just the roster flag.
+    const existingCharges = await zcqlAll(req, `SELECT student_id FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND ${programChargeClause(id, program.name)}`, 'AdditionalFees');
+    const alreadyCharged = new Set(unwrap(existingCharges, 'AdditionalFees').map((r) => String(r.student_id)));
+
     const rows = await zcqlAll(req, `SELECT ROWID, student_id, billed FROM ProgramStudents WHERE ProgramStudents.program_id = ${id} AND ProgramStudents.org_id = ${Number(req.orgId)}`, 'ProgramStudents');
     let billed = 0;
     for (const r of unwrap(rows, 'ProgramStudents')) {
       if (Number(r.billed) === 1) continue;                       // idempotent
       if (only && !only.has(String(r.student_id))) continue;
+      if (alreadyCharged.has(String(r.student_id))) {
+        // a charge already exists for this student+program → reconcile the flag,
+        // do not create a duplicate.
+        if (Number(r.billed) !== 1) { try { await update(req, 'ProgramStudents', r.ROWID, { billed: 1 }); } catch {} }
+        continue;
+      }
       try {
         await insert(req, 'AdditionalFees', {
           student_id: Number(r.student_id),

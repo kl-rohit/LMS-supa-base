@@ -40,6 +40,14 @@ function portalVisible(req, appSettings, key) {
   return (appSettings || {})[`portal.${key}`] !== 'false';
 }
 
+// Whether an opt-in module (programs / assignments / question_papers) is enabled
+// for this academy. Portal endpoints for these modules must honour this too, not
+// just the portal.show_* visibility flag — otherwise a parent could fetch data
+// for a module the academy turned off by hitting the route URL directly.
+function moduleEnabled(appSettings, key) {
+  return (appSettings || {})[`modules.${key}`] !== 'false';
+}
+
 // Attendance counts by hours, not by sessions: a 2-hour class marked present
 // counts as 2 toward classes_attended. `duration_hours` is frozen on each
 // Attendance row at record time; legacy rows without it fall back to 1 hour.
@@ -308,6 +316,20 @@ router.get('/fees', async (req, res) => {
       classFees = attendance.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
     }
 
+    // Has the academy recorded this month's class-fee payment? The admin Fees
+    // page marks a student's month paid with a single Payments row. When present,
+    // treat the class fees as settled so the Pay-now balance never asks the
+    // parent to pay them again (additional/program charges use their own
+    // collected flag). Only determinable for a specific month.
+    let classPaid = false;
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      try {
+        const [py, pm] = month.split('-');
+        const payRows = await zcql(req, `SELECT ROWID FROM Payments WHERE Payments.student_id = ${sid} AND Payments.fee_month = ${parseInt(pm, 10)} AND Payments.fee_year = ${parseInt(py, 10)} AND Payments.org_id = ${Number(req.orgId)}`);
+        classPaid = unwrap(payRows, 'Payments').length > 0;
+      } catch { /* no payments info → treat class fees as unpaid */ }
+    }
+
     // Additional fees + discounts
     let addFilter = '';
     if (month && /^\d{4}-\d{2}$/.test(month)) {
@@ -333,12 +355,12 @@ router.get('/fees', async (req, res) => {
       }))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const pendingTotal = additionalItems.reduce((s, it) => s + (it.collected ? 0 : it.amount), 0);
-    // Outstanding balance the family still owes: the full total minus any
-    // additional/program charges already marked collected. This is what the Pay
-    // QR + app buttons pre-fill, so a parent is never asked to re-pay a collected
-    // fee. (Class fees follow the existing month model — the portal has never
-    // reflected a monthly cash payment, so that is unchanged.)
-    const pendingBalance = Math.max(0, classFees + pendingTotal + discountTotal);
+    // Outstanding balance the family still owes = class fees (unless the month's
+    // payment is recorded) + uncollected additional/program charges + discount.
+    // This is what the Pay QR + app buttons pre-fill, so a parent is never asked
+    // to re-pay class fees already settled or an additional charge already
+    // marked collected.
+    const pendingBalance = Math.max(0, (classPaid ? 0 : classFees) + pendingTotal + discountTotal);
 
     // Payment QR for the parent: a UPI id (the portal builds a UPI deep-link QR
     // client-side) and/or an uploaded payment-QR image (streamed inline as a
@@ -364,6 +386,7 @@ router.get('/fees', async (req, res) => {
       additional_items: additionalItems,
       additional_pending: pendingTotal,
       pending: pendingBalance,
+      class_fees_paid: classPaid,
       discount: Math.abs(discountTotal),
       total,
       classes_attended: sumHrs(attendance.filter((a) => a.status === 'present' || a.status === 'late')),
@@ -1006,7 +1029,7 @@ router.get('/assignments', async (req, res) => {
     // a per-child override). Hidden → return an empty list.
     try {
       const vis = await loadAppSettings(req);
-      if (!portalVisible(req, vis, 'show_assignments')) {
+      if (!moduleEnabled(vis, 'assignments') || !portalVisible(req, vis, 'show_assignments')) {
         return res.json({ assignments: [], hidden: true });
       }
     } catch { /* settings unavailable → show by default */ }
@@ -1261,7 +1284,7 @@ router.get('/question-papers', async (req, res) => {
     // or a per-child override). Hidden → return an empty list.
     try {
       const vis = await loadAppSettings(req);
-      if (!portalVisible(req, vis, 'show_papers')) {
+      if (!moduleEnabled(vis, 'question_papers') || !portalVisible(req, vis, 'show_papers')) {
         return res.json({ papers: [], hidden: true });
       }
     } catch { /* settings unavailable → show by default */ }
@@ -1297,7 +1320,7 @@ router.get('/programs', async (req, res) => {
     // per-child override). Hidden → return an empty list.
     try {
       const vis = await loadAppSettings(req);
-      if (!portalVisible(req, vis, 'show_programs')) {
+      if (!moduleEnabled(vis, 'programs') || !portalVisible(req, vis, 'show_programs')) {
         return res.json({ programs: [], hidden: true });
       }
     } catch { /* settings unavailable → show by default */ }
@@ -1324,7 +1347,9 @@ router.get('/programs', async (req, res) => {
     // existed), so both reflect the collected badge.
     const nameToId = new Map(progs.map((p) => [`Program: ${p.name || ''}`, String(p.id)]));
     const nameKeys = progs.map((p) => q(`Program: ${p.name || ''}`));
-    const descClause = nameKeys.length ? ` OR AdditionalFees.description IN (${nameKeys.join(',')})` : '';
+    // Description fallback is scoped to legacy charges (program_id IS NULL) so two
+    // programs sharing a name don't cross-contaminate each other's collected flag.
+    const descClause = nameKeys.length ? ` OR (AdditionalFees.program_id IS NULL AND AdditionalFees.description IN (${nameKeys.join(',')}))` : '';
     const collectedByProgram = new Map();
     try {
       const afRows = await zcqlAll(
@@ -1689,6 +1714,16 @@ router.put('/profile', requireFeature('portal.profile'), async (req, res) => {
   try {
     const existing = await getById(req, 'Students', req.studentId);
     if (!existing) return res.status(404).json({ error: 'Linked student not found' });
+
+    // Honour the academy's "Profile editing" setting (and any per-child override).
+    // When it's off, the portal form is locked client-side; this rejects a direct
+    // PUT so the setting can't be bypassed.
+    try {
+      const vis = await loadAppSettings(req);
+      if (!portalVisible(req, vis, 'allow_profile_edit')) {
+        return res.status(403).json({ error: 'Profile editing is turned off by your academy.' });
+      }
+    } catch { /* settings unavailable → allow (default-on behaviour) */ }
 
     const patch = {};
     for (const f of PORTAL_EDITABLE_FIELDS) {

@@ -333,6 +333,12 @@ router.get('/fees', async (req, res) => {
       }))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const pendingTotal = additionalItems.reduce((s, it) => s + (it.collected ? 0 : it.amount), 0);
+    // Outstanding balance the family still owes: the full total minus any
+    // additional/program charges already marked collected. This is what the Pay
+    // QR + app buttons pre-fill, so a parent is never asked to re-pay a collected
+    // fee. (Class fees follow the existing month model — the portal has never
+    // reflected a monthly cash payment, so that is unchanged.)
+    const pendingBalance = Math.max(0, classFees + pendingTotal + discountTotal);
 
     // Payment QR for the parent: a UPI id (the portal builds a UPI deep-link QR
     // client-side) and/or an uploaded payment-QR image (streamed inline as a
@@ -357,6 +363,7 @@ router.get('/fees', async (req, res) => {
       additional_fees: positiveAdditional,
       additional_items: additionalItems,
       additional_pending: pendingTotal,
+      pending: pendingBalance,
       discount: Math.abs(discountTotal),
       total,
       classes_attended: sumHrs(attendance.filter((a) => a.status === 'present' || a.status === 'late')),

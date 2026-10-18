@@ -105,7 +105,7 @@ export default function PortalFees() {
       </div>
 
       {!loading && data?.payment?.enabled && (
-        <PaymentCard payment={data.payment} amount={Number(data.total) || 0} />
+        <PaymentCard payment={data.payment} amount={Number(data.pending ?? data.total) || 0} />
       )}
 
       {!loading && !data?.payment?.enabled && (

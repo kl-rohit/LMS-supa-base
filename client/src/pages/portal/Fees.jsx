@@ -171,10 +171,11 @@ const IS_IOS =
 // nothing, and none of them hand off to WhatsApp. This is the chooser shown to
 // iPhone users (and offered as an alternative on Android).
 const UPI_APPS = [
-  { key: 'gpay',    label: 'Google Pay', scheme: 'tez://upi/pay'  },
-  { key: 'phonepe', label: 'PhonePe',    scheme: 'phonepe://pay'  },
-  { key: 'paytm',   label: 'Paytm',      scheme: 'paytmmp://pay'  },
-  { key: 'bhim',    label: 'BHIM',       scheme: 'bhim://upi/pay' },
+  { key: 'gpay',    label: 'Google Pay', scheme: 'tez://upi/pay'      },
+  { key: 'phonepe', label: 'PhonePe',    scheme: 'phonepe://pay'      },
+  { key: 'paytm',   label: 'Paytm',      scheme: 'paytmmp://pay'      },
+  { key: 'cred',    label: 'CRED',       scheme: 'credpay://upi/pay'  },
+  { key: 'bhim',    label: 'BHIM',       scheme: 'bhim://upi/pay'     },
 ];
 function buildAppLinks(payment, amount) {
   const q = buildUpiQuery(payment, amount);

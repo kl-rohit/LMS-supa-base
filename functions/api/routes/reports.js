@@ -405,10 +405,14 @@ router.get('/defaulters', requireComplete, cacheJson(60000), async (req, res) =>
     const sRows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`).catch(() => []);
     const students = unwrap(sRows, 'Students');
 
-    const [aRows, afRows] = await Promise.all([
+    const [aRows, afRows, pRows] = await Promise.all([
       zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
       zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
+      zcqlAll(req, `SELECT student_id FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year} AND Payments.org_id = ${Number(req.orgId)}`, 'Payments').catch(() => []),
     ]);
+    // Students already marked paid for this month (binary per-month model) are
+    // settled — they must not appear as defaulters.
+    const paidSet = new Set(unwrap(pRows, 'Payments').map((p) => String(p.student_id)));
     const classFeesByStudent = {};
     for (const a of unwrap(aRows, 'Attendance')) {
       const k = String(a.student_id);
@@ -425,6 +429,7 @@ router.get('/defaulters', requireComplete, cacheJson(60000), async (req, res) =>
     for (const s of students) {
       if (String(s.status || '').toLowerCase() === 'inactive') continue;
       const sid = String(s.ROWID);
+      if (paidSet.has(sid)) continue;              // already paid this month
       const monthly = Number(s.monthly_fee) || 0;
       const base = monthly > 0 ? monthly : (classFeesByStudent[sid] || 0);
       const due = base + (additionalByStudent[sid] || 0);

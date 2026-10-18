@@ -2,6 +2,7 @@
 
 const router = require('express').Router();
 const { zcql, zcqlAll, unwrap, normalize } = require('../db/catalystDb');
+const { istParts } = require('../lib/time');
 
 // Attendance counts by hours, not by sessions: a 2-hour class marked present
 // counts as 2 toward the present/absent totals behind the attendance rate.
@@ -26,11 +27,12 @@ router.get('/', async (req, res) => {
     if (cached && cached.exp > Date.now()) return res.json(cached.value);
     if (cached) dashboardCache.delete(cacheKey);
 
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    const dow = today.getDay();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
+    // "Today"/this-month in IST (see lib/time) — the function host runs in UTC.
+    const ist = istParts();
+    const todayStr = ist.iso;
+    const dow = ist.dow;
+    const year = ist.year;
+    const month = ist.month;
     const monthStr = String(month).padStart(2, '0');
     const dateFrom = `${year}-${monthStr}-01`;
     const dateTo = `${year}-${monthStr}-31`;
@@ -106,8 +108,11 @@ router.get('/', async (req, res) => {
     const presentCount = sumHrs(thisMonth.filter((a) => a.status === 'present'));
     const absentCount = sumHrs(thisMonth.filter((a) => a.status === 'absent'));
     const lateCount = sumHrs(thisMonth.filter((a) => a.status === 'late'));
-    const attended = presentCount + absentCount;
-    const attendanceRate = attended ? Math.round((presentCount / attended) * 100) : 0;
+    // Rate = present / all marks (present + late + absent), matching every other
+    // report. Late was previously omitted from the denominator, so the dashboard
+    // disagreed with the reports for the same month.
+    const totalMarked = presentCount + lateCount + absentCount;
+    const attendanceRate = totalMarked ? Math.round((presentCount / totalMarked) * 100) : 0;
     const feesCollected = thisMonth.reduce((s, a) => s + (Number(a.fee_charged) || 0), 0);
 
     // Absent-streak alerts computed from the attendance already in memory:

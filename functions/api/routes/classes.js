@@ -6,6 +6,7 @@ const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeI
 const { createNotifications } = require('../lib/notify');
 const { substituteTemplate } = require('../lib/feeReminder');
 const { loadTemplates, loadAppSettings } = require('./settings');
+const { istParts } = require('../lib/time');
 const { requireFeature } = require('../middleware/entitlement');
 
 // Fallback body if the org hasn't customised the online_meeting template
@@ -141,7 +142,7 @@ async function decorateList(req, list) {
 // GET /api/classes/today
 router.get('/today', async (req, res) => {
   try {
-    const today = new Date().getDay();
+    const today = istParts().dow;   // day-of-week in IST, not the UTC host clock
     const rows = await zcql(req, `SELECT * FROM Classes WHERE Classes.day_of_week = ${today} AND Classes.is_active = 1 AND Classes.org_id = ${Number(req.orgId)} ORDER BY Classes.start_time ASC`);
     const decorated = await decorateList(req, unwrap(rows, 'Classes'));
     res.json({ classes: decorated, day_of_week: today });

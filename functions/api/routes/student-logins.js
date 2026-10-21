@@ -14,7 +14,7 @@
 
 const router = require('express').Router();
 const { getById, update, zcql, unwrap } = require('../db/catalystDb');
-const { createLogin, setUserEnabled, resetUserPassword } = require('../lib/supabaseAuth');
+const { createLogin, setUserEnabled, resetUserPassword, listAllUsers } = require('../lib/supabaseAuth');
 const { parentKey, setFlag } = require('../lib/onboarding');
 
 // Shape we return to the React app for each login row.
@@ -35,9 +35,26 @@ function toLogin(student) {
 router.get('/', async (req, res) => {
   try {
     const rows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
+    // Pull every auth user ONCE (paged) and map by id, so we can show each
+    // parent's last sign-in + whether they've actually set up their account —
+    // without an N+1 getUserById per row.
+    const authByUser = new Map();
+    try {
+      for (const u of await listAllUsers()) authByUser.set(String(u.id), u);
+    } catch { /* auth list unavailable → omit last-login info, rest still works */ }
     const logins = unwrap(rows, 'Students')
       .filter((s) => s.login_user_id)
-      .map(toLogin);
+      .map((s) => {
+        const base = toLogin(s);
+        const au = authByUser.get(String(s.login_user_id));
+        base.last_login = au?.last_sign_in_at || null;
+        // never_signed_in: account exists but the parent has not logged in yet.
+        base.never_signed_in = !au?.last_sign_in_at;
+        // password_pending: still on the admin-issued temp password (not yet set
+        // their own) — i.e. the invite hasn't been completed.
+        base.password_pending = !!(au?.user_metadata?.must_set_password);
+        return base;
+      });
     logins.sort((a, b) => String(a.student_name || '').localeCompare(String(b.student_name || '')));
     res.json({ logins });
   } catch (e) {

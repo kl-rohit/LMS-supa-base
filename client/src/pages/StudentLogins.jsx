@@ -337,6 +337,7 @@ export default function StudentLogins() {
                 <th className="table-header">Student</th>
                 <th className="table-header">Parent</th>
                 <th className="table-header">Login email</th>
+                <th className="table-header">Last login</th>
                 <th className="table-header text-center">Status</th>
                 <th className="table-header text-right">Actions</th>
               </tr>
@@ -355,6 +356,7 @@ export default function StudentLogins() {
                         ? (emailReveal.revealed ? login.email : maskEmail(login.email))
                         : <span className="text-gray-400">No login yet</span>}
                     </td>
+                    <td className="table-cell text-xs"><LastLogin login={login} /></td>
                     <td className="table-cell text-center">
                       {!login ? (
                         <span className="text-xs text-gray-400">—</span>
@@ -444,7 +446,7 @@ export default function StudentLogins() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center">
+                  <td colSpan={6} className="py-8 text-center">
                     {students.length === 0 ? (
                       <div>
                         <p className="text-sm text-gray-500 mb-3">You have not added any students yet. Add a student first, then create their portal login here.</p>
@@ -492,6 +494,9 @@ export default function StudentLogins() {
                     ? (emailReveal.revealed ? login.email : maskEmail(login.email))
                     : <span className="text-gray-400">No login yet</span>}
                 </div>
+                {login && (
+                  <div className="mt-1 text-xs text-gray-500">Last login: <LastLogin login={login} /></div>
+                )}
                 <div className="mt-3 flex items-center gap-2">
                   {!login ? (
                     <button
@@ -734,4 +739,27 @@ export default function StudentLogins() {
       </Modal>
     </div>
   );
+}
+
+// A parent's last sign-in, shown with friendly states: "Invite pending" (still
+// on the admin temp password), "Never" (account made but not signed in yet), or
+// a relative time like "3h ago" / "5d ago" (exact time on hover).
+function LastLogin({ login }) {
+  if (!login) return <span className="text-gray-400">—</span>;
+  if (login.password_pending) return <span className="text-amber-700">Invite pending</span>;
+  if (login.never_signed_in || !login.last_login) return <span className="text-gray-400">Never</span>;
+  const d = new Date(login.last_login);
+  if (Number.isNaN(d.getTime())) return <span className="text-gray-400">—</span>;
+  return <span className="text-gray-700" title={d.toLocaleString('en-IN')}>{relTime(d)}</span>;
+}
+
+function relTime(d) {
+  const min = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }

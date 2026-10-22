@@ -107,26 +107,39 @@ export default function Attendance() {
   const [moveClass, setMoveClass] = useState(null);
   const [moveForm, setMoveForm] = useState({ new_date: '', new_start_time: '', new_end_time: '' });
   const [moveSaving, setMoveSaving] = useState(false);
+  // Cancel-a-single-occurrence modal (captures an optional reason stored on the
+  // class exception's note).
+  const [cancelClass, setCancelClass] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelSaving, setCancelSaving] = useState(false);
 
   // Only a real recurring class (a numeric Classes id) can be cancelled/moved —
   // not camp days or one-off ad-hoc sessions.
   const isReschedulable = (cls) => !!cls && !cls._isCamp && /^\d+$/.test(String(cls.id));
 
-  const cancelOccurrence = async (cls) => {
+  const cancelOccurrence = (cls) => {
     if (!isReschedulable(cls)) return;
-    const ok = await confirm({
-      title: 'Cancel this class?',
-      message: `${cls.name} on ${selectedDate} will be marked cancelled for this date only. The weekly schedule stays the same.`,
-      confirmText: 'Cancel class',
-    });
-    if (!ok) return;
+    setCancelReason('');
+    setCancelClass(cls);
+  };
+
+  const doCancelOccurrence = async () => {
+    if (!cancelClass) return;
+    setCancelSaving(true);
     try {
-      await api.post(`/classes/${cls.id}/exceptions`, { exception_date: selectedDate, status: 'cancelled' });
+      await api.post(`/classes/${cancelClass.id}/exceptions`, {
+        exception_date: selectedDate,
+        status: 'cancelled',
+        note: cancelReason.trim(),
+      });
       toast.success('Class cancelled for this date');
+      setCancelClass(null);
       setSelectedClass(null);
       fetchClassesForDate();
     } catch (e) {
       toast.error(e?.response?.data?.error || e.message || 'Failed to cancel');
+    } finally {
+      setCancelSaving(false);
     }
   };
 
@@ -1748,6 +1761,35 @@ export default function Attendance() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Cancel a single class occurrence, capturing an optional reason. */}
+      <Modal
+        isOpen={!!cancelClass}
+        onClose={() => setCancelClass(null)}
+        title={cancelClass ? `Cancel ${cancelClass.name}?` : 'Cancel class'}
+        size="sm"
+        onSave={doCancelOccurrence}
+        saving={cancelSaving}
+        saveLabel="Cancel class"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            {cancelClass?.name} on {selectedDate} will be marked cancelled for this date only. The weekly schedule stays the same.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={2}
+              maxLength={300}
+              placeholder="e.g. Teacher unwell, public holiday, venue unavailable"
+              className="input-field"
+            />
+            <p className="text-xs text-gray-500 mt-1">Saved with the cancellation for your reference. You can share it with parents when notifying them.</p>
+          </div>
+        </div>
       </Modal>
 
       {/* Move a single class occurrence to another date/time (this date only). */}

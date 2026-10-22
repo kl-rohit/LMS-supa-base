@@ -82,6 +82,10 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
   const [mobileDay, setMobileDay] = useState(() => new Date().getDay());
   const [selected, setSelected] = useState(null);     // occurrence in the action sheet
   const [resched, setResched] = useState(null);        // { occ, new_date, new_start_time, new_end_time }
+  // Cancel flow: click "Cancel this date" reveals an optional reason, then confirm.
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  useEffect(() => { setCancelling(false); setCancelReason(''); }, [selected]);
   const touchX = useRef(null);
 
   const weekDates = useMemo(
@@ -207,7 +211,7 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
   const cancelOccurrence = async (o) => {
     try {
       await api.post(`/classes/${o.cls.id}/exceptions`, {
-        exception_date: o.date, status: 'cancelled',
+        exception_date: o.date, status: 'cancelled', note: cancelReason.trim(),
       });
       toast.success('Class cancelled for this date');
       setSelected(null);
@@ -489,8 +493,25 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
                   <button onClick={() => restoreOccurrence(selected)} className="btn-secondary w-full justify-center">
                     <RotateCcw className="w-4 h-4" /> Undo move
                   </button>
+                ) : cancelling ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50/50 p-2 space-y-2">
+                    <textarea
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      rows={2}
+                      maxLength={300}
+                      placeholder="Reason (optional) — e.g. teacher unwell, holiday"
+                      className="input-field text-sm"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setCancelling(false)} className="btn-secondary w-full justify-center">Back</button>
+                      <button onClick={() => cancelOccurrence(selected)} className="btn-secondary w-full justify-center text-red-600 hover:bg-red-100">
+                        <Ban className="w-4 h-4" /> Confirm cancel
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <button onClick={() => cancelOccurrence(selected)} className="btn-secondary w-full justify-center text-red-600 hover:bg-red-50">
+                  <button onClick={() => setCancelling(true)} className="btn-secondary w-full justify-center text-red-600 hover:bg-red-50">
                     <Ban className="w-4 h-4" /> Cancel this date
                   </button>
                 )}

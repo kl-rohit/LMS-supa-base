@@ -85,7 +85,8 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
   // Cancel flow: click "Cancel this date" reveals an optional reason, then confirm.
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
-  useEffect(() => { setCancelling(false); setCancelReason(''); }, [selected]);
+  const [cancelNotify, setCancelNotify] = useState(true);
+  useEffect(() => { setCancelling(false); setCancelReason(''); setCancelNotify(true); }, [selected]);
   const touchX = useRef(null);
 
   const weekDates = useMemo(
@@ -213,7 +214,14 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
       await api.post(`/classes/${o.cls.id}/exceptions`, {
         exception_date: o.date, status: 'cancelled', note: cancelReason.trim(),
       });
-      toast.success('Class cancelled for this date');
+      let extra = '';
+      if (cancelNotify) {
+        try {
+          const r = await api.post(`/classes/${o.cls.id}/notify-cancel`, { date: o.date, reason: cancelReason.trim() });
+          extra = r?.drafts ? ` Parents notified (${r.drafts} WhatsApp draft(s) in Messages).` : ' Parents notified.';
+        } catch { extra = ' (Notify parents from Messages.)'; }
+      }
+      toast.success('Class cancelled for this date.' + extra);
       setSelected(null);
       onRefresh?.();
     } catch (err) { toast.error(err.message || 'Failed to cancel'); }
@@ -500,9 +508,13 @@ export default function Timetable({ classes = [], students = [], groups = [], wo
                       onChange={(e) => setCancelReason(e.target.value)}
                       rows={2}
                       maxLength={300}
-                      placeholder="Reason (optional) — e.g. teacher unwell, holiday"
+                      placeholder="Reason (optional), e.g. teacher unwell, holiday"
                       className="input-field text-sm"
                     />
+                    <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                      <input type="checkbox" checked={cancelNotify} onChange={(e) => setCancelNotify(e.target.checked)} className="mt-0.5 w-4 h-4 rounded text-indigo-600" />
+                      <span>Notify parents (in-app + WhatsApp drafts in Messages)</span>
+                    </label>
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => setCancelling(false)} className="btn-secondary w-full justify-center">Back</button>
                       <button onClick={() => cancelOccurrence(selected)} className="btn-secondary w-full justify-center text-red-600 hover:bg-red-100">

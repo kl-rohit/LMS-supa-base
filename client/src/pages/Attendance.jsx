@@ -112,6 +112,7 @@ export default function Attendance() {
   const [cancelClass, setCancelClass] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelSaving, setCancelSaving] = useState(false);
+  const [cancelNotify, setCancelNotify] = useState(true);
 
   // Only a real recurring class (a numeric Classes id) can be cancelled/moved —
   // not camp days or one-off ad-hoc sessions.
@@ -120,6 +121,7 @@ export default function Attendance() {
   const cancelOccurrence = (cls) => {
     if (!isReschedulable(cls)) return;
     setCancelReason('');
+    setCancelNotify(true);
     setCancelClass(cls);
   };
 
@@ -132,7 +134,14 @@ export default function Attendance() {
         status: 'cancelled',
         note: cancelReason.trim(),
       });
-      toast.success('Class cancelled for this date');
+      let extra = '';
+      if (cancelNotify) {
+        try {
+          const r = await api.post(`/classes/${cancelClass.id}/notify-cancel`, { date: selectedDate, reason: cancelReason.trim() });
+          extra = r?.drafts ? ` Parents notified. ${r.drafts} WhatsApp draft(s) ready in Messages.` : ' Parents notified.';
+        } catch { extra = ' (Could not notify parents — do it from Messages.)'; }
+      }
+      toast.success('Class cancelled for this date.' + extra);
       setCancelClass(null);
       setSelectedClass(null);
       fetchClassesForDate();
@@ -1787,8 +1796,20 @@ export default function Attendance() {
               placeholder="e.g. Teacher unwell, public holiday, venue unavailable"
               className="input-field"
             />
-            <p className="text-xs text-gray-500 mt-1">Saved with the cancellation for your reference. You can share it with parents when notifying them.</p>
+            <p className="text-xs text-gray-500 mt-1">Saved with the cancellation for your reference, and included in the parent notice below.</p>
           </div>
+          <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cancelNotify}
+              onChange={(e) => setCancelNotify(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-indigo-600"
+            />
+            <span>
+              Notify parents
+              <span className="block text-xs text-gray-500">Sends an in-app notice to this class's parents and creates a WhatsApp draft for each in Messages.</span>
+            </span>
+          </label>
         </div>
       </Modal>
 

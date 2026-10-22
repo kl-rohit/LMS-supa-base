@@ -208,6 +208,68 @@ router.delete('/:id/exceptions/:date', requireFeature('classes.exceptions'), asy
   }
 });
 
+// POST /api/classes/:id/notify-cancel  — tell the class's parents a single date
+// is cancelled, through BOTH channels: an in-app notification (portal bell) and
+// a WhatsApp draft per parent (Messages page, one-tap send). Body: { date, reason }.
+router.post('/:id/notify-cancel', async (req, res) => {
+  try {
+    const id = safeId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+    const cls = await getById(req, 'Classes', id);
+    if (!cls || Number(cls.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Class not found' });
+    const date = String(req.body.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'A valid date (YYYY-MM-DD) is required' });
+    const reason = String(req.body.reason || '').trim().slice(0, 300);
+
+    const ids = await resolveRoster(req, cls);
+    const numIds = ids.map(Number).filter(Boolean);
+    if (!numIds.length) return res.json({ notified: 0, drafts: 0, message: 'No students in this class to notify.' });
+
+    const sRows = await zcqlAll(req, `SELECT ROWID, name, parent_name, mobile_number FROM Students WHERE Students.org_id = ${Number(req.orgId)} AND Students.ROWID IN (${numIds.join(',')})`, 'Students');
+    const students = unwrap(sRows, 'Students').map(normalize);
+    if (!students.length) return res.json({ notified: 0, drafts: 0 });
+
+    let appSettings = {};
+    try { appSettings = await loadAppSettings(req); } catch { appSettings = {}; }
+    const signature = appSettings['school.signature'] || appSettings['school.name'] || 'Your Academy';
+
+    // 1) In-app notifications (bell) — one batched call.
+    let notified = 0;
+    try {
+      const r = await createNotifications(req, {
+        orgId: Number(req.orgId),
+        studentIds: students.map((s) => String(s.id)),
+        type: 'schedule_change',
+        title: `Class cancelled: ${cls.name}`,
+        body: `${date}${reason ? ` · ${reason}` : ''}`,
+        link: '/portal/attendance',
+      });
+      notified = r?.created || 0;
+    } catch { /* in-app best-effort */ }
+
+    // 2) WhatsApp drafts — a schedule_change Messages row per parent to review+send.
+    let drafts = 0;
+    for (const s of students) {
+      const msg = `Dear ${s.parent_name || 'Parent'},\n\n${s.name}'s class "${cls.name}" on ${date} has been cancelled.${reason ? ` Reason: ${reason}.` : ''} The weekly schedule continues as usual.\n\nRegards,\n${signature}`;
+      try {
+        await insert(req, 'Messages', {
+          student_id: String(s.id),
+          parent_name: s.parent_name || '',
+          mobile_number: s.mobile_number || '',
+          message: msg,
+          message_type: 'schedule_change',
+          is_sent: 0,
+          org_id: Number(req.orgId),
+        });
+        drafts++;
+      } catch { /* skip one, keep going */ }
+    }
+    res.json({ notified, drafts });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to notify parents', detail: e.message });
+  }
+});
+
 // GET /api/classes  (optional filters: day_of_week, group_id, student_id, is_active, class_type)
 router.get('/', async (req, res) => {
   try {

@@ -19,6 +19,7 @@ import {
   Compass,
   KeyRound,
   SlidersHorizontal,
+  UserPlus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
@@ -85,6 +86,23 @@ function whatsappLink(mobile, opts) {
     : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
 }
 
+// A WhatsApp link that asks the parent for their email so a login can be set up
+// (used for students who have no login yet). Positive, no jargon.
+function askEmailLink(student, academyName) {
+  const parent = student.parent_name || 'there';
+  const child = student.name || 'your child';
+  const academy = academyName || 'our academy';
+  const msg =
+    `Dear ${parent},\n\n` +
+    `We're setting up your ${academy} parent portal so you can follow ${child}'s classes, attendance, fees and programs from your phone.\n\n` +
+    `Could you please share your email address here? We'll then send you a sign-in link and a one-time password.\n\n` +
+    `Thank you!`;
+  const phone = normalizeMobileForWhatsApp(student.mobile_number);
+  return phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+}
+
 export default function StudentLogins() {
   const navigate = useNavigate();
   const branding = useOrgBranding();
@@ -99,6 +117,10 @@ export default function StudentLogins() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [created, setCreated] = useState(null); // { student, email, password, reused }
+  // Bulk create-logins: confirm prompt + in-flight flag + the results (to share).
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null); // { created:[], skipped_no_email:[] }
   // Login id whose row action (resend tour / enable-disable) is in flight, so we
   // can disable that row's buttons and prevent a double submit.
   const [busyId, setBusyId] = useState(null);
@@ -157,7 +179,9 @@ export default function StudentLogins() {
 
   const openCreate = (student) => {
     setCreateFor(student);
-    setCreateEmail('');
+    // Prefill from the parent email captured on the student record (if any), so
+    // staff don't retype it when it was collected at registration.
+    setCreateEmail(student.email || '');
     setErrors({});
   };
 
@@ -195,6 +219,28 @@ export default function StudentLogins() {
       toast.error('Failed: ' + e.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Students (active) that have an email on record but no login yet — the ones
+  // bulk-create can onboard in one go.
+  const bulkEligible = useMemo(
+    () => students.filter((s) => (s.status === 'active' || !s.status) && !loginByStudent.get(String(s.id)) && /.+@.+\..+/.test(String(s.email || '').trim())),
+    [students, loginByStudent]
+  );
+
+  const handleBulkCreate = async () => {
+    setBulkConfirm(false);
+    setBulkRunning(true);
+    try {
+      const resp = await api.post('/student-logins/bulk');
+      await fetchAll();
+      setBulkResult(resp);
+      toast.success(`Created ${resp.created_count} login(s)`);
+    } catch (e) {
+      toast.error('Failed: ' + e.message);
+    } finally {
+      setBulkRunning(false);
     }
   };
 
@@ -307,7 +353,18 @@ export default function StudentLogins() {
             subtitle="Create a portal login for each parent so they can see their child's class history and fees."
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {bulkEligible.length > 0 && (
+            <button
+              onClick={() => setBulkConfirm(true)}
+              disabled={bulkRunning}
+              className="btn-primary btn-sm disabled:opacity-50"
+              title={`Create logins for ${bulkEligible.length} student(s) that have an email but no login yet`}
+            >
+              {bulkRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+              Create {bulkEligible.length} logins
+            </button>
+          )}
           <button
             onClick={emailReveal.toggle}
             className="btn-secondary btn-sm"
@@ -373,13 +430,27 @@ export default function StudentLogins() {
                     <td className="table-cell text-right">
                       <div className="inline-flex items-center gap-1">
                         {!login ? (
-                          <button
-                            onClick={() => openCreate(student)}
-                            className="btn-primary btn-sm"
-                            title="Create login"
-                          >
-                            <Mail className="w-4 h-4" /> Create login
-                          </button>
+                          <>
+                            {!student.email && (
+                              <Tooltip label="Ask the parent for their email on WhatsApp">
+                                <a
+                                  href={askEmailLink(student, branding.name)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-md hover:bg-green-50 text-green-600"
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                </a>
+                              </Tooltip>
+                            )}
+                            <button
+                              onClick={() => openCreate(student)}
+                              className="btn-primary btn-sm"
+                              title="Create login"
+                            >
+                              <Mail className="w-4 h-4" /> Create login
+                            </button>
+                          </>
                         ) : (
                           <>
                             {waLink && (
@@ -497,15 +568,28 @@ export default function StudentLogins() {
                 {login && (
                   <div className="mt-1 text-xs text-gray-500">Last login: <LastLogin login={login} /></div>
                 )}
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
                   {!login ? (
-                    <button
-                      onClick={() => openCreate(student)}
-                      className="btn-primary btn-sm"
-                      title="Create login"
-                    >
-                      <Mail className="w-4 h-4" /> Create login
-                    </button>
+                    <>
+                      {!student.email && (
+                        <a
+                          href={askEmailLink(student, branding.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-secondary btn-sm text-green-600"
+                          title="Ask the parent for their email on WhatsApp"
+                        >
+                          <MessageSquare className="w-4 h-4" /> Ask email
+                        </a>
+                      )}
+                      <button
+                        onClick={() => openCreate(student)}
+                        className="btn-primary btn-sm"
+                        title="Create login"
+                      >
+                        <Mail className="w-4 h-4" /> Create login
+                      </button>
+                    </>
                   ) : (
                     <>
                       {waLink && (
@@ -734,6 +818,71 @@ export default function StudentLogins() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </Modal>
+
+      {/* Bulk create confirm */}
+      <ConfirmDialog
+        isOpen={bulkConfirm}
+        onClose={() => setBulkConfirm(false)}
+        onConfirm={handleBulkCreate}
+        title={`Create ${bulkEligible.length} parent logins?`}
+        message={`This creates a login for every active student that has an email on record but no login yet (${bulkEligible.length}). You'll then get a list to send each parent their sign-in details on WhatsApp. Students without an email are skipped.`}
+        confirmText="Create logins"
+      />
+
+      {/* Bulk results — share each new invite */}
+      <Modal
+        isOpen={!!bulkResult}
+        onClose={() => setBulkResult(null)}
+        title="Logins created"
+        size="lg"
+      >
+        {bulkResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Created {bulkResult.created_count} login(s). Send each parent their sign-in details below. Passwords are shown once.
+            </p>
+            {bulkResult.created?.length > 0 && (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {bulkResult.created.map((c) => (
+                  <div key={c.student_id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{c.student_name}</div>
+                      <div className="text-xs text-gray-500 truncate">{c.parent_name || '—'} · {c.email}</div>
+                    </div>
+                    <a
+                      href={whatsappLink(c.mobile_number, {
+                        parentName: c.parent_name,
+                        studentName: c.student_name,
+                        email: c.email,
+                        password: c.temp_password,
+                        academyName: branding.name,
+                      })}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-secondary btn-sm text-green-600 shrink-0"
+                    >
+                      <MessageSquare className="w-4 h-4" /> Send invite
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+            {bulkResult.skipped_no_email?.length > 0 && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800">
+                <p className="font-medium">{bulkResult.skipped_no_email.length} student(s) skipped (no email on record)</p>
+                <p className="text-amber-700 mt-0.5 text-xs">
+                  {bulkResult.skipped_no_email.slice(0, 20).map((s) => s.name).join(', ')}
+                  {bulkResult.skipped_no_email.length > 20 ? '…' : ''}
+                </p>
+                <p className="text-amber-700 mt-1 text-xs">Use the "Ask email" button on each to request their email, then create their login.</p>
+              </div>
+            )}
+            <div className="flex justify-end pt-2 border-t border-gray-100">
+              <button onClick={() => setBulkResult(null)} className="btn-secondary btn-sm">Done</button>
+            </div>
           </div>
         )}
       </Modal>

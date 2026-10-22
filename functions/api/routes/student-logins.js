@@ -129,6 +129,52 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST /api/student-logins/bulk — create a login for every ACTIVE student that
+// has an email on record but no login yet. Students without an email are skipped
+// and reported back so the admin knows who still needs an email. Returns the
+// created accounts (with temp passwords) so the UI can fire off each WhatsApp
+// invite.
+router.post('/bulk', async (req, res) => {
+  try {
+    const rows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
+    const students = unwrap(rows, 'Students')
+      .filter((s) => (s.status === 'active' || !s.status) && !s.login_user_id);
+    const created = [];
+    const skipped_no_email = [];
+    const looksEmail = (e) => /.+@.+\..+/.test(String(e || '').trim());
+    for (const s of students) {
+      const email = String(s.email || '').trim();
+      if (!looksEmail(email)) { skipped_no_email.push({ student_id: s.ROWID, name: s.name }); continue; }
+      try {
+        const r = await createLogin({
+          email,
+          first_name: s.parent_name || s.name || 'Parent',
+          last_name: '',
+        });
+        if (!r.userId) { skipped_no_email.push({ student_id: s.ROWID, name: s.name }); continue; }
+        await update(req, 'Students', s.ROWID, {
+          login_email: email,
+          login_user_id: String(r.userId),
+          login_status: 'active',
+        });
+        await setFlag(req, req.orgId, parentKey(s.ROWID), 'true');
+        created.push({
+          student_id: s.ROWID,
+          student_name: s.name,
+          parent_name: s.parent_name || '',
+          mobile_number: s.mobile_number || '',
+          email,
+          temp_password: r.tempPassword || null,  // null when an existing account was reused
+          reused_existing: !!r.reusedExisting,
+        });
+      } catch { skipped_no_email.push({ student_id: s.ROWID, name: s.name }); }
+    }
+    res.json({ created, skipped_no_email, created_count: created.length, skipped_count: skipped_no_email.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to bulk-create logins', detail: e.message });
+  }
+});
+
 // PUT /api/student-logins/:id — body: { status?, email? }  (:id is student id)
 router.put('/:id', async (req, res) => {
   try {

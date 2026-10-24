@@ -23,18 +23,30 @@ const ACTIVE_ORG_KEY = 'veena_active_org_id';
 // ?student=<id> on /portal/* calls so the backend (requireParent) scopes to it.
 const ACTIVE_STUDENT_KEY = 'veena_active_student_id';
 
+// Admin "view as parent" preview target. When set, portal GETs are transparently
+// redirected to the read-only preview mount scoped to this student, so the real
+// portal pages render exactly what that family sees. Set/cleared by the preview
+// screen (not persisted — in-memory, per tab).
+let previewStudentId = null;
+export function setApiPreviewStudent(id) { previewStudentId = id ? String(id) : null; }
+
 function withActiveOrg(url) {
   try {
     if (typeof window === 'undefined') return url;
     if (url.startsWith('/auth/') || url.startsWith('/platform')) return url;
     let out = url;
+    // Preview rewrite: /portal/... → /portal-preview/<id>/... (read-only mount).
+    if (previewStudentId && (out === '/portal' || out.startsWith('/portal/'))) {
+      out = `/portal-preview/${previewStudentId}` + out.slice('/portal'.length);
+    }
     if (!/[?&]org=/.test(out)) {
       const orgId = localStorage.getItem(IMPERSONATE_KEY) || localStorage.getItem(ACTIVE_ORG_KEY);
       if (orgId) { const sep = out.includes('?') ? '&' : '?'; out = `${out}${sep}org=${encodeURIComponent(orgId)}`; }
     }
     // Parent portal only: pin the active child so a family with more than one
-    // student in the academy keeps viewing the chosen one across requests.
-    if (out.startsWith('/portal') && !/[?&]student=/.test(out)) {
+    // student in the academy keeps viewing the chosen one across requests. Uses
+    // the trailing-slash form so it never matches the preview mount above.
+    if (out.startsWith('/portal/') && !/[?&]student=/.test(out)) {
       const sid = localStorage.getItem(ACTIVE_STUDENT_KEY);
       if (sid) { const sep = out.includes('?') ? '&' : '?'; out = `${out}${sep}student=${encodeURIComponent(sid)}`; }
     }

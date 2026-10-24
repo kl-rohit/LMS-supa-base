@@ -20,6 +20,7 @@ import {
   KeyRound,
   SlidersHorizontal,
   UserPlus,
+  MonitorPlay,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTitle } from '../components/ConsoleUI';
@@ -483,6 +484,14 @@ export default function StudentLogins() {
                                 <KeyRound className="w-4 h-4" />
                               </button>
                             </Tooltip>
+                            <Tooltip label="Preview the portal as this parent (read-only)">
+                              <button
+                                onClick={() => navigate(`/preview/${student.id}`)}
+                                className="p-1.5 rounded-md hover:bg-indigo-50 text-gray-500 hover:text-indigo-600"
+                              >
+                                <MonitorPlay className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
                             <Tooltip label="Portal visibility for this child">
                               <button
                                 onClick={() => openVisibility(student)}
@@ -618,6 +627,13 @@ export default function StudentLogins() {
                         title="Reset password and share the new one"
                       >
                         <KeyRound className="w-4 h-4" /> Reset
+                      </button>
+                      <button
+                        onClick={() => navigate(`/preview/${student.id}`)}
+                        className="btn-secondary btn-sm text-indigo-600"
+                        title="Preview the portal as this parent (read-only)"
+                      >
+                        <MonitorPlay className="w-4 h-4" /> Preview
                       </button>
                       <button
                         onClick={() => openVisibility(student)}

@@ -81,6 +81,7 @@ const Quizzes = lazyWithReload(() => import('./pages/Quizzes'));
 const QuizMaster = lazyWithReload(() => import('./pages/QuizMaster'));
 const QuizEditorPage = lazyWithReload(() => import('./pages/QuizEditorPage'));
 const Help           = lazyWithReload(() => import('./pages/Help'));
+const PortalPreview  = lazyWithReload(() => import('./pages/PortalPreview'));
 const VerifyCertificate = lazyWithReload(() => import('./pages/VerifyCertificate'));
 
 import Loader from './components/Loader';
@@ -418,6 +419,18 @@ export default function App() {
           element={
             <RequireAuth>
               <ParentLayout />
+            </RequireAuth>
+          }
+        />
+        {/* Admin "view as parent" — read-only portal preview for a student.
+            Outside TeacherLayout so it fills the screen like the real portal. */}
+        <Route
+          path="/preview/:studentId"
+          element={
+            <RequireAuth role="admin">
+              <Suspense fallback={<Loader />}>
+                <PortalPreview />
+              </Suspense>
             </RequireAuth>
           }
         />

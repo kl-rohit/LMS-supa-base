@@ -4,7 +4,7 @@
 const express = require('express');
 const cors = require('cors');
 const { requireAuth, requireAdmin } = require('./middleware/auth');
-const { requireParent } = require('./middleware/parent');
+const { requireParent, previewAsStudent } = require('./middleware/parent');
 const { resolveOrg, requireOrgId } = require('./middleware/org');
 const { requireModule, requireFeature } = require('./middleware/entitlement');
 const config = require('./config');
@@ -100,6 +100,11 @@ app.use('/api/internal', require('./routes/internal'));
 
 // /api/portal/* — any logged-in parent; scoped to their student_id.
 app.use('/api/portal', requireAuth, requireParent, require('./routes/portal'));
+
+// /api/portal-preview/:studentId/* — admin "view as parent" (read-only). Reuses
+// the portal router; previewAsStudent verifies the student is in the admin's org
+// and rejects any non-GET. Lets staff see exactly what a family sees.
+app.use('/api/portal-preview/:studentId', requireAuth, resolveOrg, requireOrgId, previewAsStudent, require('./routes/portal'));
 
 // /api/platform/* — Catalyst App Administrators only (Rohit, the platform
 // owner). Sees cross-org data. NO resolveOrg here — these endpoints

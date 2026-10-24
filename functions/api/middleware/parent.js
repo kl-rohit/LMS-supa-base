@@ -64,4 +64,36 @@ async function requireParent(req, res, next) {
   }
 }
 
-module.exports = { requireParent };
+// Admin "view as parent" preview. Mounted at /api/portal-preview/:studentId with
+// requireAuth + resolveOrg + requireOrgId already applied, so req.orgId is the
+// admin's active academy. We verify the chosen student belongs to that academy,
+// then set the SAME req.* fields requireParent would, so every portal GET handler
+// runs unchanged — but strictly READ-ONLY (any non-GET is rejected).
+async function previewAsStudent(req, res, next) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Preview is read-only' });
+  try {
+    const sid = /^\d+$/.test(String(req.params.studentId || '')) ? String(req.params.studentId) : null;
+    if (!sid) return res.status(400).json({ error: 'Invalid student id' });
+    const rows = await zcql(req, `SELECT * FROM Students WHERE Students.ROWID = ${sid} AND Students.org_id = ${Number(req.orgId)}`);
+    const student = unwrap(rows, 'Students')[0];
+    if (!student) return res.status(404).json({ error: 'Student not found in this academy' });
+    req.studentId = student.ROWID;
+    req.studentLogin = {
+      email: student.login_email,
+      user_id: student.login_user_id,
+      status: student.login_status,
+    };
+    let overrides = {};
+    try {
+      const raw = student.portal_overrides;
+      const parsed = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) overrides = parsed;
+    } catch { /* malformed → inherit academy settings */ }
+    req.studentPortalOverrides = overrides;
+    next();
+  } catch (e) {
+    res.status(500).json({ error: 'Preview lookup failed', detail: e.message });
+  }
+}
+
+module.exports = { requireParent, previewAsStudent };

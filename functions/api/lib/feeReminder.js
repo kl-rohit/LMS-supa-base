@@ -123,9 +123,11 @@ async function generateFeeReminders(req, { month, year, orgId }) {
       const classFees = attendance.reduce((sum, a) => sum + (Number(a.fee_charged) || 0), 0);
       const classesAttended = attendance.filter((a) => a.status === 'present' || a.status === 'late').length;
 
+      // Program fees are collected separately (Programs module), so monthly
+      // reminders don't include them — only manual/class extras (program_id NULL).
       const afRows = await zcql(
         req,
-        `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${effectiveOrgId}`
+        `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${s.ROWID} AND AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${effectiveOrgId} AND AdditionalFees.program_id IS NULL`
       );
       const additional = unwrap(afRows, 'AdditionalFees');
       const positiveAdditional = additional.reduce(

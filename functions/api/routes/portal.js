@@ -336,7 +336,9 @@ router.get('/fees', async (req, res) => {
       const [y, m] = month.split('-');
       addFilter = ` AND AdditionalFees.fee_year = ${parseInt(y, 10)} AND AdditionalFees.fee_month = ${parseInt(m, 10)}`;
     }
-    const afRows = await zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${sid}${addFilter}`, 'AdditionalFees');
+    // Program fees are a separate stream shown in the portal Programs tab, so the
+    // monthly Fees tab excludes them (program_id IS NULL = manual/class extras only).
+    const afRows = await zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.student_id = ${sid}${addFilter} AND AdditionalFees.program_id IS NULL`, 'AdditionalFees');
     const additional = unwrap(afRows, 'AdditionalFees');
     const positiveAdditional = additional.reduce((s, a) => s + Math.max(0, Number(a.amount) || 0), 0);
     const discountTotal = additional.reduce((s, a) => s + Math.min(0, Number(a.amount) || 0), 0); // negative

@@ -407,7 +407,7 @@ router.get('/defaulters', requireComplete, cacheJson(60000), async (req, res) =>
 
     const [aRows, afRows, pRows] = await Promise.all([
       zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
-      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
+      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)} AND AdditionalFees.program_id IS NULL`, 'AdditionalFees').catch(() => []),
       zcqlAll(req, `SELECT student_id FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year} AND Payments.org_id = ${Number(req.orgId)}`, 'Payments').catch(() => []),
     ]);
     // Students already marked paid for this month (binary per-month model) are

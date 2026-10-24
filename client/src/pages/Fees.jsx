@@ -93,6 +93,9 @@ export default function Fees() {
   const [editAttnForm, setEditAttnForm] = useState({ status: 'present', fee_charged: '', topic: '' });
   const [savingAttn, setSavingAttn] = useState(false);
   const [additionalFees, setAdditionalFees] = useState([]);
+  // Program fees are collected separately (Programs module) and excluded from the
+  // monthly totals by default. Admin can turn this on at month-end to fold them in.
+  const [includePrograms, setIncludePrograms] = useState(false);
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false);
   const [quickStudentOpen, setQuickStudentOpen] = useState(false);
   const [groups, setGroups] = useState([]); // for the "add a group" bulk-select
@@ -146,7 +149,7 @@ export default function Fees() {
 
   useEffect(() => {
     fetchFees();
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, includePrograms]);
 
   const fetchStudents = async () => {
     try {
@@ -161,9 +164,10 @@ export default function Fees() {
     try {
       setLoading(true);
       const monthStr = String(selectedMonth).padStart(2, '0');
+      const incl = includePrograms ? '1' : '';
       const [feesResult, additionalResult] = await Promise.all([
-        api.get(`/fees/monthly/${selectedYear}/${monthStr}`),
-        api.get(`/fees/additional?month=${selectedMonth}&year=${selectedYear}`).catch(() => ({ additional_fees: [] })),
+        api.get(`/fees/monthly/${selectedYear}/${monthStr}${incl ? '?include_programs=1' : ''}`),
+        api.get(`/fees/additional?month=${selectedMonth}&year=${selectedYear}${incl ? '&include_programs=1' : ''}`).catch(() => ({ additional_fees: [] })),
       ]);
       setFeesData(feesResult.students || []);
       setAdditionalFees(additionalResult.additional_fees || []);
@@ -684,6 +688,21 @@ export default function Fees() {
           </button>
         </div>
       </div>
+
+      {/* Program fees are collected separately in the Programs module. At month-end,
+          the admin can fold them into these totals for a consolidated bill. */}
+      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer -mt-1">
+        <input
+          type="checkbox"
+          checked={includePrograms}
+          onChange={(e) => setIncludePrograms(e.target.checked)}
+          className="w-4 h-4 rounded text-indigo-600"
+        />
+        <span>
+          Include program fees in totals
+          <span className="text-gray-400"> — off by default; programs are collected in the Programs module</span>
+        </span>
+      </label>
 
       {/* Fees Table */}
       {mergedData.length === 0 ? (

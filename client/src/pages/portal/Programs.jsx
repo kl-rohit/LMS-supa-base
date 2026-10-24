@@ -92,8 +92,8 @@ export default function PortalPrograms() {
                       <IndianRupee className="w-3 h-3" /> {p.fee.toLocaleString('en-IN')} paid
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-gray-700">
-                      <IndianRupee className="w-3 h-3" /> {p.fee.toLocaleString('en-IN')} (added to fees)
+                    <span className="inline-flex items-center gap-1 text-amber-700">
+                      <IndianRupee className="w-3 h-3" /> {p.fee.toLocaleString('en-IN')} to pay
                     </span>
                   )
                 )}

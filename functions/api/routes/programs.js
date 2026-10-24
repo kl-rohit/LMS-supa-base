@@ -122,7 +122,26 @@ router.delete('/:id', async (req, res) => {
     const existing = await getById(req, 'Programs', id);
     if (!existing || Number(existing.org_id) !== Number(req.orgId)) return res.status(404).json({ error: 'Program not found' });
     await update(req, 'Programs', id, { status: 'cancelled' });
-    res.json({ message: 'Program cancelled' });
+    // Cancelling must not leave pending fees behind: void every UNCOLLECTED charge
+    // for this program (collected ones are money already received — kept), and
+    // reset those participants to unbilled so re-opening + re-billing stays clean.
+    let voided = 0;
+    try {
+      const charges = unwrap(await zcql(req, `SELECT ROWID, student_id, collected FROM AdditionalFees WHERE AdditionalFees.org_id = ${Number(req.orgId)} AND ${programChargeClause(id, existing.name)}`), 'AdditionalFees');
+      const unbill = new Set();
+      for (const c of charges) {
+        if (Number(c.collected) !== 1) {
+          try { await remove(req, 'AdditionalFees', c.ROWID); voided++; unbill.add(String(c.student_id)); } catch {}
+        }
+      }
+      if (unbill.size) {
+        const links = unwrap(await zcql(req, `SELECT ROWID, student_id FROM ProgramStudents WHERE ProgramStudents.program_id = ${id} AND ProgramStudents.org_id = ${Number(req.orgId)}`), 'ProgramStudents');
+        for (const l of links) {
+          if (unbill.has(String(l.student_id))) { try { await update(req, 'ProgramStudents', l.ROWID, { billed: 0 }); } catch {} }
+        }
+      }
+    } catch { /* leave charges if the lookup fails */ }
+    res.json({ message: 'Program cancelled', voided });
   } catch (e) { res.status(500).json({ error: 'Failed to cancel program', detail: e.message }); }
 });
 

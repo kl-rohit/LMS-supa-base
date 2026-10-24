@@ -38,6 +38,11 @@ router.get('/monthly/:year/:month', async (req, res) => {
     const monthStr = String(month).padStart(2, '0');
     const dateFrom = `${year}-${monthStr}-01`;
     const dateTo = `${year}-${monthStr}-31`;
+    // Program fees are a separate stream (collected in the Programs module), so
+    // they're excluded from the monthly total by default. The admin can pass
+    // ?include_programs=1 to pull them in for a consolidated month-end bill.
+    const includePrograms = req.query.include_programs === '1' || req.query.include_programs === 'true';
+    const progFilter = includePrograms ? '' : ' AND AdditionalFees.program_id IS NULL';
     const studentRows = await zcql(req, `SELECT * FROM Students WHERE Students.org_id = ${Number(req.orgId)}`);
     const students = unwrap(studentRows, 'Students');
 
@@ -57,7 +62,7 @@ router.get('/monthly/:year/:month', async (req, res) => {
     const [pRows, aRows, afRows] = await Promise.all([
       zcqlAll(req, `SELECT * FROM Payments WHERE Payments.fee_month = ${month} AND Payments.fee_year = ${year} AND Payments.org_id = ${Number(req.orgId)}`, 'Payments').catch(() => []),
       zcqlAll(req, `SELECT * FROM Attendance WHERE Attendance.class_date >= ${q(dateFrom)} AND Attendance.class_date <= ${q(dateTo)} AND Attendance.org_id = ${Number(req.orgId)}`, 'Attendance').catch(() => []),
-      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}`, 'AdditionalFees').catch(() => []),
+      zcqlAll(req, `SELECT * FROM AdditionalFees WHERE AdditionalFees.fee_month = ${month} AND AdditionalFees.fee_year = ${year} AND AdditionalFees.org_id = ${Number(req.orgId)}${progFilter}`, 'AdditionalFees').catch(() => []),
     ]);
 
     const paymentsByStudent = {};
@@ -262,6 +267,10 @@ router.get('/additional', async (req, res) => {
     if (year) where.push(`AdditionalFees.fee_year = ${parseInt(year)}`);
     const asid = safeId(student_id);
     if (asid) where.push(`AdditionalFees.student_id = ${asid}`);
+    // Program fees are shown/collected in the Programs module, so they're kept out
+    // of this monthly breakdown unless the admin opts in (?include_programs=1).
+    const includePrograms = req.query.include_programs === '1' || req.query.include_programs === 'true';
+    if (!includePrograms) where.push('AdditionalFees.program_id IS NULL');
     const sql = `SELECT * FROM AdditionalFees WHERE ${where.join(' AND ')} ORDER BY AdditionalFees.fee_date DESC`;
     const rows = unwrap(await zcqlAll(req, sql, 'AdditionalFees'), 'AdditionalFees').map(normalize);
     const names = await studentNameMap(req);

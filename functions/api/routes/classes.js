@@ -3,7 +3,7 @@
 
 const router = require('express').Router();
 const { insert, getById, update, remove, zcql, zcqlAll, unwrap, normalize, safeId, q } = require('../db/catalystDb');
-const { createNotifications } = require('../lib/notify');
+const { createNotifications, createAdminNotifications } = require('../lib/notify');
 const { substituteTemplate } = require('../lib/feeReminder');
 const { loadTemplates, loadAppSettings } = require('./settings');
 const { istParts } = require('../lib/time');
@@ -246,6 +246,18 @@ router.post('/:id/notify-cancel', async (req, res) => {
       });
       notified = r?.created || 0;
     } catch { /* in-app best-effort */ }
+
+    // 1b) Admin/teacher bell notice too, so every staff member sees the cancellation
+    // (e.g. another teacher cancelled it). One org-level row.
+    try {
+      await createAdminNotifications(req, {
+        orgId: Number(req.orgId),
+        type: 'schedule_change',
+        title: `Class cancelled: ${cls.name}`,
+        body: `${date}${reason ? ` · ${reason}` : ''} · ${students.length} parent(s) notified`,
+        link: '/attendance',
+      });
+    } catch { /* admin notice best-effort */ }
 
     // 2) WhatsApp drafts — a schedule_change Messages row per parent to review+send.
     let drafts = 0;

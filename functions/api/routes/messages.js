@@ -236,6 +236,25 @@ router.post('/:id/send-in-app', async (req, res) => {
   }
 });
 
+// POST /api/messages/bulk-delete — delete many messages in ONE request (used by
+// "Clear All"), so the client never fires N parallel DELETEs (which tripped the
+// rate limiter with a 429 and raced into "Message not found"). Body: { ids: [] }.
+// Only this org's rows are touched; already-gone ids are skipped, not an error.
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter((x) => /^\d+$/.test(x)) : [];
+    if (!ids.length) return res.json({ deleted: 0 });
+    const rows = await zcqlAll(req, `SELECT ROWID FROM Messages WHERE Messages.org_id = ${Number(req.orgId)} AND Messages.ROWID IN (${ids.join(',')})`, 'Messages');
+    let deleted = 0;
+    for (const r of unwrap(rows, 'Messages')) {
+      try { await remove(req, 'Messages', r.ROWID); deleted++; } catch { /* skip one, keep going */ }
+    }
+    res.json({ deleted });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete messages', detail: e.message });
+  }
+});
+
 // DELETE /api/messages/:id
 router.delete('/:id', async (req, res) => {
   try {

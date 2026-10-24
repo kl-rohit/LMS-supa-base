@@ -385,12 +385,15 @@ export default function Messages() {
     });
     if (!ok) return;
     try {
-      await Promise.all(filteredMessages.map((m) => api.delete(`/messages/${m.id}`)));
-      const deletedIds = new Set(filteredMessages.map((m) => m.id));
+      // One bulk request — never N parallel DELETEs (which tripped the rate
+      // limiter and raced into "Message not found").
+      const ids = filteredMessages.map((m) => m.id);
+      await api.post('/messages/bulk-delete', { ids });
+      const deletedIds = new Set(ids);
       setMessages((prev) => prev.filter((m) => !deletedIds.has(m.id)));
       toast.success(`Deleted ${count} message(s)`);
     } catch (err) {
-      toast.error('Failed to delete some messages: ' + err.message);
+      toast.error('Failed to delete messages: ' + err.message);
       fetchData();
     }
   };

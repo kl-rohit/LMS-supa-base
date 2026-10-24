@@ -64,18 +64,30 @@ export default function PortalFees() {
           <Loader />
         ) : !data ? (
           <p className="text-center text-sm text-gray-400 py-6">Could not load fee data.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Stat label="Classes attended" value={data.classes_attended} />
-            <Stat label="Class fees" value={`₹${Number(data.class_fees).toLocaleString('en-IN')}`} />
-            <Stat label="Additional" value={`₹${Number(data.additional_fees).toLocaleString('en-IN')}`} />
-            <Stat
-              label="Total"
-              value={`₹${Number(data.total).toLocaleString('en-IN')}`}
-              accent="text-indigo-700"
-            />
-          </div>
-        )}
+        ) : (() => {
+          // Headline figures reflect what's still OWED — collected/paid charges
+          // are netted out (shown in the itemised list + the billed/paid line).
+          const total = Number(data.total) || 0;
+          const pending = Number(data.pending ?? data.total) || 0;             // balance due
+          const addlDue = Number(data.additional_pending ?? data.additional_fees) || 0;
+          const paid = Math.max(0, total - pending);
+          const inr = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+          return (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <Stat label="Classes attended" value={data.classes_attended} />
+                <Stat label="Class fees" value={inr(data.class_fees)} />
+                <Stat label="Additional due" value={inr(addlDue)} />
+                <Stat label="Balance due" value={inr(pending)} accent="text-indigo-700" />
+              </div>
+              {paid > 0 && (
+                <p className="mt-3 text-xs text-gray-500">
+                  Total billed {inr(total)} · already paid {inr(paid)}
+                </p>
+              )}
+            </>
+          );
+        })()}
 
         {!loading && data?.additional_items?.length > 0 && (
           <div className="mt-4">

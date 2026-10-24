@@ -257,13 +257,16 @@ export default function PortalDashboard() {
               <IndianRupee className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs text-gray-500">This month's fee</p>
+              <p className="text-xs text-gray-500">Balance due this month</p>
               <p className="text-2xl font-semibold text-gray-900">
-                ₹{Number(fees?.total || 0).toLocaleString('en-IN')}
+                ₹{Number(fees?.pending ?? fees?.total ?? 0).toLocaleString('en-IN')}
               </p>
               <p className="text-xs text-gray-400">
                 Class ₹{Number(fees?.class_fees || 0).toLocaleString('en-IN')}
-                {fees?.additional_fees > 0 ? ` · Additional ₹${Number(fees.additional_fees).toLocaleString('en-IN')}` : ''}
+                {(() => {
+                  const a = Number(fees?.additional_pending ?? fees?.additional_fees ?? 0);
+                  return a > 0 ? ` · Additional ₹${a.toLocaleString('en-IN')}` : '';
+                })()}
               </p>
             </div>
           </div>
